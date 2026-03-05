@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="css/main.css">
+    <title>Admin Search</title>
+
+    <style>
+        .bloque{
+            margin-bottom: 30px;
+            }
+
+        .fila{
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            margin: 6px 0;
+            }
+
+        label{
+            font-weight: 600;
+            }
+
+        .botones{
+            margin-top: 12px;
+            }
+
+        .botones button{
+            margin-right: 10px;
+            }
+    </style>
+    
+</head>
+<body>
+    <ul>
+        <li>Vista general</li>
+        <li>Funciones</li>
+        <li>Búsqueda</li>
+        <li>Gráficas</li>
+    </ul>
+    <h3>Búsqueda personalizada</h3>
+    <h4>Clientes</h4>
+    <label for="id_prestamo">Préstamo ID: </label> <input type="text" name="id_prestamo" id="id_prestamo">
+    <br>
+    <label for="c_name">Nombre: </label> <input type="text" name="c_name" id="c_name">
+    <br>
+    <label for="c_phone">Celular: </label> <input type="text" name="c_phone" id="c_phone">
+    <br>
+    <label for="c_id">Cliente ID: </label> <input type="text" name="c_id" id="c_id">
+    <br>
+    <label for="c_address">Dirección: </label> <input type="text" name="c_address" id="c_address">
+    <br>
+
+    <h4>Empleados</h4>
+    <label for="e_name">Nombre: </label> <input type="text" name="e_name" id="e_name">
+    <br>
+    <label for="e_phone">Celular: </label> <input type="text" name="e_phone" id="e_phone">
+    <br>
+    <label for="e_id">Empleado ID: </label> <input type="text" name="e_id" id="e_id">
+    <br>
+    <label for="e_address">Dirección: </label> <input type="text" name="e_address" id="e_address">
+    <br>
+
+<h2>Resultado de búsqueda</h2>
+
+<div class="bloque">
+
+    <div class="fila"><label>Nombre:</label><span></span></div>
+    <div class="fila"><label>Préstamo ID:</label><span></span></div>
+    <div class="fila"><label>Cliente ID:</label><span></span></div>
+    <div class="fila"><label>Estatus:</label><span></span></div>
+    <div class="fila"><label>Atraso:</label><span></span></div>
+    <div class="fila"><label>Balance total:</label><span></span></div>
+    <div class="fila"><label>Tasa porcentual anual:</label><span></span></div>
+    <div class="fila"><label>Principal:</label><span></span></div>
+    <div class="fila"><label>Interés diario:</label><span></span></div>
+    <div class="fila"><label>Total pagado:</label><span></span></div>
+
+    <div class="botones">
+        <button>Contrato</button>
+        <button>Historial</button>
+    </div>
+
+</div>
+
+<div class="bloque">
+
+    <div class="fila"><label>Nombre:</label><span></span></div>
+    <div class="fila"><label>Empleado ID:</label><span></span></div>
+    <div class="fila"><label>Rango:</label><span></span></div>
+    <div class="fila"><label>Fecha de contratación:</label><span></span></div>
+    <div class="fila"><label>Clientes:</label><span></span></div>
+
+    <div class="botones">
+        <button>Contrato</button>
+    </div>
+
+</div>
+    
+</body>
+</html>
