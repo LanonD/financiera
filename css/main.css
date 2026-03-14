@@ -186,3 +186,82 @@ button:hover {
     }
 
 }
+
+/* =========================
+   MODAL
+========================= */
+
+
+.modal{
+    display:none;
+    position:fixed;
+    z-index:1000;
+    left:0;
+    top:0;
+    width:100%;
+    height:100%;
+    background:rgba(0,0,0,0.5);
+    justify-content:center;
+    align-items:center;
+}
+
+.modal-content{
+    background:white;
+    padding:30px;
+    border-radius:10px;
+    width:65%;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    animation:fadeIn .3s;
+}
+
+.modal-content input,
+.modal-content select{
+    padding:8px;
+    border-radius:5px;
+    border:1px solid #ccc;
+}
+
+.modal-content button{
+    margin-top:10px;
+    padding:10px;
+    border:none;
+    background:#3b82f6;
+    color:white;
+    border-radius:5px;
+    cursor:pointer;
+}
+
+.modal-content button:hover{
+    background:#2563eb;
+}
+
+.close{
+    align-self:flex-end;
+    cursor:pointer;
+    font-size:22px;
+}
+
+@keyframes fadeIn{
+    from{
+        opacity:0;
+        transform:scale(.9);
+    }
+    to{
+        opacity:1;
+        transform:scale(1);
+    }
+}
+
+/* =========================
+   MAPA
+========================= */
+
+
+#map{
+    width:100%;
+    height:300px;
+    border-radius:8px;
+    margin-top:10px;
+}

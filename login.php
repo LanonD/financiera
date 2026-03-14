@@ -7,15 +7,17 @@
 </head>
 <body>
     <form method="POST" action="php/validacion.php">
-        <label>
-            Usuario
-        </label>
-        <input type="text" id="user" name="user" placeholder="Ingresa tu Usuario">
-        <br>
-        <label>
-            Contraseña
-        </label>
-        <input type="text" id="pwd" name="pwd" placeholder="Contraseña">
+
+    <h2>Iniciar Sesión</h2>
+
+    <label>Usuario</label>
+    <input type="text" name="user" required>
+
+    <label>Contraseña</label>
+    <input type="password" name="pwd" required>
+
+    <button type="submit">Entrar</button>
+
     </form>
 </body>
 </html>
