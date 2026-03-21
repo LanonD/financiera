@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 <?php
 session_start();
 if (isset($_SESSION['puesto'])) {
@@ -9,3 +10,8 @@ if (isset($_SESSION['puesto'])) {
 header("Location: login.php");
 exit();
 ?>
+=======
+<?php 
+//landing
+?>
+>>>>>>> 7ef515193e152815a482d2fee9480b090bb8b63e
