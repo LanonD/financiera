@@ -27,7 +27,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             if ($fila['puesto'] === 'admin') {
                 $_SESSION['admin'] = true;
                 header("Location: ../admin_view.php");
-            } 
+            }
             if ($fila['puesto'] === 'collector') {
                 $_SESSION['admin'] = true;
                 header("Location: ../collector_view.php");
@@ -36,16 +36,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $_SESSION['admin'] = true;
                 header("Location: ../promo_view.php");
             }
+            if ($fila['puesto'] === 'cliente') {      
+                header("Location: ../client_view.php");
+                exit();
+            }
 
             exit();
 
         } else {
-
             header("Location: ../login.php?error=password"); exit();
         }
 
     } else {
-
         header("Location: ../login.php?error=user"); exit();
     }
 

@@ -1,3 +1,4 @@
+<?php session_start(); ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -13,9 +14,7 @@
 
 <!-- ========================
      SIDEBAR
-========================= -->
-<?php session_start(); ?>
-<aside class="sidebar">
+========================= --><aside class="sidebar">
     <div class="sidebar-logo">
         <div class="logo-mark"><svg viewBox="0 0 14 14" fill="white"><path d="M7 1L2 4v6l5 3 5-3V4L7 1z"/></svg></div>
         <span class="logo-text">PrestaCRM</span>
