@@ -6,6 +6,8 @@
     <title>Promo view 1</title>
 </head>
 <body>
+    <button id="openModal">Dar de alta</button>
+    <button id="openModalPrestamo">Nuevo préstamo</button>
     <ul>
         <li>
             Dar de alta
@@ -45,7 +47,7 @@
     </table>
 
 
-    <div id="modalRegistro" class="modal">
+<div id="modalRegistro" class="modal">
 
 <div class="modal-content">
 
@@ -120,7 +122,115 @@
 
 </div>
 </div>
+
+
+
+<div id="modalPrestamo" class="modal">
+
+<<div class="modal-content">
+    
+    <form id="formPrestamo">
+
+      <div class="modal-header">
+        <h3>Nuevo préstamo</h3>
+        <span class="closePres">&times;</span>
+      </div>
+
+      <div class="modal-body">
+
+        <!-- Cliente -->
+        <label>Cliente</label>
+        <input type="text" id="buscarCliente" placeholder="Escribe nombre...">
+        <input type="hidden" name="cliente_id" id="cliente_id">
+        <div id="resultados"></div>
+
+        <div class="row">
+          <div class="col">
+            <label>Monto</label>
+            <input type="number" name="monto" required>
+          </div>
+
+          <div class="col">
+            <label>Pagos</label>
+            <input type="number" name="pagos" required>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col">
+            <label>Interés (%)</label>
+            <input type="number" name="interes">
+          </div>
+
+          <div class="col">
+            <label>Plazo</label>
+            <select name="plazo">
+              <option>Diario</option>
+              <option>Semanal</option>
+              <option>Mensual</option>
+            </select>
+          </div>
+        </div>
+
+        <label>Monto por pago</label>
+        <input type="text" id="monto_pago" readonly>
+
+        <div class="row">
+          <div class="col">
+            <label>Fecha préstamo</label>
+            <input type="date" name="fecha_prestamo">
+          </div>
+
+          <div class="col">
+            <label>Inicio cobro</label>
+            <input type="date" name="fecha_inicio">
+          </div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer">
+        <button type="submit" class="btn btn-success">Guardar</button>
+      </div>
+
+    </form>
+
+  </div>
+</div>
+
+
 <script>
+
+    //calcular interés y pagos
+
+    // inputs
+const monto = document.querySelector("input[name='monto']");
+const interes = document.querySelector("input[name='interes']");
+const pagos = document.querySelector("input[name='pagos']");
+const montoPago = document.getElementById("monto_pago");
+
+// función cálculo
+function calcularPago() {
+    let m = parseFloat(monto.value) || 0;
+    let i = parseFloat(interes.value) || 0;
+    let p = parseInt(pagos.value) || 0;
+
+    if (m > 0 && p > 0) {
+        let total = m + (m * (i / 100));
+        let pago = total / p;
+
+        montoPago.value = pago.toFixed(2);
+    } else {
+        montoPago.value = "";
+    }
+}
+
+// eventos en tiempo real
+monto.addEventListener("input", calcularPago);
+interes.addEventListener("input", calcularPago);
+pagos.addEventListener("input", calcularPago);
+
+// modal registro cliente
 
 const modal = document.getElementById("modalRegistro");
 const btn = document.getElementById("openModal");
@@ -137,6 +247,27 @@ close.onclick = function(){
 window.onclick = function(e){
     if(e.target == modal){
         modal.style.display = "none";
+    }
+}
+
+
+//modal nuevo préstamo
+
+const modalPrestamo = document.getElementById("modalPrestamo");
+const btnPres = document.getElementById("openModalPrestamo");
+const closePres = document.querySelector(".close");
+
+btnPres.onclick = function(){
+    modalPrestamo.style.display = "flex";
+}
+
+closePres.onclick = function(){
+    modalPrestamo.style.display = "none";
+}
+
+window.onclick = function(e){
+    if(e.target == modalPrestamo){
+        modalPrestamo.style.display = "none";
     }
 }
 
@@ -175,6 +306,46 @@ function initMap(){
 
 window.onload = initMap;
 
+
+// buscar clientes
+document.getElementById("buscarCliente").addEventListener("keyup", function() {
+    let query = this.value;
+
+    if (query.length < 2) {
+        document.getElementById("resultados").innerHTML = "";
+        return;
+    }
+
+    fetch("/php/buscar_cliente.php?q=" + query)
+    .then(res => res.text())
+    .then(data => {
+        document.getElementById("resultados").innerHTML = data;
+    });
+});
+
+// seleccionar cliente
+function seleccionarCliente(id, nombre) {
+    document.getElementById("cliente_id").value = id;
+    document.getElementById("buscarCliente").value = nombre;
+    document.getElementById("resultados").innerHTML = "";
+}
+
+// guardar préstamo
+document.getElementById("formPrestamo").addEventListener("submit", function(e){
+    e.preventDefault();
+
+    let formData = new FormData(this);
+
+    fetch("/php/guardar_prestamo.php", {
+        method: "POST",
+        body: formData
+    })
+    .then(res => res.text())
+    .then(data => {
+        alert(data);
+        location.reload();
+    });
+});
 </script>
 <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAfb3MRYco1aN4yaJyXmK8jperHTMJl07E"></script>
 </body>
