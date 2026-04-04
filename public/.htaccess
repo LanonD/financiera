@@ -1,0 +1,7 @@
+RewriteEngine On
+RewriteBase /financiera_mvc/public/
+
+# Redirigir todo a index.php excepto archivos estáticos
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [QSA,L]

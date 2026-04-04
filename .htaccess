@@ -1,0 +1,4 @@
+RewriteEngine On
+# Redirigir todo al front controller
+RewriteCond %{REQUEST_URI} !^/financiera_mvc/public/
+RewriteRule ^(.*)$ /financiera_mvc/public/index.php [L,QSA]
