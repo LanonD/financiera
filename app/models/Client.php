@@ -8,11 +8,21 @@ class Client {
     }
 
     public function getAll(): array {
-        return $this->db->query("SELECT * FROM clientes_f WHERE activo = 1 ORDER BY nombre")->fetch_all(MYSQLI_ASSOC);
+        return $this->db->query("
+            SELECT c.*, e.nombre AS promotor_nombre
+            FROM clientes_f c
+            LEFT JOIN empleados e ON c.promotor_id = e.id
+            WHERE c.activo = 1 ORDER BY c.nombre
+        ")->fetch_all(MYSQLI_ASSOC);
     }
 
     public function findById(int $id): ?array {
-        $stmt = $this->db->prepare("SELECT * FROM clientes_f WHERE id = ? LIMIT 1");
+        $stmt = $this->db->prepare("
+            SELECT c.*, e.nombre AS promotor_nombre
+            FROM clientes_f c
+            LEFT JOIN empleados e ON c.promotor_id = e.id
+            WHERE c.id = ? LIMIT 1
+        ");
         $stmt->bind_param("i", $id);
         $stmt->execute();
         $row = $stmt->get_result()->fetch_assoc();
@@ -20,8 +30,56 @@ class Client {
         return $row ?: null;
     }
 
+    // Todos los préstamos del cliente con su historial de pagos
+    public function getLoansWithPayments(int $cliente_id): array {
+        // Loans
+        $stmt = $this->db->prepare("
+            SELECT p.*, e.nombre AS promotor_nombre
+            FROM prestamos p
+            LEFT JOIN empleados e ON p.promotor_id = e.id
+            WHERE p.cliente_id = ?
+            ORDER BY p.id DESC
+        ");
+        $stmt->bind_param("i", $cliente_id);
+        $stmt->execute();
+        $loans = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+
+        if (empty($loans)) return [];
+
+        // Payments for all loans in one query
+        $ids  = implode(',', array_column($loans, 'id'));
+        $rows = $this->db->query("
+            SELECT *,
+                CASE
+                    WHEN fecha_pago IS NOT NULL
+                    THEN DATEDIFF(fecha_pago, fecha_programada)
+                    ELSE NULL
+                END AS dias_diff
+            FROM pagos
+            WHERE prestamo_id IN ($ids)
+            ORDER BY prestamo_id ASC, numero_pago ASC
+        ")->fetch_all(MYSQLI_ASSOC);
+
+        // Group payments by prestamo_id
+        $byLoan = [];
+        foreach ($rows as $r) { $byLoan[$r['prestamo_id']][] = $r; }
+
+        foreach ($loans as &$loan) {
+            $loan['pagos'] = $byLoan[$loan['id']] ?? [];
+        }
+        unset($loan);
+
+        return $loans;
+    }
+
     public function getByPromotor(int $promotor_id): array {
-        $stmt = $this->db->prepare("SELECT * FROM clientes_f WHERE promotor_id = ? AND activo = 1 ORDER BY nombre");
+        $stmt = $this->db->prepare("
+            SELECT c.*, e.nombre AS promotor_nombre
+            FROM clientes_f c
+            LEFT JOIN empleados e ON c.promotor_id = e.id
+            WHERE c.promotor_id = ? AND c.activo = 1 ORDER BY c.nombre
+        ");
         $stmt->bind_param("i", $promotor_id);
         $stmt->execute();
         $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
@@ -29,20 +87,35 @@ class Client {
         return $rows;
     }
 
+    public function update(int $id, array $data): void {
+        $stmt = $this->db->prepare("
+            UPDATE clientes_f
+            SET nombre = ?, celular = ?, email = ?, fijo = ?,
+                direccion = ?, curp = ?, ocupacion = ?, promotor_id = ?
+            WHERE id = ?
+        ");
+        $stmt->bind_param("sssssssii",
+            $data['nombre'], $data['celular'], $data['email'], $data['fijo'],
+            $data['direccion'], $data['curp'], $data['ocupacion'],
+            $data['promotor_id'], $id);
+        $stmt->execute();
+        $stmt->close();
+    }
+
     public function create(array $data, int $promotor_id): int {
         $stmt = $this->db->prepare("
             INSERT INTO clientes_f
-            (promotor_id, nombre, celular, fijo, direccion, curp, ocupacion,
+            (promotor_id, nombre, celular, email, fijo, direccion, curp, ocupacion,
              ine, pagare, contrato, comprobante, foto_vivienda,
              latitud, longitud,
              contacto_nombre, contacto_telefono, contacto_direccion,
              contacto_nombre2, contacto_telefono2, contacto_direccion2)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmt->bind_param(
-            "isssssssssssddsssssss",
+            "issssssssssssddssssss",
             $promotor_id,
-            $data['nombre'], $data['celular'], $data['fijo'],
+            $data['nombre'], $data['celular'], $data['email'], $data['fijo'],
             $data['direccion'], $data['curp'], $data['ocupacion'],
             $data['ine'], $data['pagare'], $data['contrato'],
             $data['comprobante'], $data['foto_vivienda'],

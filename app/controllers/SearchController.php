@@ -1,13 +1,26 @@
 <?php
+require_once ROOT_PATH . '/app/models/Client.php';
+require_once ROOT_PATH . '/app/models/Loan.php';
+
 class SearchController {
+
     public function index(): void {
-        $pageTitle  = 'SearchController';
-        $breadcrumb = 'En construcción';
+        $clientes = [];
+        $prestamos = [];
+        $q = htmlspecialchars(trim($_GET['q'] ?? ''));
+
+        if ($q) {
+            $clientModel = new Client();
+            $clientes    = $clientModel->search(['nombre' => $q, 'celular' => $q]);
+            $loanModel   = new Loan();
+            $prestamos   = $loanModel->getAll();
+            $prestamos   = array_filter($prestamos, fn($p) => stripos($p['cliente_nombre'],$q) !== false);
+        }
+
+        $pageTitle  = 'Búsqueda avanzada';
+        $breadcrumb = 'Buscar clientes y préstamos';
         require_once ROOT_PATH . '/app/views/layouts/header.php';
-        echo '<div class="content-header"><div><h2>SearchController</h2><p>Vista en construcción.</p></div></div>';
+        require_once ROOT_PATH . '/app/views/admin/busqueda.php';
         require_once ROOT_PATH . '/app/views/layouts/footer.php';
     }
-    public function create(): void { header('Location: ' . APP_URL . '/'); exit(); }
-    public function confirm(): void { header('Content-Type: application/json'); echo json_encode(['ok'=>true]); }
-    public function apiIndex(): void { header('Content-Type: application/json'); echo json_encode([]); }
 }

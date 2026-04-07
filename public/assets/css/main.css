@@ -309,6 +309,8 @@ tbody tr:hover td { background: var(--bg-hover); }
 .badge-pendiente .dot { background: var(--status-pendiente-dot); }
 .badge-atrasado  { background: var(--status-atrasado-bg);  color: var(--status-atrasado-text); }
 .badge-atrasado  .dot { background: var(--status-atrasado-dot); }
+.badge-retirado  { background: #f1f5f9; color: #64748b; }
+.badge-retirado  .dot { background: #94a3b8; }
 
 /* ACTION BUTTONS */
 .action-btn {

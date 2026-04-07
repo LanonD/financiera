@@ -25,7 +25,7 @@ class Loan {
 
     // Préstamos de un cobrador específico
     public function getByCollector(int $cobrador_id): array {
-        $stmt = $this->db->prepare("
+        $result = $this->db->query("
             SELECT
                 p.id, p.estatus, p.cuota, p.saldo_actual, p.frecuencia,
                 c.nombre AS cliente_nombre, c.celular, c.direccion,
@@ -34,15 +34,11 @@ class Loan {
             FROM prestamos p
             JOIN clientes_f c ON p.cliente_id = c.id
             LEFT JOIN pagos pg ON pg.prestamo_id = p.id AND pg.estatus IN ('Pendiente','Atrasado')
-            WHERE p.cobrador_id = ? AND p.estatus IN ('Activo','Atrasado','Pendiente')
+            WHERE p.estatus IN ('Activo','Atrasado')
             GROUP BY p.id
             ORDER BY p.estatus DESC, proximo_pago ASC
         ");
-        $stmt->bind_param("i", $cobrador_id);
-        $stmt->execute();
-        $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-        $stmt->close();
-        return $rows;
+        return $result->fetch_all(MYSQLI_ASSOC);
     }
 
     // Préstamos de un promotor específico
@@ -101,6 +97,125 @@ class Loan {
             FROM prestamos
         ");
         return $result->fetch_assoc();
+    }
+
+    // Pasar a 'Retirado' los préstamos Pendiente con más de 7 días sin desembolsar
+    public function expirePending(int $dias = 7): int {
+        $result = $this->db->query("
+            UPDATE prestamos
+            SET estatus = 'Retirado'
+            WHERE estatus = 'Pendiente'
+              AND fecha_entrega IS NULL
+              AND DATEDIFF(CURDATE(), DATE(created_at)) > {$dias}
+        ");
+        return (int)$this->db->affected_rows;
+    }
+
+    // ─── Interés diario ──────────────────────────────────────────────
+
+    // Ejecutado por el cron a medianoche: acumula interés diario en cada préstamo activo
+    public function accrueInterest(): int {
+        $today = date('Y-m-d');
+        $result = $this->db->query("
+            SELECT id, saldo_actual, tasa_diaria, interes_acumulado,
+                   fecha_ultimo_interes, fecha_inicio
+            FROM prestamos
+            WHERE estatus IN ('Activo','Atrasado')
+              AND (fecha_ultimo_interes IS NULL OR fecha_ultimo_interes < '$today')
+        ");
+        $loans = $result->fetch_all(MYSQLI_ASSOC);
+        $count = 0;
+
+        foreach ($loans as $loan) {
+            $base = $loan['fecha_ultimo_interes'] ?? $loan['fecha_inicio'] ?? $today;
+            if ($base >= $today) continue;
+
+            $dias          = (int)(new DateTime($today))->diff(new DateTime($base))->days;
+            if ($dias < 1) continue;
+
+            $interesDiario = (float)$loan['saldo_actual'] * ((float)$loan['tasa_diaria'] / 100);
+            $nuevos        = $interesDiario * $dias;
+
+            $stmt = $this->db->prepare("
+                UPDATE prestamos
+                SET interes_acumulado   = interes_acumulado + ?,
+                    fecha_ultimo_interes = ?
+                WHERE id = ?
+            ");
+            $stmt->bind_param("dsi", $nuevos, $today, $loan['id']);
+            $stmt->execute();
+            $stmt->close();
+            $count++;
+        }
+        return $count;
+    }
+
+    // Información de interés en tiempo real para la vista de detalle
+    public function getInterestInfo(int $id): array {
+        $stmt = $this->db->prepare("
+            SELECT saldo_actual, tasa_diaria, interes_acumulado,
+                   fecha_ultimo_interes, fecha_inicio
+            FROM prestamos WHERE id = ? LIMIT 1
+        ");
+        $stmt->bind_param("i", $id);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        if (!$row) return [];
+
+        $td   = (float)$row['tasa_diaria'] / 100;
+        $base = $row['fecha_ultimo_interes'] ?? $row['fecha_inicio'];
+        $hoy  = date('Y-m-d');
+
+        // Interés no acumulado aún (días desde último cron hasta hoy)
+        $diasSinAcumular  = ($base && $base < $hoy)
+            ? (int)(new DateTime($hoy))->diff(new DateTime($base))->days
+            : 0;
+
+        $interesDiario    = round((float)$row['saldo_actual'] * $td, 2);
+        $interesPendiente = round($interesDiario * $diasSinAcumular, 2);
+        $interesTotal     = round((float)$row['interes_acumulado'] + $interesPendiente, 2);
+        $totalAdeudado    = round((float)$row['saldo_actual'] + $interesTotal, 2);
+
+        return [
+            'principal'          => (float)$row['saldo_actual'],
+            'tasa_diaria'        => (float)$row['tasa_diaria'],
+            'interes_diario'     => $interesDiario,
+            'interes_acumulado'  => $interesTotal,
+            'total_adeudado'     => $totalAdeudado,
+            'dias_sin_acumular'  => $diasSinAcumular,
+            'fecha_ultimo_interes' => $row['fecha_ultimo_interes'],
+        ];
+    }
+
+    // Actualizar condiciones del préstamo (tasa, cuota, fecha fin)
+    public function updateTerms(int $id, float $tasa_diaria, float $cuota, string $fecha_fin): void {
+        $stmt = $this->db->prepare(
+            "UPDATE prestamos SET tasa_diaria = ?, cuota = ?, fecha_fin = ? WHERE id = ?"
+        );
+        $stmt->bind_param("ddsi", $tasa_diaria, $cuota, $fecha_fin, $id);
+        $stmt->execute();
+        $stmt->close();
+    }
+
+    public function updateMeta(int $id, array $data): void {
+        $cobrador_id       = $data['cobrador_id']      ?: null;
+        $promotor_id       = $data['promotor_id']      ?: null;
+        $estatus           = $data['estatus'];
+        $saldo_actual      = (float)$data['saldo_actual'];
+        $interes_acumulado = (float)$data['interes_acumulado'];
+
+        $stmt = $this->db->prepare("
+            UPDATE prestamos
+            SET cobrador_id = ?, promotor_id = ?, estatus = ?,
+                saldo_actual = ?, interes_acumulado = ?
+            WHERE id = ?
+        ");
+        $stmt->bind_param("iisddi",
+            $cobrador_id, $promotor_id, $estatus,
+            $saldo_actual, $interes_acumulado, $id);
+        $stmt->execute();
+        $stmt->close();
     }
 
     // Crear nuevo préstamo

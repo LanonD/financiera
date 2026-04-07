@@ -20,38 +20,46 @@ class LoanService {
     ];
 
     public function calcularAmortizacion(
-        float  $principal,
-        float  $tasa_diaria,
-        int    $num_pagos,
-        string $frecuencia,
-        string $fecha_inicio
+        float   $principal,
+        float   $tasa_diaria,
+        int     $num_pagos,
+        string  $frecuencia,
+        string  $fecha_inicio,
+        ?string $fecha_primer_pago = null   // si se pasa, el primer pago cae en esta fecha exacta
     ): array {
 
         $dias = $this->frecuencias[$frecuencia] ?? 30;
         $td   = $tasa_diaria / 100;
-        $r    = $td * $dias;   // tasa por período
+        $r    = $td * $dias;   // tasa estándar por período (para calcular cuota fija)
 
-        // Calcular cuota fija
+        // Cuota fija calculada sobre el período estándar
         $cuota = $r == 0
             ? $principal / $num_pagos
             : $principal * ($r * pow(1 + $r, $num_pagos)) / (pow(1 + $r, $num_pagos) - 1);
 
-        // Generar tabla de amortización
         $tabla          = [];
         $saldo          = $principal;
         $total_interes  = 0;
         $total_capital  = 0;
         $total_pago     = 0;
 
-        $fecha = new DateTime($fecha_inicio);
+        $fechaAnterior = new DateTime($fecha_inicio);
+        $fecha         = clone $fechaAnterior;
 
         for ($i = 1; $i <= $num_pagos; $i++) {
-            $fecha->modify("+{$dias} days");
+            // Determinar fecha de este pago
+            if ($i === 1 && $fecha_primer_pago !== null) {
+                $fecha = new DateTime($fecha_primer_pago);
+            } else {
+                $fecha->modify("+{$dias} days");
+            }
 
-            $interes = $saldo * $r;
-            $capital = $cuota - $interes;
+            // Interés = saldo × tasa_diaria × días REALES transcurridos
+            $diasReales = (int)$fechaAnterior->diff($fecha)->days;
+            $interes    = $saldo * $td * $diasReales;
+            $capital    = $cuota - $interes;
 
-            // Último pago: ajustar por redondeo
+            // Último pago: liquida el saldo exacto
             if ($i === $num_pagos) {
                 $capital    = $saldo;
                 $cuota_real = round($capital + $interes, 2);
@@ -74,6 +82,7 @@ class LoanService {
             $total_capital += $capital;
             $total_pago    += $cuota_real;
             $saldo          = $saldo_nuevo;
+            $fechaAnterior  = clone $fecha;
         }
 
         return [
