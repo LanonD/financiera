@@ -116,6 +116,87 @@ class LoanService {
         return floor($amount / 1000) * 1000;
     }
 
+    // ══════════════════════════════════════════════
+    //  Calculadora 2: Pago fijo acordado
+    //
+    //  El promotor acuerda con el cliente:
+    //    - Dinero entregado (monto_entregado)
+    //    - Total a devolver  (monto_retornar)
+    //  No hay tasa de interés — la "ganancia" ya está incluida
+    //  en la diferencia entre retornar y entregado.
+    //
+    //  Cuota base  = roundDownMexican(monto_retornar / n)
+    //  Primer pago = monto_retornar − cuota_base × (n − 1)  [pago mayor/ajuste]
+    //  Resto       = cuota_base  (todos iguales y redondos)
+    // ══════════════════════════════════════════════
+    public function calcularPagoFijo(
+        float  $monto_entregado,
+        float  $monto_retornar,
+        int    $num_pagos,
+        string $frecuencia,
+        string $fecha_inicio
+    ): array {
+        $dias = $this->frecuencias[$frecuencia] ?? 30;
+
+        // Cuota base redondeada hacia abajo (billete mexicano)
+        $cuotaExacta = $monto_retornar / max(1, $num_pagos);
+        $cuotaBase   = $num_pagos > 1 ? self::roundDownMexican($cuotaExacta) : $monto_retornar;
+
+        // Primer pago absorbe el ajuste (pago mayor)
+        $primerPago  = round($monto_retornar - $cuotaBase * ($num_pagos - 1), 2);
+
+        $tabla        = [];
+        $saldo        = $monto_entregado;   // saldo de capital que va bajando
+        $total_pago   = 0;
+        $total_capital = 0;
+        $total_interes = 0;
+
+        $fecha = new DateTime($fecha_inicio);
+
+        for ($i = 1; $i <= $num_pagos; $i++) {
+            $fecha->modify("+{$dias} days");
+
+            $cuota_real = ($i === 1) ? $primerPago : $cuotaBase;
+
+            // Distribución proporcional capital/interés por pago
+            $ratio   = $monto_retornar > 0 ? $monto_entregado / $monto_retornar : 1;
+            $capital = ($i === $num_pagos)
+                ? $saldo                                            // último pago: liquidar
+                : round($cuota_real * $ratio, 2);
+            $interes = round($cuota_real - $capital, 2);
+
+            $saldo_nuevo = max(0, round($saldo - $capital, 2));
+
+            $tabla[] = [
+                'pago'    => $i,
+                'fecha'   => $fecha->format('Y-m-d'),
+                'cuota'   => round($cuota_real, 2),
+                'interes' => $interes,
+                'capital' => round($capital, 2),
+                'saldo'   => $saldo_nuevo,
+            ];
+
+            $total_pago    += $cuota_real;
+            $total_capital += $capital;
+            $total_interes += $interes;
+            $saldo          = $saldo_nuevo;
+        }
+
+        return [
+            'monto_entregado' => $monto_entregado,
+            'monto_retornar'  => $monto_retornar,
+            'ganancia'        => round($monto_retornar - $monto_entregado, 2),
+            'primer_pago'     => $primerPago,
+            'cuota_base'      => $cuotaBase,
+            'num_pagos'       => $num_pagos,
+            'frecuencia'      => $frecuencia,
+            'tabla'           => $tabla,
+            'total_pago'      => round($total_pago, 2),
+            'total_capital'   => round($total_capital, 2),
+            'total_interes'   => round($total_interes, 2),
+        ];
+    }
+
     // Calcular solo la cuota (para preview rápido)
     public function calcularCuota(float $principal, float $tasa_diaria, int $num_pagos, string $frecuencia): float {
         $dias = $this->frecuencias[$frecuencia] ?? 30;

@@ -177,6 +177,7 @@ class Loan {
                    fecha_ultimo_interes, fecha_inicio
             FROM prestamos
             WHERE estatus IN ('Activo','Atrasado')
+              AND interes_activo = 1
               AND (fecha_ultimo_interes IS NULL OR fecha_ultimo_interes < '$today')
         ");
         $loans = $result->fetch_all(MYSQLI_ASSOC);
@@ -272,6 +273,15 @@ class Loan {
             $saldo_actual, $interes_acumulado, $id);
         $stmt->execute();
         $stmt->close();
+    }
+
+    // Pausar / reanudar interés diario de un préstamo — devuelve el nuevo valor
+    public function toggleInterest(int $id): int {
+        $this->db->query("
+            UPDATE prestamos SET interes_activo = 1 - interes_activo WHERE id = $id
+        ");
+        $row = $this->db->query("SELECT interes_activo FROM prestamos WHERE id = $id LIMIT 1")->fetch_assoc();
+        return (int)($row['interes_activo'] ?? 1);
     }
 
     // Crear nuevo préstamo

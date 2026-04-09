@@ -79,6 +79,45 @@ class LoanController {
     }
 
 
+    // GET /calculadora2
+    public function calculator2(): void {
+        $result = null; $errores = []; $input = [];
+        $pageTitle = 'Calculadora 2'; $breadcrumb = 'Herramientas · Pago fijo acordado';
+        $this->render('admin/calculadora2', compact('result','errores','input','pageTitle','breadcrumb'));
+    }
+
+    // POST /calculadora2
+    public function calculate2(): void {
+        $input = [
+            'monto_entregado' => (float)($_POST['monto_entregado'] ?? 0),
+            'monto_retornar'  => (float)($_POST['monto_retornar']  ?? 0),
+            'num_pagos'       => (int)  ($_POST['num_pagos']       ?? 0),
+            'frecuencia'      => $_POST['frecuencia']   ?? 'Mensual',
+            'fecha_inicio'    => $_POST['fecha_inicio'] ?? date('Y-m-d'),
+        ];
+        $errores = [];
+        if ($input['monto_entregado'] <= 0) $errores[] = 'El dinero entregado debe ser mayor a 0.';
+        if ($input['monto_retornar']  <= 0) $errores[] = 'El total a retornar debe ser mayor a 0.';
+        if ($input['monto_retornar'] < $input['monto_entregado']) $errores[] = 'El total a retornar debe ser mayor o igual al dinero entregado.';
+        if ($input['num_pagos']      <= 0) $errores[] = 'El número de pagos debe ser mayor a 0.';
+        $result = empty($errores)
+            ? $this->loanService->calcularPagoFijo(
+                $input['monto_entregado'], $input['monto_retornar'],
+                $input['num_pagos'], $input['frecuencia'], $input['fecha_inicio']
+              )
+            : null;
+        $pageTitle = 'Calculadora 2'; $breadcrumb = 'Herramientas · Pago fijo acordado';
+        $this->render('admin/calculadora2', compact('result','errores','input','pageTitle','breadcrumb'));
+    }
+
+    // POST /prestamos/toggle-interes
+    public function toggleInterest(): void {
+        $id = (int)($_POST['prestamo_id'] ?? 0);
+        if (!$id) { $this->redirect('/prestamos'); }
+        $this->loanModel->toggleInterest($id);
+        $this->redirect('/prestamos/detalle?id=' . $id);
+    }
+
     // POST /prestamos/crear
     public function createLoan(): void {
         $empModel = new Employee();

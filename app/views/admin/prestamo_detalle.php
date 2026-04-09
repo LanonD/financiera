@@ -40,10 +40,28 @@ function m($v){ return '$'.number_format((float)$v,2,'.',','); }
 
 <!-- Panel de interés diario -->
 <?php if (!empty($interesInfo) && in_array($prestamo['estatus'], ['Activo','Atrasado'])): ?>
+<?php $interesActivo = (int)($prestamo['interes_activo'] ?? 1); ?>
 <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden;margin-bottom:16px">
     <div style="padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-        <span style="font-size:13px;font-weight:600">Saldo con interés en tiempo real</span>
-        <span style="font-size:11px;color:var(--text-muted)">Actualizado: <?= date('d/m/Y') ?></span>
+        <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:13px;font-weight:600">Saldo con interés en tiempo real</span>
+            <?php if (!$interesActivo): ?>
+            <span style="font-size:11px;padding:2px 8px;background:#fef3c7;border:1px solid #fcd34d;border-radius:999px;color:#92400e;font-weight:600">⏸ Interés pausado</span>
+            <?php endif; ?>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:11px;color:var(--text-muted)">Actualizado: <?= date('d/m/Y') ?></span>
+            <?php if (($_SESSION['puesto'] ?? '') === 'admin'): ?>
+            <form method="POST" action="<?= APP_URL ?>/prestamos/toggle-interes" style="margin:0">
+                <input type="hidden" name="prestamo_id" value="<?= $prestamo['id'] ?>">
+                <button type="submit"
+                    style="font-size:11px;padding:4px 12px;border-radius:999px;border:1px solid <?= $interesActivo ? '#fca5a5' : '#86efac' ?>;background:<?= $interesActivo ? 'rgba(220,38,38,.08)' : 'rgba(22,163,74,.08)' ?>;color:<?= $interesActivo ? '#dc2626' : '#16a34a' ?>;cursor:pointer;font-weight:600"
+                    onclick="return confirm('<?= $interesActivo ? '¿Pausar el interés diario de este préstamo? El cron no lo acumulará hasta que lo reactives.' : '¿Reanudar el interés diario? El cron volverá a acumular interés en este préstamo.' ?>')">
+                    <?= $interesActivo ? '⏸ Pausar interés' : '▶ Reanudar interés' ?>
+                </button>
+            </form>
+            <?php endif; ?>
+        </div>
     </div>
     <div style="padding:16px 18px;display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-bottom:1px solid var(--border)">
         <?php

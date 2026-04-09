@@ -27,14 +27,16 @@ $menus = [
         ['href' => '/cobros/asignar','label' => 'Asignar cobros','icon' => 'assign'],
         ['href' => '/cobros',      'label' => 'Cobros',        'icon' => 'check'],
         ['href' => '/busqueda',    'label' => 'Búsqueda',      'icon' => 'search'],
-        ['href' => '/calculadora', 'label' => 'Calculadora',   'icon' => 'calc'],
+        ['href' => '/calculadora',  'label' => 'Calculadora 1',  'icon' => 'calc'],
+        ['href' => '/calculadora2', 'label' => 'Calculadora 2',  'icon' => 'calc2'],
     ],
     'promo' => [
         ['href' => '/prestamos',     'label' => 'Mis préstamos',  'icon' => 'file'],
         ['href' => '/clientes',      'label' => 'Mis clientes',   'icon' => 'users'],
         ['href' => '/cobros/asignar','label' => 'Asignar cobros', 'icon' => 'assign'],
         ['href' => '/desembolsos',   'label' => 'Entregar',       'icon' => 'cash'],
-        ['href' => '/calculadora',   'label' => 'Calculadora',    'icon' => 'calc'],
+        ['href' => '/calculadora',   'label' => 'Calculadora 1',  'icon' => 'calc'],
+        ['href' => '/calculadora2',  'label' => 'Calculadora 2',  'icon' => 'calc2'],
     ],
     'collector' => [
         ['href' => '/cobros',     'label' => 'Mis cobros',    'icon' => 'check'],
@@ -59,6 +61,7 @@ $icons = [
     'cash'   => '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8h12M9 4l4 4-4 4"/></svg>',
     'report' => '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="12" height="12" rx="1.5"/><path d="M5 10V8M8 10V6M11 10V4"/></svg>',
     'assign' => '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2.5"/><path d="M1 14c0-2.761 2.239-5 5-5"/><path d="M10 8l2 2 3-3"/></svg>',
+    'calc2'  => '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 6h6M5 10h4M11 10h.01"/></svg>',
 ];
 ?>
 

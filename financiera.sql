@@ -126,6 +126,8 @@ CREATE TABLE IF NOT EXISTS prestamos (
         COMMENT 'Interés generado día a día que aún no ha sido pagado',
     fecha_ultimo_interes DATE NULL DEFAULT NULL
         COMMENT 'Última fecha en que el cron ejecutó el cálculo de interés',
+    interes_activo       TINYINT(1) NOT NULL DEFAULT 1
+        COMMENT '1 = acumula interés diario, 0 = pausado manualmente',
     -- Fechas
     fecha_inicio    DATE,
     fecha_fin       DATE,
@@ -190,6 +192,7 @@ SELECT
     p.saldo_actual,
     p.interes_acumulado,
     p.fecha_ultimo_interes,
+    p.interes_activo,
     p.fecha_inicio,
     p.fecha_fin,
     p.cobrador_id,
@@ -229,42 +232,3 @@ JOIN usuarios_f u ON e.usuario_id = u.id
 LEFT JOIN prestamos p ON (p.promotor_id = e.id OR p.cobrador_id = e.id)
     AND p.estatus IN ('Activo','Atrasado')
 GROUP BY e.id, e.nombre, e.celular, e.email, e.direccion, e.puesto, e.rango, e.capacidad_maxima, u.usuario;
-
--- ============================================================
---  DATOS DE PRUEBA
---  Eliminar en producción o cambiar contraseñas
---  Contraseña de todos los usuarios de prueba: Admin123!
--- ============================================================
-
-INSERT INTO usuarios_f (usuario, password, puesto) VALUES
-('admin',       '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin'),
-('promotor1',   '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'promo'),
-('cobrador1',   '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'collector'),
-('desembolso1', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'desembolso');
-
-INSERT INTO empleados (usuario_id, nombre, celular, direccion, puesto, rango, capacidad_maxima) VALUES
-(2, 'Juan Reyes',    '55 1111 2222', 'Av. Reforma 120, CDMX', 'promo',      'Oro',      80000),
-(3, 'Pedro Morales', '55 3333 4444', 'Narvarte 12, CDMX',     'collector',  'Diamante', 200000),
-(4, 'Carlos Vega',   '55 5555 6666', 'Polanco 77, CDMX',      'desembolso', 'Plata',    0);
-
-INSERT INTO clientes_f (promotor_id, nombre, celular, direccion, curp, ocupacion) VALUES
-(1, 'Laura Méndez',  '55 1234 5678', 'Av. Reforma 120, CDMX', 'MELJ900101MDFRN01',  'Empleado'),
-(1, 'Carlos Rivas',  '55 8765 4321', 'Insurgentes 45, CDMX',  'RICJ850601HDFSVL02', 'Negocio propio'),
-(1, 'Ana Torres',    '55 9900 1122', 'Tlalpan 88, CDMX',      'TOAA920315MDFRRN03', 'Empleado'),
-(1, 'Jorge López',   '55 5566 7788', 'Narvarte 12, CDMX',     'LOJJ880420HDFPRG04', 'Negocio propio'),
-(1, 'Sofía Ramírez', '55 3344 5500', 'Polanco 77, CDMX',      'RASF950710MDFMFS05', 'Empleado');
-
-INSERT INTO prestamos (cliente_id, promotor_id, cobrador_id, monto, tasa_diaria, num_pagos, frecuencia, cuota, saldo_actual, fecha_inicio, fecha_fin, estatus, fecha_ultimo_interes) VALUES
-(1, 1, 2,  45000, 1.0000, 24, 'Mensual',    2100, 38200, '2024-02-01', '2026-02-01', 'Activo',   CURDATE()),
-(2, 1, 2,  80000, 1.0000, 36, 'Quincenal',  2800, 71500, '2024-01-15', '2027-01-15', 'Activo',   CURDATE()),
-(3, 1, 2,  22000, 1.0000, 12, 'Mensual',    2050,  5100, '2023-12-01', '2024-12-01', 'Atrasado', CURDATE()),
-(4, 1, 2, 120000, 1.0000, 48, 'Mensual',    3100,115200, '2024-03-01', '2028-03-01', 'Pendiente', NULL),
-(5, 1, 2,  35000, 1.0000, 18, 'Mensual',    2200, 21000, '2024-01-01', '2025-07-01', 'Activo',   CURDATE());
-
--- Pagos de ejemplo para el préstamo 1 (Laura Méndez)
-INSERT INTO pagos (prestamo_id, cobrador_id, numero_pago, monto_cuota, interes, capital, saldo_restante, fecha_programada, fecha_pago, monto_cobrado, tipo_cobro, estatus) VALUES
-(1, 2, 1, 2100, 450, 1650, 43350, '2024-03-01', '2024-03-01 10:30:00', 2100, 'completo', 'Pagado'),
-(1, 2, 2, 2100, 433, 1667, 41683, '2024-04-01', '2024-04-01 11:00:00', 2100, 'completo', 'Pagado'),
-(1, 2, 3, 2100, 415, 1685, 39998, '2024-05-01', '2024-05-01 09:45:00', 2100, 'completo', 'Pagado'),
-(1, 2, 4, 2100, 398, 1702, 38200, '2024-06-01', NULL, NULL, NULL, 'Pendiente'),
-(1, 2, 5, 2100, 380, 1720, 36480, '2024-07-01', NULL, NULL, NULL, 'Pendiente');

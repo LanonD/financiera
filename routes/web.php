@@ -33,8 +33,11 @@ $routes = [
     ['POST', '/desembolsos/confirmar', ['auth','role:desembolso,admin,promo'],     'DisbursementController','confirm'],
     ['GET',  '/reportes',              ['auth','role:admin'],                      'ReporteController',     'index'],
     ['GET',  '/busqueda',              ['auth','role:admin'],       'SearchController',      'index'],
-    ['GET',  '/calculadora',           ['auth'],                    'LoanController',        'calculator'],
-    ['POST', '/calculadora',           ['auth'],                    'LoanController',        'calculate'],
+    ['GET',  '/calculadora',            ['auth'],                    'LoanController',        'calculator'],
+    ['POST', '/calculadora',            ['auth'],                    'LoanController',        'calculate'],
+    ['GET',  '/calculadora2',           ['auth'],                    'LoanController',        'calculator2'],
+    ['POST', '/calculadora2',           ['auth'],                    'LoanController',        'calculate2'],
+    ['POST', '/prestamos/toggle-interes',['auth','role:admin'],     'LoanController',        'toggleInterest'],
     ['GET',  '/api/loans',             ['auth','role:admin'],       'LoanController',        'apiIndex'],
     ['GET',  '/api/clients',           ['auth','role:admin'],       'ClientController',      'apiIndex'],
 ];
