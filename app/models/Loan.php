@@ -23,11 +23,18 @@ class Loan {
         return $row ?: null;
     }
 
-    // Préstamos de un cobrador específico
-    public function getByCollector(int $cobrador_id): array {
-        // cobrador_id = 0 → admin, sin filtro; >0 → solo los asignados
-        $where = $cobrador_id > 0
+    // Préstamos de un cobrador específico.
+    // $soloHoy = true → solo muestra préstamos con pago vencido o de hoy (uso cobrador).
+    // $soloHoy = false → muestra todos los activos/atrasados (uso admin).
+    public function getByCollector(int $cobrador_id, bool $soloHoy = false): array {
+        $whereId = $cobrador_id > 0
             ? "AND p.cobrador_id = " . (int)$cobrador_id
+            : "";
+        // HAVING filtra tras el GROUP BY: solo pasan loans con proximo_pago <= hoy.
+        // Al marcar una cuota como Pagada, el MIN salta a la siguiente fecha (futura)
+        // y el préstamo desaparece de la lista del cobrador hasta ese día.
+        $having = $soloHoy
+            ? "HAVING proximo_pago IS NOT NULL AND proximo_pago <= CURDATE()"
             : "";
         $result = $this->db->query("
             SELECT
@@ -38,8 +45,9 @@ class Loan {
             FROM prestamos p
             JOIN clientes_f c ON p.cliente_id = c.id
             LEFT JOIN pagos pg ON pg.prestamo_id = p.id AND pg.estatus IN ('Pendiente','Atrasado')
-            WHERE p.estatus IN ('Activo','Atrasado') $where
+            WHERE p.estatus IN ('Activo','Atrasado') $whereId
             GROUP BY p.id
+            $having
             ORDER BY p.estatus DESC, proximo_pago ASC
         ");
         return $result->fetch_all(MYSQLI_ASSOC);
@@ -169,15 +177,19 @@ class Loan {
 
     // ─── Interés diario ──────────────────────────────────────────────
 
-    // Ejecutado por el cron a medianoche: acumula interés diario en cada préstamo activo
+    // Ejecutado por el cron a medianoche: acumula interés diario en cada préstamo activo.
+    // Reutiliza la misma lógica para interés regular (tasa_diaria %) e interés por mora
+    // (interes_diario fijo). Ambos son aditivos y van al mismo campo interes_acumulado.
     public function accrueInterest(): int {
         $today = date('Y-m-d');
+        // Procesa loans con interés regular activo O mora activa (o ambos)
         $result = $this->db->query("
             SELECT id, saldo_actual, tasa_diaria, interes_acumulado,
-                   fecha_ultimo_interes, fecha_inicio
+                   fecha_ultimo_interes, fecha_inicio,
+                   interes_activo, interes_mora_activo, interes_diario
             FROM prestamos
             WHERE estatus IN ('Activo','Atrasado')
-              AND interes_activo = 1
+              AND (interes_activo = 1 OR interes_mora_activo = 1)
               AND (fecha_ultimo_interes IS NULL OR fecha_ultimo_interes < '$today')
         ");
         $loans = $result->fetch_all(MYSQLI_ASSOC);
@@ -187,15 +199,26 @@ class Loan {
             $base = $loan['fecha_ultimo_interes'] ?? $loan['fecha_inicio'] ?? $today;
             if ($base >= $today) continue;
 
-            $dias          = (int)(new DateTime($today))->diff(new DateTime($base))->days;
+            $dias = (int)(new DateTime($today))->diff(new DateTime($base))->days;
             if ($dias < 1) continue;
 
-            $interesDiario = (float)$loan['saldo_actual'] * ((float)$loan['tasa_diaria'] / 100);
-            $nuevos        = $interesDiario * $dias;
+            // Interés regular (porcentaje sobre saldo)
+            $interesRegular = $loan['interes_activo']
+                ? (float)$loan['saldo_actual'] * ((float)$loan['tasa_diaria'] / 100) * $dias
+                : 0.0;
+
+            // Interés por mora (monto fijo diario). Si interes_diario = 0, no suma nada
+            // aunque el flag esté activo (funcionalidad activa sin cargo = 0).
+            $interesMora = ($loan['interes_mora_activo'] && (float)$loan['interes_diario'] > 0)
+                ? (float)$loan['interes_diario'] * $dias
+                : 0.0;
+
+            $nuevos = $interesRegular + $interesMora;
+            if ($nuevos <= 0) continue; // mora activa pero interes_diario = 0 → omitir
 
             $stmt = $this->db->prepare("
                 UPDATE prestamos
-                SET interes_acumulado   = interes_acumulado + ?,
+                SET interes_acumulado    = interes_acumulado + ?,
                     fecha_ultimo_interes = ?
                 WHERE id = ?
             ");
@@ -211,7 +234,8 @@ class Loan {
     public function getInterestInfo(int $id): array {
         $stmt = $this->db->prepare("
             SELECT saldo_actual, tasa_diaria, interes_acumulado,
-                   fecha_ultimo_interes, fecha_inicio
+                   fecha_ultimo_interes, fecha_inicio,
+                   interes_activo, interes_mora_activo, interes_diario
             FROM prestamos WHERE id = ? LIMIT 1
         ");
         $stmt->bind_param("i", $id);
@@ -220,28 +244,41 @@ class Loan {
         $stmt->close();
         if (!$row) return [];
 
-        $td   = (float)$row['tasa_diaria'] / 100;
+        $td  = (float)$row['tasa_diaria'] / 100;
         $base = $row['fecha_ultimo_interes'] ?? $row['fecha_inicio'];
         $hoy  = date('Y-m-d');
 
-        // Interés no acumulado aún (días desde último cron hasta hoy)
-        $diasSinAcumular  = ($base && $base < $hoy)
+        $diasSinAcumular = ($base && $base < $hoy)
             ? (int)(new DateTime($hoy))->diff(new DateTime($base))->days
             : 0;
 
-        $interesDiario    = round((float)$row['saldo_actual'] * $td, 2);
-        $interesPendiente = round($interesDiario * $diasSinAcumular, 2);
-        $interesTotal     = round((float)$row['interes_acumulado'] + $interesPendiente, 2);
-        $totalAdeudado    = round((float)$row['saldo_actual'] + $interesTotal, 2);
+        // Interés regular pendiente (días sin cron × tasa_diaria)
+        $interesRegularDiario  = round((float)$row['saldo_actual'] * $td, 2);
+        $interesRegularPend    = $row['interes_activo']
+            ? round($interesRegularDiario * $diasSinAcumular, 2)
+            : 0.0;
+
+        // Interés mora pendiente (días sin cron × monto fijo)
+        $interesMoraDiario = (float)$row['interes_diario'];
+        $interesMoraPend   = ($row['interes_mora_activo'] && $interesMoraDiario > 0)
+            ? round($interesMoraDiario * $diasSinAcumular, 2)
+            : 0.0;
+
+        $interesDiarioTotal = $interesRegularDiario + ($row['interes_mora_activo'] ? $interesMoraDiario : 0);
+        $interesTotal       = round((float)$row['interes_acumulado'] + $interesRegularPend + $interesMoraPend, 2);
+        $totalAdeudado      = round((float)$row['saldo_actual'] + $interesTotal, 2);
 
         return [
-            'principal'          => (float)$row['saldo_actual'],
-            'tasa_diaria'        => (float)$row['tasa_diaria'],
-            'interes_diario'     => $interesDiario,
-            'interes_acumulado'  => $interesTotal,
-            'total_adeudado'     => $totalAdeudado,
-            'dias_sin_acumular'  => $diasSinAcumular,
-            'fecha_ultimo_interes' => $row['fecha_ultimo_interes'],
+            'principal'           => (float)$row['saldo_actual'],
+            'tasa_diaria'         => (float)$row['tasa_diaria'],
+            'interes_diario'      => $interesDiarioTotal,        // total diario (regular + mora)
+            'interes_diario_mora' => $interesMoraDiario,         // solo el cargo fijo de mora
+            'interes_acumulado'   => $interesTotal,
+            'total_adeudado'      => $totalAdeudado,
+            'dias_sin_acumular'   => $diasSinAcumular,
+            'fecha_ultimo_interes'=> $row['fecha_ultimo_interes'],
+            'interes_mora_activo' => (int)$row['interes_mora_activo'],
+            'interes_activo'      => (int)$row['interes_activo'],
         ];
     }
 
@@ -261,21 +298,31 @@ class Loan {
         $estatus           = $data['estatus'];
         $saldo_actual      = (float)$data['saldo_actual'];
         $interes_acumulado = (float)$data['interes_acumulado'];
+        $interes_diario    = max(0.0, (float)($data['interes_diario'] ?? 0));
 
         $stmt = $this->db->prepare("
             UPDATE prestamos
             SET cobrador_id = ?, promotor_id = ?, estatus = ?,
-                saldo_actual = ?, interes_acumulado = ?
+                saldo_actual = ?, interes_acumulado = ?, interes_diario = ?
             WHERE id = ?
         ");
-        $stmt->bind_param("iisddi",
+        $stmt->bind_param("iisdddi",
             $cobrador_id, $promotor_id, $estatus,
-            $saldo_actual, $interes_acumulado, $id);
+            $saldo_actual, $interes_acumulado, $interes_diario, $id);
         $stmt->execute();
         $stmt->close();
     }
 
-    // Pausar / reanudar interés diario de un préstamo — devuelve el nuevo valor
+    // Activar / desactivar interés por mora — devuelve el nuevo valor (0 o 1)
+    public function toggleMoraInterest(int $id): int {
+        $this->db->query("
+            UPDATE prestamos SET interes_mora_activo = 1 - interes_mora_activo WHERE id = $id
+        ");
+        $row = $this->db->query("SELECT interes_mora_activo FROM prestamos WHERE id = $id LIMIT 1")->fetch_assoc();
+        return (int)($row['interes_mora_activo'] ?? 0);
+    }
+
+    // Pausar / reanudar interés diario regular de un préstamo — devuelve el nuevo valor
     public function toggleInterest(int $id): int {
         $this->db->query("
             UPDATE prestamos SET interes_activo = 1 - interes_activo WHERE id = $id

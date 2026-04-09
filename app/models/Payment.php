@@ -7,9 +7,11 @@ class Payment {
         $this->db = Database::connect();
     }
 
-    public function getPendingByCollector(int $cobrador_id): array {
+    // $soloHoy = true → cobrador ve solo pagos vencidos/de hoy (desaparecen al cobrar).
+    // $soloHoy = false → admin ve todos los préstamos activos sin filtro de fecha.
+    public function getPendingByCollector(int $cobrador_id, bool $soloHoy = false): array {
         $loan = new Loan();
-        return $loan->getByCollector($cobrador_id);
+        return $loan->getByCollector($cobrador_id, $soloHoy);
     }
 
     // Registrar múltiples cobros en una transacción

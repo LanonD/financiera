@@ -1,0 +1,50 @@
+-- ============================================================
+--  Migración: interés por mora por préstamo
+--  Ejecutar en phpMyAdmin si ya tienes la BD creada
+-- ============================================================
+
+USE financiera;
+
+ALTER TABLE prestamos
+    ADD COLUMN interes_diario      DECIMAL(12,2) NOT NULL DEFAULT 0.00
+        COMMENT 'Monto fijo de mora que se acumula cada día cuando interes_mora_activo = 1'
+    AFTER interes_activo,
+    ADD COLUMN interes_mora_activo TINYINT(1)    NOT NULL DEFAULT 0
+        COMMENT '1 = mora activa, el cron suma interes_diario diariamente'
+    AFTER interes_diario;
+
+-- Actualizar la vista para exponer los nuevos campos
+CREATE OR REPLACE VIEW v_prestamos AS
+SELECT
+    p.id,
+    p.estatus,
+    p.monto,
+    p.cuota,
+    p.tasa_diaria,
+    p.num_pagos,
+    p.frecuencia,
+    p.saldo_actual,
+    p.interes_acumulado,
+    p.fecha_ultimo_interes,
+    p.interes_activo,
+    p.interes_diario,
+    p.interes_mora_activo,
+    p.fecha_inicio,
+    p.fecha_fin,
+    p.cobrador_id,
+    p.promotor_id,
+    p.monto_entregado,
+    p.forma_entrega,
+    p.fecha_entrega,
+    p.created_at,
+    c.nombre        AS cliente_nombre,
+    c.celular       AS cliente_celular,
+    c.direccion     AS cliente_direccion,
+    c.curp          AS cliente_curp,
+    c.id            AS cliente_id,
+    ep.nombre       AS promotor_nombre,
+    ec.nombre       AS cobrador_nombre
+FROM prestamos p
+JOIN clientes_f c      ON p.cliente_id   = c.id
+JOIN empleados  ep     ON p.promotor_id  = ep.id
+LEFT JOIN empleados ec ON p.cobrador_id  = ec.id;

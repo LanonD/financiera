@@ -110,11 +110,19 @@ class LoanController {
         $this->render('admin/calculadora2', compact('result','errores','input','pageTitle','breadcrumb'));
     }
 
-    // POST /prestamos/toggle-interes
+    // POST /prestamos/toggle-interes — pausa/reanuda interés regular
     public function toggleInterest(): void {
         $id = (int)($_POST['prestamo_id'] ?? 0);
         if (!$id) { $this->redirect('/prestamos'); }
         $this->loanModel->toggleInterest($id);
+        $this->redirect('/prestamos/detalle?id=' . $id);
+    }
+
+    // POST /prestamos/toggle-mora — activa/desactiva interés por mora
+    public function toggleMoraInterest(): void {
+        $id = (int)($_POST['prestamo_id'] ?? 0);
+        if (!$id) { $this->redirect('/prestamos'); }
+        $this->loanModel->toggleMoraInterest($id);
         $this->redirect('/prestamos/detalle?id=' . $id);
     }
 
@@ -223,11 +231,12 @@ class LoanController {
         $id = (int)($_POST['prestamo_id'] ?? 0);
         if (!$id) { $this->redirect('/prestamos'); }
         $data = [
-            'cobrador_id'       => (int)($_POST['cobrador_id']       ?? 0),
-            'promotor_id'       => (int)($_POST['promotor_id']       ?? 0),
-            'estatus'           => $_POST['estatus'] ?? 'Activo',
-            'saldo_actual'      => (float)($_POST['saldo_actual']      ?? 0),
-            'interes_acumulado' => (float)($_POST['interes_acumulado'] ?? 0),
+            'cobrador_id'       => (int)  ($_POST['cobrador_id']       ?? 0),
+            'promotor_id'       => (int)  ($_POST['promotor_id']       ?? 0),
+            'estatus'           =>         $_POST['estatus']            ?? 'Activo',
+            'saldo_actual'      => (float)($_POST['saldo_actual']       ?? 0),
+            'interes_acumulado' => (float)($_POST['interes_acumulado']  ?? 0),
+            'interes_diario'    => (float)($_POST['interes_diario']     ?? 0),
         ];
         $this->loanModel->updateMeta($id, $data);
         $this->redirect('/prestamos/detalle?id=' . $id . '&ok=meta');

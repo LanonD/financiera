@@ -126,8 +126,12 @@ CREATE TABLE IF NOT EXISTS prestamos (
         COMMENT 'Interés generado día a día que aún no ha sido pagado',
     fecha_ultimo_interes DATE NULL DEFAULT NULL
         COMMENT 'Última fecha en que el cron ejecutó el cálculo de interés',
-    interes_activo       TINYINT(1) NOT NULL DEFAULT 1
-        COMMENT '1 = acumula interés diario, 0 = pausado manualmente',
+    interes_activo       TINYINT(1)    NOT NULL DEFAULT 1
+        COMMENT '1 = acumula interés regular (tasa_diaria %), 0 = pausado manualmente',
+    interes_diario       DECIMAL(12,2) NOT NULL DEFAULT 0.00
+        COMMENT 'Cargo fijo en $ que se suma cada día cuando interes_mora_activo = 1',
+    interes_mora_activo  TINYINT(1)    NOT NULL DEFAULT 0
+        COMMENT '1 = mora activa, el cron añade interes_diario al interes_acumulado',
     -- Fechas
     fecha_inicio    DATE,
     fecha_fin       DATE,
@@ -193,6 +197,8 @@ SELECT
     p.interes_acumulado,
     p.fecha_ultimo_interes,
     p.interes_activo,
+    p.interes_diario,
+    p.interes_mora_activo,
     p.fecha_inicio,
     p.fecha_fin,
     p.cobrador_id,

@@ -49,17 +49,31 @@ function m($v){ return '$'.number_format((float)$v,2,'.',','); }
             <span style="font-size:11px;padding:2px 8px;background:#fef3c7;border:1px solid #fcd34d;border-radius:999px;color:#92400e;font-weight:600">⏸ Interés pausado</span>
             <?php endif; ?>
         </div>
-        <div style="display:flex;align-items:center;gap:10px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <span style="font-size:11px;color:var(--text-muted)">Actualizado: <?= date('d/m/Y') ?></span>
             <?php if (($_SESSION['puesto'] ?? '') === 'admin'): ?>
+
+            <?php /* Botón: pausar/reanudar interés regular */ ?>
             <form method="POST" action="<?= APP_URL ?>/prestamos/toggle-interes" style="margin:0">
                 <input type="hidden" name="prestamo_id" value="<?= $prestamo['id'] ?>">
                 <button type="submit"
                     style="font-size:11px;padding:4px 12px;border-radius:999px;border:1px solid <?= $interesActivo ? '#fca5a5' : '#86efac' ?>;background:<?= $interesActivo ? 'rgba(220,38,38,.08)' : 'rgba(22,163,74,.08)' ?>;color:<?= $interesActivo ? '#dc2626' : '#16a34a' ?>;cursor:pointer;font-weight:600"
-                    onclick="return confirm('<?= $interesActivo ? '¿Pausar el interés diario de este préstamo? El cron no lo acumulará hasta que lo reactives.' : '¿Reanudar el interés diario? El cron volverá a acumular interés en este préstamo.' ?>')">
+                    onclick="return confirm('<?= $interesActivo ? '¿Pausar el interés diario de este préstamo?' : '¿Reanudar el interés diario?' ?>')">
                     <?= $interesActivo ? '⏸ Pausar interés' : '▶ Reanudar interés' ?>
                 </button>
             </form>
+
+            <?php /* Botón: activar/desactivar interés por mora */ ?>
+            <?php $moraActiva = (int)($interesInfo['interes_mora_activo'] ?? $prestamo['interes_mora_activo'] ?? 0); ?>
+            <form method="POST" action="<?= APP_URL ?>/prestamos/toggle-mora" style="margin:0">
+                <input type="hidden" name="prestamo_id" value="<?= $prestamo['id'] ?>">
+                <button type="submit"
+                    style="font-size:11px;padding:4px 12px;border-radius:999px;border:1px solid <?= $moraActiva ? '#fcd34d' : '#d1d5db' ?>;background:<?= $moraActiva ? 'rgba(245,158,11,.12)' : 'var(--bg-input)' ?>;color:<?= $moraActiva ? '#92400e' : 'var(--text-muted)' ?>;cursor:pointer;font-weight:600"
+                    onclick="return confirm('<?= $moraActiva ? '¿Desactivar interés por mora? El cron dejará de acumular el cargo diario.' : '¿Activar interés por mora? Configura el monto diario en «Editar datos generales».' ?>')">
+                    <?= $moraActiva ? '⚠ Mora activa' : '+ Activar mora' ?>
+                </button>
+            </form>
+
             <?php endif; ?>
         </div>
     </div>
@@ -229,6 +243,14 @@ $hayPendientes = $proximoPendiente !== null;
                 <div>
                     <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);display:block;margin-bottom:6px">Interés acumulado ($)</label>
                     <input type="number" name="interes_acumulado" value="<?= $interesInfo['interes_acumulado'] ?? 0 ?>" step="0.01" min="0"
+                        style="width:100%;padding:9px 12px;background:var(--bg-input);border:1px solid var(--border-input);border-radius:var(--radius-sm);font-family:var(--font-mono);font-size:13px;outline:none">
+                </div>
+                <div>
+                    <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);display:block;margin-bottom:6px">
+                        Cargo diario por mora ($)
+                        <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;color:var(--text-muted)"> — 0 = sin cargo aunque mora esté activa</span>
+                    </label>
+                    <input type="number" name="interes_diario" value="<?= $prestamo['interes_diario'] ?? 0 ?>" step="0.01" min="0"
                         style="width:100%;padding:9px 12px;background:var(--bg-input);border:1px solid var(--border-input);border-radius:var(--radius-sm);font-family:var(--font-mono);font-size:13px;outline:none">
                 </div>
             </div>

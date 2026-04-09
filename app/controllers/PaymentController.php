@@ -17,8 +17,9 @@ class PaymentController {
         $puesto = $_SESSION['puesto'] ?? '';
 
         if ($puesto === 'admin') {
+            // Admin ve todos los préstamos activos, sin filtro de fecha
             $cobrador   = ['nombre' => 'Admin', 'rango' => '—', 'capacidad_maxima' => 999999999];
-            $prestamos  = $this->paymentModel->getPendingByCollector(0);
+            $prestamos  = $this->paymentModel->getPendingByCollector(0, false);
             $pageTitle  = 'Cobros del día';
             $breadcrumb = 'Administrador · Todos los préstamos activos · ' . date('d/m/Y');
         } else {
@@ -26,7 +27,10 @@ class PaymentController {
             if (!$cobrador) {
                 header('Location: ' . APP_URL . '/login?error=empleado'); exit();
             }
-            $prestamos  = $this->paymentModel->getPendingByCollector($cobrador['id']);
+            // Cobrador: solo ve préstamos con pago vencido o de hoy.
+            // Al registrar el cobro y recargar, el préstamo desaparece porque
+            // su próximo pago pendiente ya es futuro (> hoy).
+            $prestamos  = $this->paymentModel->getPendingByCollector($cobrador['id'], true);
             $pageTitle  = 'Mis cobros';
             $breadcrumb = 'Panel de cobrador · ' . date('d/m/Y');
         }
