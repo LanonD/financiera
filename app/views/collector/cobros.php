@@ -76,7 +76,13 @@ $maxCobro = $cobrador['capacidad_maxima'] ?? 200000;
         </tr>
         <?php endforeach; ?>
         <?php if(empty($prestamos)): ?>
-        <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-muted)">No tienes cobros asignados para hoy</td></tr>
+        <tr><td colspan="8">
+            <div style="text-align:center;padding:48px 20px">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto 12px;display:block"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+                <div style="font-size:14px;font-weight:600;color:var(--text-secondary);margin-bottom:6px">Sin cobros asignados</div>
+                <div style="font-size:13px;color:var(--text-muted);max-width:320px;margin:0 auto">No tienes cuentas asignadas todavía. Espera a que el administrador o promotor te asigne préstamos a cobrar.</div>
+            </div>
+        </td></tr>
         <?php endif; ?>
         </tbody>
     </table>
