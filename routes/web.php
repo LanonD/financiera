@@ -26,6 +26,8 @@ $routes = [
     ['GET',  '/clientes/detalle',      ['auth','role:admin,promo'], 'ClientController',      'detail'],
     ['POST', '/clientes/crear',        ['auth','role:promo'],       'ClientController',      'create'],
     ['GET',  '/cobros',                ['auth','role:collector,admin'],            'PaymentController',     'index'],
+    ['GET',  '/cobros/asignar',        ['auth','role:admin,promo'],                'PaymentController',     'asignar'],
+    ['POST', '/cobros/asignar',        ['auth','role:admin,promo'],                'PaymentController',     'guardarAsignacion'],
     ['POST', '/cobros/registrar',      ['auth','role:collector,admin'],            'PaymentController',     'register'],
     ['GET',  '/desembolsos',           ['auth','role:desembolso,admin,promo'],     'DisbursementController','index'],
     ['POST', '/desembolsos/confirmar', ['auth','role:desembolso,admin,promo'],     'DisbursementController','confirm'],

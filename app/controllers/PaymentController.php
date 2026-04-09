@@ -36,6 +36,41 @@ class PaymentController {
         require_once ROOT_PATH . '/app/views/layouts/footer.php';
     }
 
+    public function asignar(): void {
+        $puesto   = $_SESSION['puesto'] ?? '';
+        $loanModel = new Loan();
+        $cobradores = $this->employeeModel->getByType('collector');
+
+        if ($puesto === 'promo') {
+            $emp      = $this->employeeModel->findByUserId($_SESSION['id']);
+            $prestamos = $emp ? $loanModel->getActiveForAssignment($emp['id']) : [];
+            $breadcrumb = 'Promotor · Asignar cobradores';
+        } else {
+            $prestamos  = $loanModel->getActiveForAssignment();
+            $breadcrumb = 'Administrador · Asignar cobradores';
+        }
+
+        $pageTitle = 'Asignar cobros';
+        require_once ROOT_PATH . '/app/views/layouts/header.php';
+        require_once ROOT_PATH . '/app/views/admin/cobros_asignar.php';
+        require_once ROOT_PATH . '/app/views/layouts/footer.php';
+    }
+
+    public function guardarAsignacion(): void {
+        $asignaciones = $_POST['asignacion'] ?? [];
+        $loanModel    = new Loan();
+        $guardados    = 0;
+
+        foreach ($asignaciones as $prestamo_id => $cobrador_id) {
+            $loanModel->assignCollector((int)$prestamo_id, (int)$cobrador_id);
+            $guardados++;
+        }
+
+        $back = $_SERVER['HTTP_REFERER'] ?? (APP_URL . '/cobros/asignar');
+        header('Location: ' . APP_URL . '/cobros/asignar?ok=' . $guardados);
+        exit();
+    }
+
     public function register(): void {
         header('Content-Type: application/json');
         $puesto     = $_SESSION['puesto'] ?? '';

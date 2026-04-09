@@ -25,6 +25,10 @@ class Loan {
 
     // Préstamos de un cobrador específico
     public function getByCollector(int $cobrador_id): array {
+        // cobrador_id = 0 → admin, sin filtro; >0 → solo los asignados
+        $where = $cobrador_id > 0
+            ? "AND p.cobrador_id = " . (int)$cobrador_id
+            : "";
         $result = $this->db->query("
             SELECT
                 p.id, p.estatus, p.cuota, p.saldo_actual, p.frecuencia,
@@ -34,11 +38,45 @@ class Loan {
             FROM prestamos p
             JOIN clientes_f c ON p.cliente_id = c.id
             LEFT JOIN pagos pg ON pg.prestamo_id = p.id AND pg.estatus IN ('Pendiente','Atrasado')
-            WHERE p.estatus IN ('Activo','Atrasado')
+            WHERE p.estatus IN ('Activo','Atrasado') $where
             GROUP BY p.id
             ORDER BY p.estatus DESC, proximo_pago ASC
         ");
         return $result->fetch_all(MYSQLI_ASSOC);
+    }
+
+    // Préstamos activos/atrasados con info de cobrador, para pantalla de asignación
+    public function getActiveForAssignment(int $promotor_id = 0): array {
+        $where = $promotor_id > 0
+            ? "AND p.promotor_id = " . (int)$promotor_id
+            : "";
+        $result = $this->db->query("
+            SELECT
+                p.id, p.estatus, p.cuota, p.saldo_actual, p.frecuencia,
+                p.cobrador_id,
+                c.nombre  AS cliente_nombre,
+                c.celular AS cliente_celular,
+                ec.nombre AS cobrador_nombre,
+                MIN(pg.fecha_programada) AS proximo_pago,
+                DATEDIFF(CURDATE(), MIN(pg.fecha_programada)) AS dias_atraso
+            FROM prestamos p
+            JOIN clientes_f c ON p.cliente_id = c.id
+            LEFT JOIN empleados ec ON p.cobrador_id = ec.id
+            LEFT JOIN pagos pg ON pg.prestamo_id = p.id AND pg.estatus IN ('Pendiente','Atrasado')
+            WHERE p.estatus IN ('Activo','Atrasado') $where
+            GROUP BY p.id
+            ORDER BY p.estatus DESC, dias_atraso DESC, proximo_pago ASC
+        ");
+        return $result->fetch_all(MYSQLI_ASSOC);
+    }
+
+    // Asignar un cobrador a un préstamo
+    public function assignCollector(int $prestamo_id, int $cobrador_id): void {
+        $val  = $cobrador_id > 0 ? $cobrador_id : null;
+        $stmt = $this->db->prepare("UPDATE prestamos SET cobrador_id = ? WHERE id = ?");
+        $stmt->bind_param("ii", $val, $prestamo_id);
+        $stmt->execute();
+        $stmt->close();
     }
 
     // Préstamos de un promotor específico
