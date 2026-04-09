@@ -13,10 +13,18 @@ class DisbursementController {
     }
 
     public function index(): void {
+        $puesto   = $_SESSION['puesto'] ?? '';
         $empleado = $this->empModel->findByUserId($_SESSION['id']);
-        $prestamos_pendientes = $this->loanModel->getPendingDisbursement();
-        $pageTitle  = 'Desembolsos';
-        $breadcrumb = 'Panel de desembolso · ' . count($prestamos_pendientes) . ' pendientes';
+
+        if ($puesto === 'promo' && $empleado) {
+            $prestamos_pendientes = $this->loanModel->getPendingDisbursementByPromotor($empleado['id']);
+            $breadcrumb = 'Promotor · Mis préstamos por entregar';
+        } else {
+            $prestamos_pendientes = $this->loanModel->getPendingDisbursement();
+            $breadcrumb = 'Desembolso · ' . count($prestamos_pendientes) . ' pendientes';
+        }
+
+        $pageTitle = 'Desembolsos pendientes';
         require_once ROOT_PATH . '/app/views/layouts/header.php';
         require_once ROOT_PATH . '/app/views/desembolso/desembolsos.php';
         require_once ROOT_PATH . '/app/views/layouts/footer.php';

@@ -83,6 +83,24 @@ class Loan {
         return $result->fetch_all(MYSQLI_ASSOC);
     }
 
+    public function getPendingDisbursementByPromotor(int $promotor_id): array {
+        $stmt = $this->db->prepare("
+            SELECT p.*, c.nombre AS cliente_nombre, c.celular, c.direccion,
+                   e.nombre AS promotor_nombre
+            FROM prestamos p
+            JOIN clientes_f c ON p.cliente_id = c.id
+            JOIN empleados  e ON p.promotor_id = e.id
+            WHERE p.estatus = 'Pendiente' AND p.fecha_entrega IS NULL
+              AND p.promotor_id = ?
+            ORDER BY p.created_at ASC
+        ");
+        $stmt->bind_param("i", $promotor_id);
+        $stmt->execute();
+        $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+        return $rows;
+    }
+
     // KPIs para el dashboard
     public function getKPIs(): array {
         $result = $this->db->query("

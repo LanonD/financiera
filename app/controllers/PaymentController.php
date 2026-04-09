@@ -14,16 +14,22 @@ class PaymentController {
     }
 
     public function index(): void {
-        $usuario_id = $_SESSION['id'];
-        $cobrador   = $this->employeeModel->findByUserId($usuario_id);
+        $puesto = $_SESSION['puesto'] ?? '';
 
-        if (!$cobrador) {
-            header('Location: ' . APP_URL . '/login?error=empleado'); exit();
+        if ($puesto === 'admin') {
+            $cobrador   = ['nombre' => 'Admin', 'rango' => '—', 'capacidad_maxima' => 999999999];
+            $prestamos  = $this->paymentModel->getPendingByCollector(0);
+            $pageTitle  = 'Cobros del día';
+            $breadcrumb = 'Administrador · Todos los préstamos activos · ' . date('d/m/Y');
+        } else {
+            $cobrador = $this->employeeModel->findByUserId($_SESSION['id']);
+            if (!$cobrador) {
+                header('Location: ' . APP_URL . '/login?error=empleado'); exit();
+            }
+            $prestamos  = $this->paymentModel->getPendingByCollector($cobrador['id']);
+            $pageTitle  = 'Mis cobros';
+            $breadcrumb = 'Panel de cobrador · ' . date('d/m/Y');
         }
-
-        $prestamos  = $this->paymentModel->getPendingByCollector($cobrador['id']);
-        $pageTitle  = 'Mis cobros';
-        $breadcrumb = 'Panel de cobrador · ' . date('d/m/Y');
 
         require_once ROOT_PATH . '/app/views/layouts/header.php';
         require_once ROOT_PATH . '/app/views/collector/cobros.php';
@@ -32,15 +38,17 @@ class PaymentController {
 
     public function register(): void {
         header('Content-Type: application/json');
+        $puesto     = $_SESSION['puesto'] ?? '';
         $usuario_id = $_SESSION['id'];
         $cobrador   = $this->employeeModel->findByUserId($usuario_id);
-        if (!$cobrador) { echo json_encode(['error' => 'Cobrador no encontrado']); exit(); }
+        // Admin no tiene empleado — usamos id=0, registerBatch lo maneja
+        if (!$cobrador && $puesto !== 'admin') { echo json_encode(['error' => 'Cobrador no encontrado']); exit(); }
 
         $cobros = json_decode(file_get_contents('php://input'), true);
         if (!$cobros) { echo json_encode(['error' => 'Datos inválidos']); exit(); }
 
         try {
-            $r = $this->paymentModel->registerBatch($cobros, $cobrador['id']);
+            $r = $this->paymentModel->registerBatch($cobros, $cobrador['id'] ?? 0);
             echo json_encode(['ok' => true, 'registrados' => $r]);
         } catch (Exception $e) {
             error_log('[PaymentController] ' . $e->getMessage());

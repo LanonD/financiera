@@ -37,6 +37,11 @@ class LoanService {
             ? $principal / $num_pagos
             : $principal * ($r * pow(1 + $r, $num_pagos)) / (pow(1 + $r, $num_pagos) - 1);
 
+        // Redondear cuota a denominación de billete mexicano
+        // Los pagos 1..n-1 usan la cuota redondeada (hacia abajo)
+        // El ÚLTIMO pago liquida el saldo restante (pago mayor/ajuste)
+        $cuotaRedondeada = $num_pagos > 1 ? self::roundDownMexican($cuota) : $cuota;
+
         $tabla          = [];
         $saldo          = $principal;
         $total_interes  = 0;
@@ -57,14 +62,14 @@ class LoanService {
             // Interés = saldo × tasa_diaria × días REALES transcurridos
             $diasReales = (int)$fechaAnterior->diff($fecha)->days;
             $interes    = $saldo * $td * $diasReales;
-            $capital    = $cuota - $interes;
+            $capital    = $cuotaRedondeada - $interes;
 
-            // Último pago: liquida el saldo exacto
+            // Último pago: liquida el saldo exacto (pago de ajuste/mayor)
             if ($i === $num_pagos) {
                 $capital    = $saldo;
                 $cuota_real = round($capital + $interes, 2);
             } else {
-                $cuota_real = round($cuota, 2);
+                $cuota_real = round($cuotaRedondeada, 2);
             }
 
             $saldo_nuevo = max(0, $saldo - $capital);
@@ -92,12 +97,23 @@ class LoanService {
             'num_pagos'     => $num_pagos,
             'frecuencia'    => $frecuencia,
             'dias_periodo'  => $dias,
-            'cuota'         => round($cuota, 2),
+            'cuota'         => round($cuotaRedondeada, 2),
             'total_pago'    => round($total_pago, 2),
             'total_interes' => round($total_interes, 2),
             'total_capital' => round($total_capital, 2),
             'tabla'         => $tabla,
         ];
+    }
+
+    // Redondear hacia abajo a la denominación de billete mexicano más cercana
+    private static function roundDownMexican(float $amount): float {
+        if ($amount <= 0) return 0;
+        if ($amount < 50)    return floor($amount / 10)  * 10;
+        if ($amount < 200)   return floor($amount / 50)  * 50;
+        if ($amount < 1000)  return floor($amount / 100) * 100;
+        if ($amount < 5000)  return floor($amount / 200) * 200;
+        if ($amount < 10000) return floor($amount / 500) * 500;
+        return floor($amount / 1000) * 1000;
     }
 
     // Calcular solo la cuota (para preview rápido)

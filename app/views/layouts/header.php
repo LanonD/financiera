@@ -18,17 +18,21 @@ $usuario = $_SESSION['usuario'] ?? '';
 // Menús por rol
 $menus = [
     'admin' => [
-        ['href' => '/dashboard',  'label' => 'Vista general', 'icon' => 'grid'],
-        ['href' => '/empleados',  'label' => 'Empleados',     'icon' => 'user'],
-        ['href' => '/clientes',   'label' => 'Clientes',      'icon' => 'users'],
-        ['href' => '/prestamos',  'label' => 'Préstamos',     'icon' => 'file'],
-        ['href' => '/busqueda',   'label' => 'Búsqueda',      'icon' => 'search'],
-        ['href' => '/calculadora','label' => 'Calculadora',   'icon' => 'calc'],
+        ['href' => '/dashboard',   'label' => 'Vista general', 'icon' => 'grid'],
+        ['href' => '/reportes',    'label' => 'Reportes',      'icon' => 'report'],
+        ['href' => '/empleados',   'label' => 'Empleados',     'icon' => 'user'],
+        ['href' => '/clientes',    'label' => 'Clientes',      'icon' => 'users'],
+        ['href' => '/prestamos',   'label' => 'Préstamos',     'icon' => 'file'],
+        ['href' => '/desembolsos', 'label' => 'Desembolsos',   'icon' => 'cash'],
+        ['href' => '/cobros',      'label' => 'Cobros',        'icon' => 'check'],
+        ['href' => '/busqueda',    'label' => 'Búsqueda',      'icon' => 'search'],
+        ['href' => '/calculadora', 'label' => 'Calculadora',   'icon' => 'calc'],
     ],
     'promo' => [
-        ['href' => '/prestamos',  'label' => 'Mis préstamos', 'icon' => 'file'],
-        ['href' => '/clientes',   'label' => 'Mis clientes',  'icon' => 'users'],
-        ['href' => '/calculadora','label' => 'Calculadora',   'icon' => 'calc'],
+        ['href' => '/prestamos',   'label' => 'Mis préstamos', 'icon' => 'file'],
+        ['href' => '/clientes',    'label' => 'Mis clientes',  'icon' => 'users'],
+        ['href' => '/desembolsos', 'label' => 'Entregar',      'icon' => 'cash'],
+        ['href' => '/calculadora', 'label' => 'Calculadora',   'icon' => 'calc'],
     ],
     'collector' => [
         ['href' => '/cobros',     'label' => 'Mis cobros',    'icon' => 'check'],
@@ -51,6 +55,7 @@ $icons = [
     'calc'   => '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 8h6M8 5v6"/></svg>',
     'check'  => '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8l4 4 8-8"/></svg>',
     'cash'   => '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8h12M9 4l4 4-4 4"/></svg>',
+    'report' => '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="12" height="12" rx="1.5"/><path d="M5 10V8M8 10V6M11 10V4"/></svg>',
 ];
 ?>
 

@@ -1,2 +1,0 @@
-ALTER TABLE clientes_f
-  ADD COLUMN email VARCHAR(150) NULL DEFAULT NULL AFTER celular;
