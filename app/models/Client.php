@@ -9,7 +9,8 @@ class Client {
 
     public function getAll(): array {
         return $this->db->query("
-            SELECT c.*, e.nombre AS promotor_nombre
+            SELECT c.*, e.nombre AS promotor_nombre,
+                   (SELECT COUNT(*) FROM prestamos p WHERE p.cliente_id = c.id AND p.estatus IN ('Activo', 'Atrasado', 'Pendiente')) AS prestamos_activos
             FROM clientes_f c
             LEFT JOIN empleados e ON c.promotor_id = e.id
             WHERE c.activo = 1 ORDER BY c.nombre
@@ -30,14 +31,16 @@ class Client {
         return $row ?: null;
     }
 
-    // Todos los préstamos del cliente con su historial de pagos
-    public function getLoansWithPayments(int $cliente_id): array {
+    // Todos los préstamos del cliente con su historial de pagos.
+    // Si $cobrador_id > 0 solo devuelve los préstamos asignados a ese cobrador.
+    public function getLoansWithPayments(int $cliente_id, int $cobrador_id = 0): array {
+        $cobWhere = $cobrador_id > 0 ? "AND p.cobrador_id = $cobrador_id" : "";
         // Loans
         $stmt = $this->db->prepare("
             SELECT p.*, e.nombre AS promotor_nombre
             FROM prestamos p
             LEFT JOIN empleados e ON p.promotor_id = e.id
-            WHERE p.cliente_id = ?
+            WHERE p.cliente_id = ? $cobWhere
             ORDER BY p.id DESC
         ");
         $stmt->bind_param("i", $cliente_id);
@@ -75,7 +78,8 @@ class Client {
 
     public function getByPromotor(int $promotor_id): array {
         $stmt = $this->db->prepare("
-            SELECT c.*, e.nombre AS promotor_nombre
+            SELECT c.*, e.nombre AS promotor_nombre,
+                   (SELECT COUNT(*) FROM prestamos p WHERE p.cliente_id = c.id AND p.estatus IN ('Activo', 'Atrasado', 'Pendiente')) AS prestamos_activos
             FROM clientes_f c
             LEFT JOIN empleados e ON c.promotor_id = e.id
             WHERE c.promotor_id = ? AND c.activo = 1 ORDER BY c.nombre

@@ -27,10 +27,10 @@ class PaymentController {
             if (!$cobrador) {
                 header('Location: ' . APP_URL . '/login?error=empleado'); exit();
             }
-            // Cobrador: solo ve préstamos con pago vencido o de hoy.
-            // Al registrar el cobro y recargar, el préstamo desaparece porque
-            // su próximo pago pendiente ya es futuro (> hoy).
-            $prestamos  = $this->paymentModel->getPendingByCollector($cobrador['id'], true);
+            // Cobrador: ve TODOS sus préstamos asignados (hoy, atrasados y futuros).
+            // La vista los separa en dos secciones. Al registrar un pago y recargar,
+            // el préstamo pasa de "hoy" a "próximos" porque su proximo_pago avanza.
+            $prestamos  = $this->paymentModel->getPendingByCollector($cobrador['id'], false);
             $pageTitle  = 'Mis cobros';
             $breadcrumb = 'Panel de cobrador · ' . date('d/m/Y');
         }
@@ -41,16 +41,24 @@ class PaymentController {
     }
 
     public function asignar(): void {
-        $puesto   = $_SESSION['puesto'] ?? '';
+        $puesto    = $_SESSION['puesto'] ?? '';
         $loanModel = new Loan();
         $cobradores = $this->employeeModel->getByType('collector');
 
+        // ── Filtros desde GET ──────────────────────────────────────────────
+        $filtroDesde       = $_GET['desde']        ?? '';
+        $filtroHasta       = $_GET['hasta']        ?? '';
+        $filtroSinCobrador = !empty($_GET['sin_cobrador']);
+        $filtroBusqueda    = trim($_GET['busqueda'] ?? '');
+
         if ($puesto === 'promo') {
-            $emp      = $this->employeeModel->findByUserId($_SESSION['id']);
-            $prestamos = $emp ? $loanModel->getActiveForAssignment($emp['id']) : [];
+            $emp       = $this->employeeModel->findByUserId($_SESSION['id']);
+            $prestamos = $emp
+                ? $loanModel->getActiveForAssignment($emp['id'], $filtroDesde, $filtroHasta, $filtroSinCobrador, $filtroBusqueda)
+                : [];
             $breadcrumb = 'Promotor · Asignar cobradores';
         } else {
-            $prestamos  = $loanModel->getActiveForAssignment();
+            $prestamos  = $loanModel->getActiveForAssignment(0, $filtroDesde, $filtroHasta, $filtroSinCobrador, $filtroBusqueda);
             $breadcrumb = 'Administrador · Asignar cobradores';
         }
 

@@ -49,21 +49,38 @@ class ClientController {
     }
 
     public function detail(): void {
-        $id = (int)($_GET['id'] ?? 0);
-        if (!$id) { header('Location: ' . APP_URL . '/clientes'); exit(); }
+        $id     = (int)($_GET['id'] ?? 0);
+        $puesto = $_SESSION['puesto'] ?? '';
+        if (!$id) { header('Location: ' . APP_URL . ($puesto === 'collector' ? '/cobros' : '/clientes')); exit(); }
 
         $cliente = $this->clientModel->findById($id);
-        if (!$cliente) { header('Location: ' . APP_URL . '/clientes'); exit(); }
+        if (!$cliente) { header('Location: ' . APP_URL . ($puesto === 'collector' ? '/cobros' : '/clientes')); exit(); }
 
-        // Promo can only see their own clients
-        if ($_SESSION['puesto'] === 'promo') {
+        if ($puesto === 'promo') {
+            // Promotor solo ve sus propios clientes
             $emp = $this->empModel->findByUserId($_SESSION['id']);
             if (!$emp || $cliente['promotor_id'] != $emp['id']) {
                 header('Location: ' . APP_URL . '/clientes'); exit();
             }
+            $prestamos = $this->clientModel->getLoansWithPayments($id);
+
+        } elseif ($puesto === 'collector') {
+            // Cobrador: solo accede si tiene al menos un préstamo de este cliente asignado.
+            // Solo ve los préstamos propios, no los de otros cobradores.
+            $emp = $this->empModel->findByUserId($_SESSION['id']);
+            if (!$emp) { header('Location: ' . APP_URL . '/cobros'); exit(); }
+
+            $prestamos = $this->clientModel->getLoansWithPayments($id, $emp['id']);
+            if (empty($prestamos)) {
+                // No tiene ningún préstamo asignado de este cliente → sin acceso
+                header('Location: ' . APP_URL . '/cobros'); exit();
+            }
+
+        } else {
+            // Admin ve todo
+            $prestamos = $this->clientModel->getLoansWithPayments($id);
         }
 
-        $prestamos  = $this->clientModel->getLoansWithPayments($id);
         $pageTitle  = $cliente['nombre'];
         $breadcrumb = 'Clientes · Historial';
 

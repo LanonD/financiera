@@ -31,6 +31,25 @@ class User {
         return $row ?: null;
     }
 
+    // Actualiza el nombre de usuario. Devuelve false si ya existe otro usuario con ese nombre.
+    public function updateUsername(int $id, string $nuevoUsuario): bool {
+        // Verificar que no esté tomado por otro usuario
+        $stmt = $this->db->prepare(
+            "SELECT id FROM usuarios_f WHERE usuario = ? AND id != ? AND activo = 1 LIMIT 1"
+        );
+        $stmt->bind_param("si", $nuevoUsuario, $id);
+        $stmt->execute();
+        $existe = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        if ($existe) return false;
+
+        $stmt = $this->db->prepare("UPDATE usuarios_f SET usuario = ? WHERE id = ?");
+        $stmt->bind_param("si", $nuevoUsuario, $id);
+        $stmt->execute();
+        $stmt->close();
+        return true;
+    }
+
     public function create(string $usuario, string $password, string $puesto): int {
         $hash = password_hash($password, PASSWORD_DEFAULT);
         $stmt = $this->db->prepare(

@@ -69,9 +69,10 @@ $onTimePct = $totalPagados > 0 ? round($enTiempo / $totalPagados * 100) : 0;
 .back-link:hover{color:var(--text)}
 </style>
 
-<a class="back-link" href="<?= APP_URL ?>/clientes">
+<?php $backUrl = ($_SESSION['puesto'] ?? '') === 'collector' ? APP_URL.'/cobros' : APP_URL.'/clientes'; ?>
+<a class="back-link" href="<?= $backUrl ?>">
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11L5 7l4-4"/></svg>
-    Volver a clientes
+    <?= ($_SESSION['puesto'] ?? '') === 'collector' ? 'Volver a cobros' : 'Volver a clientes' ?>
 </a>
 
 <!-- Header -->
@@ -176,6 +177,7 @@ $onTimePct = $totalPagados > 0 ? round($enTiempo / $totalPagados * 100) : 0;
                     <th class="td-amount">Interés</th>
                     <th class="td-amount">Saldo tras pago</th>
                     <th>Estatus</th>
+                    <th>Nota cobro</th>
                 </tr>
             </thead>
             <tbody>
@@ -212,6 +214,7 @@ $onTimePct = $totalPagados > 0 ? round($enTiempo / $totalPagados * 100) : 0;
                 <td class="td-amount">$<?= number_format($p['interes'],2,'.',',') ?></td>
                 <td class="td-amount">$<?= number_format($p['saldo_restante'],2,'.',',') ?></td>
                 <td><span class="pill-pago" style="background:<?= $statusPill[0] ?>;color:<?= $statusPill[1] ?>"><?= $statusPill[2] ?></span></td>
+                <td style="font-size:12px;color:var(--text-muted);max-width:180px"><?= htmlspecialchars($p['nota_cobro'] ?? '') ?: '—' ?></td>
             </tr>
             <?php endforeach; ?>
             </tbody>

@@ -7,6 +7,15 @@ class Employee {
         $this->db = Database::connect();
     }
 
+    public function findById(int $id): ?array {
+        $stmt = $this->db->prepare("SELECT * FROM empleados WHERE id = ? AND activo = 1 LIMIT 1");
+        $stmt->bind_param("i", $id);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        return $row ?: null;
+    }
+
     public function findByUserId(int $usuario_id): ?array {
         $stmt = $this->db->prepare("
             SELECT e.* FROM empleados e

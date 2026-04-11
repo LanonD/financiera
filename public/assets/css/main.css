@@ -35,6 +35,9 @@
     --status-atrasado-bg:     #fee2e2;
     --status-atrasado-text:   #991b1b;
     --status-atrasado-dot:    #dc2626;
+    --status-finalizado-bg:   #eff6ff;
+    --status-finalizado-text: #1e3a8a;
+    --status-finalizado-dot:  #2563eb;
 
     --radius-sm: 6px;
     --radius-md: 10px;
@@ -264,6 +267,8 @@ body {
 .pill-pendiente .dot { background: var(--status-pendiente-dot); }
 .pill-atrasado  { background: var(--status-atrasado-bg);  color: var(--status-atrasado-text);  border-color: #fca5a5; }
 .pill-atrasado  .dot { background: var(--status-atrasado-dot); }
+.pill-finalizado { background: var(--status-finalizado-bg); color: var(--status-finalizado-text); border-color: #bfdbfe; }
+.pill-finalizado .dot { background: var(--status-finalizado-dot); }
 .status-pill.inactive { background: var(--bg-input) !important; color: var(--text-muted) !important; border-color: var(--border) !important; }
 .status-pill.inactive .dot { background: var(--text-muted) !important; opacity: 0.4; }
 .filter-actions { margin-left: auto; display: flex; gap: 8px; }
@@ -309,6 +314,8 @@ tbody tr:hover td { background: var(--bg-hover); }
 .badge-pendiente .dot { background: var(--status-pendiente-dot); }
 .badge-atrasado  { background: var(--status-atrasado-bg);  color: var(--status-atrasado-text); }
 .badge-atrasado  .dot { background: var(--status-atrasado-dot); }
+.badge-finalizado { background: var(--status-finalizado-bg); color: var(--status-finalizado-text); }
+.badge-finalizado .dot { background: var(--status-finalizado-dot); }
 .badge-retirado  { background: #f1f5f9; color: #64748b; }
 .badge-retirado  .dot { background: #94a3b8; }
 

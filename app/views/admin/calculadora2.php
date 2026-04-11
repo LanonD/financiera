@@ -112,13 +112,15 @@
             <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:16px 18px">
                 <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:10px">Estructura de pagos</div>
                 <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
-                    <span style="font-size:13px">Pago 1 (ajuste)</span>
-                    <span style="font-size:16px;font-weight:700;font-family:var(--font-mono);color:#f59e0b">$<?= number_format($result['primer_pago'],2,'.',',') ?></span>
-                </div>
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
-                    <span style="font-size:13px">Pagos 2–<?= $result['num_pagos'] ?> (iguales)</span>
+                    <span style="font-size:13px"><?= $result['num_pagos'] > 1 ? "Pagos 1–" . ($result['num_pagos']-1) . " (iguales)" : "Pago único" ?></span>
                     <span style="font-size:16px;font-weight:700;font-family:var(--font-mono);color:#16a34a">$<?= number_format($result['cuota_base'],2,'.',',') ?></span>
                 </div>
+                <?php if ($result['num_pagos'] > 1): ?>
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+                    <span style="font-size:13px">Pago <?= $result['num_pagos'] ?> (ajuste final)</span>
+                    <span style="font-size:16px;font-weight:700;font-family:var(--font-mono);color:#f59e0b">$<?= number_format($result['ultimo_pago'],2,'.',',') ?></span>
+                </div>
+                <?php endif; ?>
                 <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0">
                     <span style="font-size:13px;font-weight:600">Total</span>
                     <span style="font-size:16px;font-weight:700;font-family:var(--font-mono)">$<?= number_format($result['total_pago'],2,'.',',') ?></span>
@@ -128,10 +130,10 @@
                 <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:10px">Notas para efectivo</div>
                 <div style="font-size:13px;color:var(--text-secondary);line-height:1.6">
                     <?php if ($result['num_pagos'] > 1): ?>
-                    • El <strong>primer pago</strong> es de <span style="color:#f59e0b;font-family:var(--font-mono);font-weight:700">$<?= number_format($result['primer_pago'],0,'.',',') ?></span> (incluye ajuste de redondeo)<br>
-                    • Los siguientes <strong><?= $result['num_pagos'] - 1 ?> pagos</strong> son de <span style="color:#16a34a;font-family:var(--font-mono);font-weight:700">$<?= number_format($result['cuota_base'],0,'.',',') ?></span> cada uno<br>
+                    • Los primeros <strong><?= $result['num_pagos'] - 1 ?> pagos</strong> son de <span style="color:#16a34a;font-family:var(--font-mono);font-weight:700">$<?= number_format($result['cuota_base'],0,'.',',') ?></span> cada uno<br>
+                    • El <strong>último pago</strong> es de <span style="color:#f59e0b;font-family:var(--font-mono);font-weight:700">$<?= number_format($result['ultimo_pago'],0,'.',',') ?></span> (ajuste de centavos)<br>
                     <?php else: ?>
-                    • Pago único de <span style="color:#16a34a;font-family:var(--font-mono);font-weight:700">$<?= number_format($result['primer_pago'],0,'.',',') ?></span><br>
+                    • Pago único de <span style="color:#16a34a;font-family:var(--font-mono);font-weight:700">$<?= number_format($result['cuota_base'],0,'.',',') ?></span><br>
                     <?php endif; ?>
                     • Frecuencia: <strong><?= $result['frecuencia'] ?></strong><br>
                     • <?= $result['num_pagos'] ?> pagos en total
@@ -158,12 +160,12 @@
                 </thead>
                 <tbody>
                 <?php foreach ($result['tabla'] as $fila):
-                    $esPrimero = $fila['pago'] === 1 && $result['num_pagos'] > 1;
+                    $esUltimo = $fila['pago'] === $result['num_pagos'] && $result['num_pagos'] > 1;
                 ?>
-                <tr <?= $esPrimero ? 'style="background:rgba(245,158,11,.06)"' : '' ?>>
-                    <td class="td-id"><?= $fila['pago'] ?> <?= $esPrimero ? '<span style="font-size:10px;color:#ca8a04">(ajuste)</span>' : '' ?></td>
+                <tr <?= $esUltimo ? 'style="background:rgba(245,158,11,.06)"' : '' ?>>
+                    <td class="td-id"><?= $fila['pago'] ?> <?= $esUltimo ? '<span style="font-size:10px;color:#ca8a04">(ajuste)</span>' : '' ?></td>
                     <td class="td-numeric"><?= date('d/m/Y', strtotime($fila['fecha'])) ?></td>
-                    <td class="td-amount" style="font-weight:700;color:<?= $esPrimero ? '#ca8a04' : '#16a34a' ?>">$<?= number_format($fila['cuota'],2,'.',',') ?></td>
+                    <td class="td-amount" style="font-weight:700;color:<?= $esUltimo ? '#ca8a04' : '#16a34a' ?>">$<?= number_format($fila['cuota'],2,'.',',') ?></td>
                     <td class="td-amount">$<?= number_format($fila['capital'],2,'.',',') ?></td>
                     <td class="td-amount" style="color:#f59e0b">$<?= number_format($fila['interes'],2,'.',',') ?></td>
                     <td class="td-amount">$<?= number_format($fila['saldo'],2,'.',',') ?></td>
@@ -197,7 +199,7 @@
                 1. Define cuánto dinero le entregas al cliente<br>
                 2. Acuerda el total que él te devolverá<br>
                 3. El sistema genera pagos redondos para facilitar el cobro en efectivo<br>
-                4. El primer pago absorbe el ajuste de redondeo; los demás son iguales
+                4. Los primeros N-1 pagos son iguales; el último absorbe el ajuste (diferencia mínima)
             </div>
         </div>
     <?php endif; ?>

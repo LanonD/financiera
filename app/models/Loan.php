@@ -9,7 +9,68 @@ class Loan {
 
     // Todos los préstamos con datos de cliente y empleados
     public function getAll(): array {
-        $result = $this->db->query("SELECT * FROM v_prestamos ORDER BY id DESC");
+        $result = $this->db->query("
+            SELECT
+                v.*,
+                (SELECT MIN(fecha_programada) FROM pagos pg WHERE pg.prestamo_id = v.id AND pg.estatus IN ('Pendiente','Atrasado')) AS proximo_pago
+            FROM v_prestamos v
+            ORDER BY v.id DESC
+        ");
+        return $result->fetch_all(MYSQLI_ASSOC);
+    }
+
+    // Préstamos con filtros opcionales de servidor.
+    // $promotor_id > 0 limita a ese promotor (rol promo).
+    // Los demás parámetros son opcionales; vacíos/ceros = sin filtro.
+    public function getFiltered(
+        int    $promotor_id = 0,
+        string $frecuencia  = '',
+        float  $monto_min   = 0,
+        float  $monto_max   = 0,
+        string $desde       = '',
+        string $hasta       = ''
+    ): array {
+        // Sanitize dates
+        $desde = preg_match('/^\d{4}-\d{2}-\d{2}$/', $desde) ? $desde : '';
+        $hasta = preg_match('/^\d{4}-\d{2}-\d{2}$/', $hasta) ? $hasta : '';
+
+        $where = [];
+        if ($promotor_id > 0) $where[] = "p.promotor_id = " . (int)$promotor_id;
+        if ($frecuencia !== '') {
+            $f       = $this->db->real_escape_string($frecuencia);
+            $where[] = "p.frecuencia = '$f'";
+        }
+        if ($monto_min > 0) $where[] = "p.monto >= " . (float)$monto_min;
+        if ($monto_max > 0) $where[] = "p.monto <= " . (float)$monto_max;
+
+        $whereStr = $where ? "WHERE " . implode(" AND ", $where) : "";
+
+        // proximo_pago es un agregado (MIN), se filtra con HAVING
+        $having = [];
+        if ($desde !== '') $having[] = "(proximo_pago IS NOT NULL AND proximo_pago >= '$desde')";
+        if ($hasta !== '') $having[] = "(proximo_pago IS NOT NULL AND proximo_pago <= '$hasta')";
+        $havingStr = $having ? "HAVING " . implode(" AND ", $having) : "";
+
+        $result = $this->db->query("
+            SELECT
+                p.id, p.estatus, p.monto, p.cuota, p.frecuencia,
+                p.saldo_actual, p.interes_acumulado, p.tasa_diaria,
+                p.num_pagos, p.fecha_inicio, p.fecha_fin,
+                c.nombre AS cliente_nombre, c.id AS cliente_id,
+                ep.nombre AS promotor_nombre,
+                ec.nombre AS cobrador_nombre,
+                MIN(pg.fecha_programada) AS proximo_pago
+            FROM prestamos p
+            JOIN clientes_f c      ON p.cliente_id  = c.id
+            LEFT JOIN empleados ep ON p.promotor_id  = ep.id
+            LEFT JOIN empleados ec ON p.cobrador_id  = ec.id
+            LEFT JOIN pagos pg     ON pg.prestamo_id = p.id
+                                  AND pg.estatus IN ('Pendiente','Atrasado')
+            $whereStr
+            GROUP BY p.id
+            $havingStr
+            ORDER BY p.id DESC
+        ");
         return $result->fetch_all(MYSQLI_ASSOC);
     }
 
@@ -39,6 +100,7 @@ class Loan {
         $result = $this->db->query("
             SELECT
                 p.id, p.estatus, p.cuota, p.saldo_actual, p.frecuencia,
+                c.id   AS cliente_id,
                 c.nombre AS cliente_nombre, c.celular, c.direccion,
                 MIN(pg.fecha_programada) AS proximo_pago,
                 DATEDIFF(CURDATE(), MIN(pg.fecha_programada)) AS dias_atraso
@@ -53,26 +115,62 @@ class Loan {
         return $result->fetch_all(MYSQLI_ASSOC);
     }
 
-    // Préstamos activos/atrasados con info de cobrador, para pantalla de asignación
-    public function getActiveForAssignment(int $promotor_id = 0): array {
-        $where = $promotor_id > 0
-            ? "AND p.promotor_id = " . (int)$promotor_id
-            : "";
+    // Préstamos activos/atrasados con info de cobrador, para pantalla de asignación.
+    // $desde / $hasta filtran por proximo_pago (HAVING, ya que es agregado).
+    // $sinCobrador limita a préstamos sin cobrador asignado.
+    // $busqueda filtra por nombre del cliente (LIKE).
+    public function getActiveForAssignment(
+        int    $promotor_id  = 0,
+        string $desde        = '',
+        string $hasta        = '',
+        bool   $sinCobrador  = false,
+        string $busqueda     = ''
+    ): array {
+        // Sanitize dates — accept only YYYY-MM-DD
+        $desde = preg_match('/^\d{4}-\d{2}-\d{2}$/', $desde) ? $desde : '';
+        $hasta = preg_match('/^\d{4}-\d{2}-\d{2}$/', $hasta) ? $hasta : '';
+
+        $where = "p.estatus IN ('Activo','Atrasado')";
+        if ($promotor_id > 0) $where .= " AND p.promotor_id = " . (int)$promotor_id;
+        if ($sinCobrador)     $where .= " AND p.cobrador_id IS NULL";
+        if ($busqueda !== '') {
+            $b      = $this->db->real_escape_string($busqueda);
+            $where .= " AND c.nombre LIKE '%$b%'";
+        }
+
+        // HAVING filters on the GROUP BY aggregate proximo_pago
+        $having = [];
+        if ($desde !== '') $having[] = "proximo_pago >= '$desde'";
+        if ($hasta !== '') $having[] = "proximo_pago <= '$hasta'";
+        $havingStr = !empty($having) ? "HAVING " . implode(" AND ", $having) : "";
+
         $result = $this->db->query("
             SELECT
                 p.id, p.estatus, p.cuota, p.saldo_actual, p.frecuencia,
                 p.cobrador_id,
+                c.id      AS cliente_id,
                 c.nombre  AS cliente_nombre,
                 c.celular AS cliente_celular,
                 ec.nombre AS cobrador_nombre,
+                ec.id     AS cobrador_emp_id,
                 MIN(pg.fecha_programada) AS proximo_pago,
-                DATEDIFF(CURDATE(), MIN(pg.fecha_programada)) AS dias_atraso
+                DATEDIFF(CURDATE(), MIN(pg.fecha_programada)) AS dias_atraso,
+                (SELECT COUNT(*) FROM pagos pg2
+                 WHERE pg2.prestamo_id = p.id
+                   AND DATE(pg2.fecha_pago) = CURDATE()
+                   AND pg2.estatus IN ('Pagado','Parcial')) AS pagado_hoy,
+                (SELECT pg3.estatus FROM pagos pg3
+                 WHERE pg3.prestamo_id = p.id
+                   AND DATE(pg3.fecha_pago) = CURDATE()
+                   AND pg3.estatus IN ('Pagado','Parcial')
+                 LIMIT 1) AS tipo_pago_hoy
             FROM prestamos p
             JOIN clientes_f c ON p.cliente_id = c.id
             LEFT JOIN empleados ec ON p.cobrador_id = ec.id
             LEFT JOIN pagos pg ON pg.prestamo_id = p.id AND pg.estatus IN ('Pendiente','Atrasado')
-            WHERE p.estatus IN ('Activo','Atrasado') $where
+            WHERE $where
             GROUP BY p.id
+            $havingStr
             ORDER BY p.estatus DESC, dias_atraso DESC, proximo_pago ASC
         ");
         return $result->fetch_all(MYSQLI_ASSOC);
@@ -103,10 +201,14 @@ class Loan {
         return $rows;
     }
 
-    // Pagos de un préstamo
+    // Pagos de un préstamo — incluye nombre del cobrador que registró cada pago
     public function getPayments(int $prestamo_id): array {
         $stmt = $this->db->prepare("
-            SELECT * FROM pagos WHERE prestamo_id = ? ORDER BY numero_pago ASC
+            SELECT pg.*, e.nombre AS cobrador_nombre
+            FROM pagos pg
+            LEFT JOIN empleados e ON pg.cobrador_id = e.id
+            WHERE pg.prestamo_id = ?
+            ORDER BY pg.numero_pago ASC
         ");
         $stmt->bind_param("i", $prestamo_id);
         $stmt->execute();
@@ -293,8 +395,9 @@ class Loan {
     }
 
     public function updateMeta(int $id, array $data): void {
-        $cobrador_id       = $data['cobrador_id']      ?: null;
-        $promotor_id       = $data['promotor_id']      ?: null;
+        $current           = $this->findById($id);
+        $cobrador_id       = !empty($data['cobrador_id']) ? (int)$data['cobrador_id'] : null;
+        $promotor_id       = !empty($data['promotor_id']) ? (int)$data['promotor_id'] : $current['promotor_id'];
         $estatus           = $data['estatus'];
         $saldo_actual      = (float)$data['saldo_actual'];
         $interes_acumulado = (float)$data['interes_acumulado'];
@@ -331,19 +434,27 @@ class Loan {
         return (int)($row['interes_activo'] ?? 1);
     }
 
-    // Crear nuevo préstamo
+    // Crear nuevo préstamo.
+    // $data puede incluir:
+    //   'interes_activo'    (default 1) — 0 para préstamos de pago fijo (Calc2)
+    //   'interes_acumulado' (default 0) — para préstamos Calc2: ganancia pre-cargada
     public function create(array $data): int {
+        $interes_activo    = (int)  ($data['interes_activo']    ?? 1);
+        $interes_acumulado = (float)($data['interes_acumulado'] ?? 0);
         $stmt = $this->db->prepare("
             INSERT INTO prestamos
-            (cliente_id, promotor_id, cobrador_id, monto, tasa_diaria, num_pagos, frecuencia, cuota, saldo_actual, fecha_inicio, fecha_fin, estatus)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pendiente')
+            (cliente_id, promotor_id, cobrador_id, monto, tasa_diaria, num_pagos, frecuencia,
+             cuota, saldo_actual, interes_acumulado, fecha_inicio, fecha_fin, estatus, interes_activo)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pendiente', ?)
         ");
         $stmt->bind_param(
-            "iiiddisddss",
+            "iiiddisdddssi",
             $data['cliente_id'], $data['promotor_id'], $data['cobrador_id'],
             $data['monto'], $data['tasa_diaria'], $data['num_pagos'],
             $data['frecuencia'], $data['cuota'], $data['saldo_actual'],
-            $data['fecha_inicio'], $data['fecha_fin']
+            $interes_acumulado,
+            $data['fecha_inicio'], $data['fecha_fin'],
+            $interes_activo
         );
         $stmt->execute();
         $id = $stmt->insert_id;

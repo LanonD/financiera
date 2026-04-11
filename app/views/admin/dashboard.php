@@ -43,6 +43,7 @@
             <span class="status-pill pill-activo"    data-status="Activo"    onclick="togglePill(this)"><span class="dot"></span> Activo</span>
             <span class="status-pill pill-pendiente" data-status="Pendiente" onclick="togglePill(this)"><span class="dot"></span> Pendiente</span>
             <span class="status-pill pill-atrasado"  data-status="Atrasado"  onclick="togglePill(this)"><span class="dot"></span> Atrasado</span>
+            <span class="status-pill pill-finalizado" data-status="Finalizado" onclick="togglePill(this)"><span class="dot"></span> Finalizado</span>
         </div>
     </div>
     <div class="filter-actions">
@@ -60,16 +61,17 @@
             <tr>
                 <th>ID</th><th>Nombre</th><th>Monto</th><th>Pagos</th>
                 <th>Cuota</th><th>Esquema</th><th>Interés</th>
-                <th>Saldo actual</th><th>Estatus</th><th>Acciones</th>
+                <th>Saldo actual</th><th>Próx. Cobro</th><th>Estatus</th><th>Acciones</th>
             </tr>
         </thead>
         <tbody id="tableBody">
         <?php foreach ($prestamos as $row):
             $badge = match($row['estatus']) {
-                'Activo'    => 'badge-activo',
-                'Pendiente' => 'badge-pendiente',
-                'Atrasado'  => 'badge-atrasado',
-                default     => 'badge-pendiente'
+                'Activo'     => 'badge-activo',
+                'Pendiente'  => 'badge-pendiente',
+                'Atrasado'   => 'badge-atrasado',
+                'Finalizado' => 'badge-finalizado',
+                default      => 'badge-pendiente'
             };
         ?>
         <tr data-status="<?= $row['estatus'] ?>">
@@ -84,6 +86,7 @@
             <td class="td-numeric"><?= $row['frecuencia'] ?></td>
             <td class="td-numeric"><?= $row['tasa_diaria'] ?>%</td>
             <td class="td-amount">$<?= number_format($row['saldo_actual'], 2, '.', ',') ?></td>
+            <td class="td-date"><?= $row['proximo_pago'] ? date('d/m/Y', strtotime($row['proximo_pago'])) : '<span class="text-muted">N/A</span>' ?></td>
             <td><span class="badge <?= $badge ?>"><span class="dot"></span><?= $row['estatus'] ?></span></td>
             <td>
                 <a class="action-btn edit" href="<?= APP_URL ?>/prestamos/detalle?id=<?= $row['id'] ?>">Ver</a>
@@ -98,9 +101,9 @@
 </div>
 
 <script>
-let activeFilters = new Set(['Activo','Pendiente','Atrasado']);
+let activeFilters = new Set(['Activo','Pendiente','Atrasado','Finalizado']);
 function togglePill(el){const s=el.dataset.status;activeFilters.has(s)?(activeFilters.delete(s),el.classList.add('inactive')):(activeFilters.add(s),el.classList.remove('inactive'));filterTable();}
 function filterTable(){const id=document.getElementById('filterId').value.trim().toLowerCase();let v=0;document.querySelectorAll('#tableBody tr').forEach(r=>{const show=activeFilters.has(r.dataset.status)&&(!id||r.cells[0].textContent.toLowerCase().includes(id));r.style.display=show?'':'none';if(show)v++;});document.getElementById('tableCount').textContent=v+' registros';}
-function resetFilters(){document.getElementById('filterId').value='';activeFilters=new Set(['Activo','Pendiente','Atrasado']);document.querySelectorAll('.status-pill').forEach(p=>p.classList.remove('inactive'));filterTable();}
+function resetFilters(){document.getElementById('filterId').value='';activeFilters=new Set(['Activo','Pendiente','Atrasado','Finalizado']);document.querySelectorAll('.status-pill').forEach(p=>p.classList.remove('inactive'));filterTable();}
 window.addEventListener('load',filterTable);
 </script>

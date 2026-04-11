@@ -52,7 +52,16 @@ class Payment {
                 $pagoAPrincipal = max(0, $monto - $pagoAInteres);
                 $nuevo_interes  = round($interesTotal - $pagoAInteres, 2);
                 $nuevo_saldo    = max(0, round((float)$prestamo['saldo_actual'] - $pagoAPrincipal, 2));
-                $estatus_nuevo  = $nuevo_saldo <= 0 ? 'Finalizado' : 'Activo';
+                // Finalizado solo si el saldo Y el interés llegan a 0 Y además
+                // no quedan filas de pago pendientes (evita falsos positivos cuando
+                // el admin puso saldo=0 manualmente pero aún hay cuotas por cobrar).
+                $pendientesRestantes = $this->db->query("
+                    SELECT COUNT(*) AS cnt FROM pagos
+                    WHERE prestamo_id = $prestamo_id
+                      AND estatus IN ('Pendiente','Atrasado')
+                ")->fetch_assoc()['cnt'] ?? 1;
+                $estatus_nuevo  = ($nuevo_saldo <= 0 && $nuevo_interes <= 0 && $pendientesRestantes <= 1)
+                    ? 'Finalizado' : 'Activo';
 
                 // ── Actualizar fila de pagos si existe ──────────────────────────
                 $stmt = $this->db->prepare("

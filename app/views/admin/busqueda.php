@@ -35,7 +35,7 @@
         <thead><tr><th>ID</th><th>Cliente</th><th>Monto</th><th>Saldo</th><th>Estatus</th><th></th></tr></thead>
         <tbody>
         <?php if(empty($prestamos)): ?><tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted)">Sin resultados</td></tr>
-        <?php else: foreach($prestamos as $p): $badge=match($p['estatus']){'Activo'=>'badge-activo','Atrasado'=>'badge-atrasado',default=>'badge-pendiente'}; ?>
+        <?php else: foreach($prestamos as $p): $badge=match($p['estatus']){'Activo'=>'badge-activo','Atrasado'=>'badge-atrasado','Finalizado'=>'badge-finalizado',default=>'badge-pendiente'}; ?>
         <tr>
             <td class="td-id">#<?= $p['id'] ?></td>
             <td><?= htmlspecialchars($p['cliente_nombre']) ?></td>

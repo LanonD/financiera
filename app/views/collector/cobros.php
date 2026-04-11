@@ -1,9 +1,15 @@
 <?php
 // Variables: $cobrador, $prestamos
 $maxCobro = $cobrador['capacidad_maxima'] ?? 200000;
+$hoy      = date('Y-m-d');
+
+// Separar en dos grupos
+$cobrosHoy     = array_values(array_filter($prestamos, fn($p) => $p['proximo_pago'] !== null && $p['proximo_pago'] <= $hoy));
+$cobrosFuturos = array_values(array_filter($prestamos, fn($p) => $p['proximo_pago'] === null || $p['proximo_pago'] > $hoy));
 ?>
+
 <div class="content-header">
-    <div><h2>Mis cobros</h2><p>Marca los pagos del día y envíalos al sistema</p></div>
+    <div><h2>Mis cobros</h2><p>Cobros del día y próximos asignados</p></div>
     <button class="btn-primary" id="btnEnviar" onclick="submitCobros()" disabled style="opacity:.5">
         <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7l3 3 7-7"/></svg>
         Enviar cobros
@@ -21,38 +27,59 @@ $maxCobro = $cobrador['capacidad_maxima'] ?? 200000;
     </div>
     <div class="cobrador-stat"><div class="cobrador-stat-label">Completos</div><div class="cobrador-stat-value" id="nCompletos" style="color:#16a34a">0</div></div>
     <div class="cobrador-stat"><div class="cobrador-stat-label">Parciales</div><div class="cobrador-stat-value" id="nParciales" style="color:#ca8a04">0</div></div>
+    <div class="cobrador-stat"><div class="cobrador-stat-label">Próximos</div><div class="cobrador-stat-value" style="color:#3b82f6"><?= count($cobrosFuturos) ?></div></div>
 </div>
 
-<!-- Filtros -->
-<div class="filter-panel">
-    <div class="filter-group"><label>Buscar</label><input class="filter-input" id="globalSearch" placeholder="Nombre…" oninput="filterRows()"></div>
-    <div class="filter-divider"></div>
-    <div class="filter-group">
-        <label>Estatus</label>
-        <div class="status-group">
-            <span class="status-pill pill-activo"   data-status="Activo"   onclick="togglePill(this)"><span class="dot"></span>Activo</span>
-            <span class="status-pill pill-atrasado" data-status="Atrasado" onclick="togglePill(this)"><span class="dot"></span>Atrasado</span>
-            <span class="status-pill pill-pendiente"data-status="Pendiente"onclick="togglePill(this)"><span class="dot"></span>Pendiente</span>
+<!-- ─── SECCIÓN 1: COBROS DE HOY / ATRASADOS ─────────────────────────────── -->
+<div class="table-card" style="margin-bottom:20px">
+    <div class="table-header" style="flex-wrap:wrap;gap:10px">
+        <div>
+            <div class="table-title">
+                <span style="display:inline-flex;align-items:center;gap:6px">
+                    <span style="width:8px;height:8px;border-radius:50%;background:#ca8a04;display:inline-block"></span>
+                    Cobros de hoy
+                </span>
+            </div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px"><?= date('d \d\e F, Y') ?></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <!-- Búsqueda rápida -->
+            <input class="filter-input" id="searchHoy" placeholder="Buscar…" oninput="filtrarHoy()" style="max-width:160px">
+            <div class="table-count" id="countHoy"><?= count($cobrosHoy) ?> préstamos</div>
         </div>
     </div>
-    <div class="filter-actions"><button class="btn-secondary" onclick="resetFilters()">Limpiar</button></div>
-</div>
 
-<!-- Tabla desktop -->
-<div class="table-card">
-    <div class="table-header">
-        <div class="table-title">Clientes asignados</div>
-        <div class="table-count" id="tableCount"><?= count($prestamos) ?> clientes</div>
-    </div>
     <table>
-        <thead><tr><th style="width:90px">Cobro</th><th>ID</th><th>Cliente</th><th>Celular</th><th>Cuota</th><th>Saldo</th><th>Próximo pago</th><th>Estatus</th></tr></thead>
-        <tbody id="tableBody">
-        <?php foreach ($prestamos as $row):
-            $dias   = (int)($row['dias_atraso'] ?? 0);
-            $fechaTxt   = $dias > 0 ? "Hoy — {$dias} día".($dias>1?'s':'')." atraso" : ($dias === 0 ? 'Hoy' : ($row['proximo_pago'] ?? '—'));
-            $fechaClass = $dias >= 0 ? 'fecha-hoy' : 'fecha-ok';
-            $badge = match($row['estatus']) { 'Activo' => 'badge-activo', 'Atrasado' => 'badge-atrasado', default => 'badge-pendiente' };
-            $nombre = $row['cliente_nombre'] ?? '—';
+        <thead>
+            <tr>
+                <th style="width:90px">Cobro</th>
+                <th>Cliente</th>
+                <th>Celular</th>
+                <th class="td-amount">Cuota</th>
+                <th class="td-amount">Saldo</th>
+                <th class="td-numeric">Fecha / Atraso</th>
+                <th>Estatus</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody id="tableBodyHoy">
+        <?php if (empty($cobrosHoy)): ?>
+        <tr><td colspan="8">
+            <div style="text-align:center;padding:36px 20px">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto 10px;display:block"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>
+                <div style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:4px">Sin cobros para hoy</div>
+                <div style="font-size:12px;color:var(--text-muted)">No tienes pagos vencidos ni de hoy. Revisa tus próximos cobros abajo.</div>
+            </div>
+        </td></tr>
+        <?php else: ?>
+        <?php foreach ($cobrosHoy as $row):
+            $dias       = (int)($row['dias_atraso'] ?? 0);
+            $fechaTxt   = $dias > 0
+                ? "{$dias} día".($dias>1?'s':'')." atraso"
+                : 'Hoy';
+            $fechaColor = $dias > 0 ? '#dc2626' : '#ca8a04';
+            $badge      = match($row['estatus']) { 'Activo' => 'badge-activo', 'Atrasado' => 'badge-atrasado', 'Finalizado' => 'badge-finalizado', default => 'badge-pendiente' };
+            $nombre     = $row['cliente_nombre'] ?? '—';
         ?>
         <tr data-status="<?= $row['estatus'] ?>" data-id="<?= $row['id'] ?>" data-pago="<?= $row['cuota'] ?>" data-nombre="<?= htmlspecialchars($nombre) ?>">
             <td>
@@ -66,30 +93,103 @@ $maxCobro = $cobrador['capacidad_maxima'] ?? 200000;
                 </div>
                 <div id="tag-<?= $row['id'] ?>" style="text-align:center"></div>
             </td>
-            <td class="td-id">#<?= $row['id'] ?></td>
-            <td class="td-name"><span class="initials"><?= strtoupper(substr($nombre,0,2)) ?></span><?= htmlspecialchars($nombre) ?></td>
+            <td class="td-name">
+                <span class="initials"><?= strtoupper(substr($nombre,0,2)) ?></span>
+                <?= htmlspecialchars($nombre) ?>
+            </td>
             <td class="td-numeric"><?= htmlspecialchars($row['celular'] ?? '—') ?></td>
             <td class="td-amount">$<?= number_format($row['cuota'],2,'.',',') ?></td>
             <td class="td-amount">$<?= number_format($row['saldo_actual'],2,'.',',') ?></td>
-            <td class="<?= $fechaClass ?> td-numeric"><?= $fechaTxt ?></td>
+            <td class="td-numeric" style="font-weight:600;color:<?= $fechaColor ?>"><?= $fechaTxt ?></td>
             <td><span class="badge <?= $badge ?>"><span class="dot"></span><?= $row['estatus'] ?></span></td>
+            <td><a href="<?= APP_URL ?>/clientes/detalle?id=<?= $row['cliente_id'] ?>" class="btn-secondary" style="font-size:11px;padding:4px 10px;text-decoration:none">Ver cliente</a></td>
         </tr>
         <?php endforeach; ?>
-        <?php if(empty($prestamos)): ?>
-        <tr><td colspan="8">
-            <div style="text-align:center;padding:48px 20px">
-                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto 12px;display:block"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
-                <div style="font-size:14px;font-weight:600;color:var(--text-secondary);margin-bottom:6px">Sin cobros asignados</div>
-                <div style="font-size:13px;color:var(--text-muted);max-width:320px;margin:0 auto">No tienes cuentas asignadas todavía. Espera a que el administrador o promotor te asigne préstamos a cobrar.</div>
-            </div>
-        </td></tr>
         <?php endif; ?>
         </tbody>
     </table>
     <div class="table-footer"><span id="footerInfo" class="pagination-info">Cobrado hoy: $0</span></div>
 </div>
 
-<!-- Modal pago parcial -->
+<!-- ─── SECCIÓN 2: PRÓXIMOS COBROS ───────────────────────────────────────── -->
+<div class="table-card">
+    <div class="table-header" style="flex-wrap:wrap;gap:10px">
+        <div>
+            <div class="table-title">
+                <span style="display:inline-flex;align-items:center;gap:6px">
+                    <span style="width:8px;height:8px;border-radius:50%;background:#3b82f6;display:inline-block"></span>
+                    Próximos cobros
+                </span>
+            </div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Préstamos asignados con pago futuro</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+            <input class="filter-input" id="searchFuturos" placeholder="Buscar…" oninput="filtrarFuturos()" style="max-width:160px">
+            <div class="table-count" id="countFuturos"><?= count($cobrosFuturos) ?> préstamos</div>
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Cliente</th>
+                <th>Celular</th>
+                <th class="td-amount">Cuota</th>
+                <th class="td-amount">Saldo</th>
+                <th class="td-numeric">Próximo pago</th>
+                <th class="td-numeric">Días para cobrar</th>
+                <th>Estatus</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody id="tableBodyFuturos">
+        <?php if (empty($cobrosFuturos)): ?>
+        <tr><td colspan="8">
+            <div style="text-align:center;padding:28px 20px;color:var(--text-muted);font-size:13px">
+                No tienes cobros futuros asignados.
+            </div>
+        </td></tr>
+        <?php else: ?>
+        <?php foreach ($cobrosFuturos as $row):
+            $nombre    = $row['cliente_nombre'] ?? '—';
+            $badge     = match($row['estatus']) { 'Activo' => 'badge-activo', 'Atrasado' => 'badge-atrasado', 'Finalizado' => 'badge-finalizado', default => 'badge-pendiente' };
+            $diasFalta = $row['proximo_pago']
+                ? (int)(new DateTime($row['proximo_pago']))->diff(new DateTime($hoy))->days
+                : null;
+            // diff is always positive since proximo_pago > hoy, but DateTime diff needs direction
+            $diasFalta = $row['proximo_pago']
+                ? max(0, (int)((new DateTime($row['proximo_pago']))->getTimestamp() - (new DateTime($hoy))->getTimestamp()) / 86400)
+                : null;
+            $urgente   = $diasFalta !== null && $diasFalta <= 2;
+        ?>
+        <tr data-nombre-f="<?= htmlspecialchars($nombre) ?>">
+            <td class="td-name">
+                <span class="initials"><?= strtoupper(substr($nombre,0,2)) ?></span>
+                <?= htmlspecialchars($nombre) ?>
+            </td>
+            <td class="td-numeric"><?= htmlspecialchars($row['celular'] ?? '—') ?></td>
+            <td class="td-amount">$<?= number_format($row['cuota'],2,'.',',') ?></td>
+            <td class="td-amount">$<?= number_format($row['saldo_actual'],2,'.',',') ?></td>
+            <td class="td-numeric" style="font-weight:500">
+                <?= $row['proximo_pago'] ? date('d/m/Y', strtotime($row['proximo_pago'])) : '—' ?>
+            </td>
+            <td class="td-numeric">
+                <?php if ($diasFalta !== null): ?>
+                <span style="font-weight:600;color:<?= $urgente ? '#ca8a04' : '#3b82f6' ?>">
+                    <?= $diasFalta === 0 ? 'Mañana' : ($diasFalta === 1 ? '1 día' : "{$diasFalta} días") ?>
+                </span>
+                <?php else: ?><span style="color:var(--text-muted)">—</span><?php endif; ?>
+            </td>
+            <td><span class="badge <?= $badge ?>"><span class="dot"></span><?= $row['estatus'] ?></span></td>
+            <td><a href="<?= APP_URL ?>/clientes/detalle?id=<?= $row['cliente_id'] ?>" class="btn-secondary" style="font-size:11px;padding:4px 10px;text-decoration:none">Ver cliente</a></td>
+        </tr>
+        <?php endforeach; ?>
+        <?php endif; ?>
+        </tbody>
+    </table>
+</div>
+
+<!-- ─── MODAL PAGO PARCIAL ───────────────────────────────────────────────── -->
 <div class="modal-overlay" id="modalParcial" onclick="if(event.target===this)cerrarModal()">
     <div class="modal">
         <div class="modal-header">
@@ -113,9 +213,11 @@ $maxCobro = $cobrador['capacidad_maxima'] ?? 200000;
             </div>
             <div style="margin-bottom:14px">
                 <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);display:block;margin-bottom:5px">Monto cobrado</label>
-                <div style="position:relative"><span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-family:var(--font-mono)">$</span>
-                <input type="number" id="mMonto" placeholder="0.00" min="1" step="0.01" oninput="onMontoChange()"
-                    style="width:100%;padding:9px 12px 9px 22px;background:var(--bg-input);border:1px solid var(--border-input);border-radius:var(--radius-sm);font-family:var(--font-mono);font-size:14px;outline:none"></div>
+                <div style="position:relative">
+                    <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-family:var(--font-mono)">$</span>
+                    <input type="number" id="mMonto" placeholder="0.00" min="1" step="0.01" oninput="onMontoChange()"
+                        style="width:100%;padding:9px 12px 9px 22px;background:var(--bg-input);border:1px solid var(--border-input);border-radius:var(--radius-sm);font-family:var(--font-mono);font-size:14px;outline:none">
+                </div>
             </div>
             <div>
                 <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);display:block;margin-bottom:5px">Nota (opcional)</label>
@@ -152,10 +254,13 @@ tr.cobro-parcial{background:#fffbeb}
 .modal-body{padding:20px}
 .modal-footer{padding:14px 20px;border-top:1px solid var(--border);background:var(--bg-hover);display:flex;gap:8px;justify-content:flex-end}
 </style>
+
 <script>
-const MAX = <?= $maxCobro ?>;
+const MAX  = <?= $maxCobro ?>;
 const cobros = {};
 let modalRow = null;
+
+// ── Acciones de cobro (solo sección de hoy) ──────────────────────────────────
 
 function toggleCheck(btn) {
     const row = btn.closest('tr');
@@ -166,16 +271,16 @@ function toggleCheck(btn) {
     row.classList.toggle('cobro-completo', !was);
     row.classList.remove('cobro-parcial');
     if (!was) { cobros[id] = {tipo:'completo', monto:pago, nota:''}; setTag(id, pago, 'completo'); }
-    else { delete cobros[id]; setTag(id, 0, null); }
+    else       { delete cobros[id]; setTag(id, 0, null); }
     updateStats();
 }
 
 function openModal(btn) {
     modalRow = btn.closest('tr');
     const id = modalRow.dataset.id, pago = parseFloat(modalRow.dataset.pago);
-    document.getElementById('mNombre').textContent   = modalRow.dataset.nombre;
-    document.getElementById('mId').textContent       = '#' + id;
-    document.getElementById('mCuota').textContent    = '$' + pago.toLocaleString();
+    document.getElementById('mNombre').textContent       = modalRow.dataset.nombre;
+    document.getElementById('mId').textContent           = '#' + id;
+    document.getElementById('mCuota').textContent        = '$' + pago.toLocaleString();
     document.getElementById('optCompletoVal').textContent = '$' + pago.toLocaleString();
     const ex = cobros[id];
     document.getElementById('mMonto').value = ex ? ex.monto : '';
@@ -186,34 +291,34 @@ function openModal(btn) {
 }
 
 function cerrarModal() { document.getElementById('modalParcial').classList.remove('open'); modalRow = null; }
-document.addEventListener('keydown', e => { if(e.key==='Escape') cerrarModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarModal(); });
 
 function selectOpt(tipo) {
-    document.getElementById('optCompleto').classList.toggle('opt-selected', tipo==='completo');
-    document.getElementById('optParcial').classList.toggle('opt-selected',  tipo==='parcial');
-    if (tipo==='completo' && modalRow) document.getElementById('mMonto').value = modalRow.dataset.pago;
-    else if (tipo==='parcial') { document.getElementById('mMonto').value=''; document.getElementById('mMonto').focus(); }
+    document.getElementById('optCompleto').classList.toggle('opt-selected', tipo === 'completo');
+    document.getElementById('optParcial').classList.toggle('opt-selected',  tipo === 'parcial');
+    if (tipo === 'completo' && modalRow) document.getElementById('mMonto').value = modalRow.dataset.pago;
+    else if (tipo === 'parcial') { document.getElementById('mMonto').value = ''; document.getElementById('mMonto').focus(); }
 }
 
 function onMontoChange() {
     const pago = modalRow ? parseFloat(modalRow.dataset.pago) : 0;
-    const m    = parseFloat(document.getElementById('mMonto').value)||0;
-    document.getElementById('optCompleto').classList.toggle('opt-selected', m===pago);
-    document.getElementById('optParcial').classList.toggle('opt-selected',  m>0&&m!==pago);
+    const m    = parseFloat(document.getElementById('mMonto').value) || 0;
+    document.getElementById('optCompleto').classList.toggle('opt-selected', m === pago);
+    document.getElementById('optParcial').classList.toggle('opt-selected',  m > 0 && m !== pago);
 }
 
 function confirmarPago() {
     if (!modalRow) return;
-    const id   = modalRow.dataset.id, pago = parseFloat(modalRow.dataset.pago);
+    const id    = modalRow.dataset.id, pago = parseFloat(modalRow.dataset.pago);
     const monto = parseFloat(document.getElementById('mMonto').value);
     const nota  = document.getElementById('mNota').value.trim();
-    if (!monto || monto <= 0) { document.getElementById('mMonto').style.borderColor='#dc2626'; return; }
-    document.getElementById('mMonto').style.borderColor='';
+    if (!monto || monto <= 0) { document.getElementById('mMonto').style.borderColor = '#dc2626'; return; }
+    document.getElementById('mMonto').style.borderColor = '';
     const tipo = monto >= pago ? 'completo' : 'parcial';
-    modalRow.querySelector('.check-btn').classList.toggle('checked', tipo==='completo');
-    modalRow.querySelector('.parcial-btn').classList.toggle('active', tipo==='parcial');
-    modalRow.classList.toggle('cobro-completo', tipo==='completo');
-    modalRow.classList.toggle('cobro-parcial',  tipo==='parcial');
+    modalRow.querySelector('.check-btn').classList.toggle('checked',  tipo === 'completo');
+    modalRow.querySelector('.parcial-btn').classList.toggle('active', tipo === 'parcial');
+    modalRow.classList.toggle('cobro-completo', tipo === 'completo');
+    modalRow.classList.toggle('cobro-parcial',  tipo === 'parcial');
     cobros[id] = { tipo, monto, nota };
     setTag(id, monto, tipo);
     updateStats();
@@ -221,23 +326,24 @@ function confirmarPago() {
 }
 
 function setTag(id, monto, tipo) {
-    const el = document.getElementById('tag-'+id);
+    const el = document.getElementById('tag-' + id);
     if (!el) return;
-    if (!tipo||monto<=0) { el.innerHTML=''; return; }
-    const bg = tipo==='completo'?'#dcfce7':'#fef9c3', tx = tipo==='completo'?'#166534':'#854d0e';
+    if (!tipo || monto <= 0) { el.innerHTML = ''; return; }
+    const bg = tipo === 'completo' ? '#dcfce7' : '#fef9c3';
+    const tx = tipo === 'completo' ? '#166534' : '#854d0e';
     el.innerHTML = `<span class="tag-badge" style="background:${bg};color:${tx}">$${parseFloat(monto).toLocaleString()}</span>`;
 }
 
 function updateStats() {
-    let total=0, comp=0, parc=0;
-    Object.values(cobros).forEach(c => { total+=c.monto; c.tipo==='completo'?comp++:parc++; });
-    document.getElementById('montoCobrado').textContent = '$'+total.toLocaleString();
-    document.getElementById('cobroFill').style.width    = Math.min(100,total/MAX*100).toFixed(1)+'%';
+    let total = 0, comp = 0, parc = 0;
+    Object.values(cobros).forEach(c => { total += c.monto; c.tipo === 'completo' ? comp++ : parc++; });
+    document.getElementById('montoCobrado').textContent = '$' + total.toLocaleString();
+    document.getElementById('cobroFill').style.width    = Math.min(100, total / MAX * 100).toFixed(1) + '%';
     document.getElementById('nCompletos').textContent   = comp;
     document.getElementById('nParciales').textContent   = parc;
     document.getElementById('footerInfo').textContent   = `Cobrado hoy: $${total.toLocaleString()} · ${comp} completos · ${parc} parciales`;
     const hay = Object.keys(cobros).length > 0;
-    document.getElementById('btnEnviar').disabled    = !hay;
+    document.getElementById('btnEnviar').disabled     = !hay;
     document.getElementById('btnEnviar').style.opacity = hay ? '1' : '.5';
 }
 
@@ -246,16 +352,36 @@ function submitCobros() {
     document.getElementById('btnEnviar').textContent = 'Enviando…';
     document.getElementById('btnEnviar').disabled = true;
     fetch('<?= APP_URL ?>/cobros/registrar', {
-        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(cobros)
-    }).then(r=>r.json()).then(d => {
-        if (d.ok) { alert('✅ '+d.registrados+' cobro(s) registrado(s) correctamente'); location.reload(); }
-        else { alert('Error: '+(d.error||'intenta de nuevo')); document.getElementById('btnEnviar').disabled=false; document.getElementById('btnEnviar').textContent='Enviar cobros'; }
-    }).catch(() => { alert('Error de conexión'); document.getElementById('btnEnviar').disabled=false; });
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(cobros)
+    }).then(r => r.json()).then(d => {
+        if (d.ok) { alert('✅ ' + d.registrados + ' cobro(s) registrado(s) correctamente'); location.reload(); }
+        else { alert('Error: ' + (d.error || 'intenta de nuevo')); document.getElementById('btnEnviar').disabled = false; document.getElementById('btnEnviar').textContent = 'Enviar cobros'; }
+    }).catch(() => { alert('Error de conexión'); document.getElementById('btnEnviar').disabled = false; });
 }
 
-let activeFilters = new Set(['Activo','Pendiente','Atrasado']);
-function togglePill(el){const s=el.dataset.status;activeFilters.has(s)?(activeFilters.delete(s),el.classList.add('inactive')):(activeFilters.add(s),el.classList.remove('inactive'));filterRows();}
-function filterRows(){const q=document.getElementById('globalSearch').value.toLowerCase();let v=0;document.querySelectorAll('#tableBody tr[data-id]').forEach(r=>{const show=activeFilters.has(r.dataset.status)&&(!q||r.textContent.toLowerCase().includes(q));r.style.display=show?'':'none';if(show)v++;});document.getElementById('tableCount').textContent=v+' clientes';}
-function resetFilters(){document.getElementById('globalSearch').value='';activeFilters=new Set(['Activo','Pendiente','Atrasado']);document.querySelectorAll('.status-pill').forEach(p=>p.classList.remove('inactive'));filterRows();}
-window.addEventListener('load',filterRows);
+// ── Filtros por sección ──────────────────────────────────────────────────────
+
+function filtrarHoy() {
+    const q = document.getElementById('searchHoy').value.toLowerCase();
+    let v = 0;
+    document.querySelectorAll('#tableBodyHoy tr[data-id]').forEach(r => {
+        const show = !q || r.textContent.toLowerCase().includes(q);
+        r.style.display = show ? '' : 'none';
+        if (show) v++;
+    });
+    document.getElementById('countHoy').textContent = v + ' préstamos';
+}
+
+function filtrarFuturos() {
+    const q = document.getElementById('searchFuturos').value.toLowerCase();
+    let v = 0;
+    document.querySelectorAll('#tableBodyFuturos tr[data-nombre-f]').forEach(r => {
+        const show = !q || r.textContent.toLowerCase().includes(q);
+        r.style.display = show ? '' : 'none';
+        if (show) v++;
+    });
+    document.getElementById('countFuturos').textContent = v + ' préstamos';
+}
 </script>

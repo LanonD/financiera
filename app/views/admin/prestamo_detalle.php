@@ -2,8 +2,36 @@
 // Variables: $prestamo, $pagos
 $pagados   = array_filter($pagos, fn($p) => $p['estatus'] === 'Pagado');
 $pendientes= array_filter($pagos, fn($p) => in_array($p['estatus'], ['Pendiente','Atrasado']));
-$total_pagado = array_sum(array_column(iterator_to_array((function() use ($pagados){ yield from $pagados; })()), 'monto_cobrado'));
-$pct = $prestamo['monto'] > 0 ? round((($prestamo['monto'] - $prestamo['saldo_actual']) / $prestamo['monto']) * 100) : 0;
+
+// ── Resumen de cobros ─────────────────────────────────────────────────────────
+// Total efectivamente cobrado (suma de monto_cobrado en pagos Pagado + Parcial)
+$cobrosEfectivos = array_filter($pagos, fn($p) => in_array($p['estatus'], ['Pagado','Parcial']));
+$totalCobrado    = array_sum(array_column(array_values($cobrosEfectivos), 'monto_cobrado'));
+
+// Principal pagado = reducción real del saldo en la BD
+$principalPagado = max(0, (float)$prestamo['monto'] - (float)$prestamo['saldo_actual']);
+
+// Interés (incluye mora) pagado = lo cobrado que NO fue a principal
+$interesMoraPagado = max(0, $totalCobrado - $principalPagado);
+
+// Interés pendiente = lo que queda acumulado en interes_acumulado
+$interesPendiente = (float)($prestamo['interes_acumulado'] ?? 0);
+
+// Progreso: sobre el total real acordado (cobrado + saldo + interés pendiente)
+$totalAcordado = $totalCobrado + (float)$prestamo['saldo_actual'] + $interesPendiente;
+$pct = $totalAcordado > 0 ? min(100, round($totalCobrado / $totalAcordado * 100)) : 0;
+
+$total_pagado = $totalCobrado; // compatibilidad con código existente
+
+// Última fecha de pago registrada
+$ultimaFechaPago = null;
+foreach (array_reverse($pagos) as $pg) {
+    if (!empty($pg['fecha_pago'])) {
+        $ultimaFechaPago = substr($pg['fecha_pago'], 0, 10);
+        break;
+    }
+}
+
 function m($v){ return '$'.number_format((float)$v,2,'.',','); }
 ?>
 <div class="content-header">
@@ -18,22 +46,84 @@ function m($v){ return '$'.number_format((float)$v,2,'.',','); }
         </div>
     </div>
     <?php
-    $badge = match($prestamo['estatus']) { 'Activo' => 'badge-activo', 'Atrasado' => 'badge-atrasado', 'Retirado' => 'badge-retirado', default => 'badge-pendiente' };
+    $badge = match($prestamo['estatus']) { 'Activo' => 'badge-activo', 'Atrasado' => 'badge-atrasado', 'Retirado' => 'badge-retirado', 'Finalizado' => 'badge-finalizado', default => 'badge-pendiente' };
     ?>
     <span class="badge <?= $badge ?>" style="font-size:13px;padding:6px 14px"><span class="dot"></span><?= $prestamo['estatus'] ?></span>
 </div>
 
 <!-- KPI cards -->
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px">
-    <?php foreach([
-        ['Saldo pendiente', m($prestamo['saldo_actual']), '#3b82f6'],
-        ['Monto original',  m($prestamo['monto']),        'var(--text-secondary)'],
-        ['Cuota',           m($prestamo['cuota']),         'var(--text-secondary)'],
-        ['Pagos realizados',count($pagados).' / '.count($pagos), '#16a34a'],
-    ] as [$label, $val, $color]): ?>
+<?php
+$totalAdeudadoKpi = (float)$prestamo['saldo_actual'] + $interesPendiente;
+
+$estatusLabel = match($prestamo['estatus']) {
+    'Activo'     => 'Activo',
+    'Atrasado'   => 'Atrasado',
+    'Finalizado' => 'Finalizado',
+    'Pendiente'  => 'Pendiente',
+    'Retirado'   => 'Retirado',
+    default      => $prestamo['estatus']
+};
+$estatusColor = match($prestamo['estatus']) {
+    'Activo'     => ['#dcfce7','#166534'],
+    'Atrasado'   => ['#fee2e2','#991b1b'],
+    'Finalizado' => ['#f1f5f9','#475569'],
+    'Pendiente'  => ['#fef9c3','#854d0e'],
+    default      => ['#f1f5f9','#64748b'],
+};
+[$estatusBg, $estatusTx] = $estatusColor;
+?>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px">
+
+    <!-- Estatus -->
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:16px 18px">
-        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:6px"><?= $label ?></div>
-        <div style="font-size:22px;font-weight:600;font-family:var(--font-mono);color:<?= $color ?>;letter-spacing:-.02em"><?= $val ?></div>
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:8px">Estatus</div>
+        <span style="display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:999px;font-size:14px;font-weight:700;background:<?= $estatusBg ?>;color:<?= $estatusTx ?>">
+            <span style="width:7px;height:7px;border-radius:50%;background:<?= $estatusTx ?>;display:inline-block"></span>
+            <?= $estatusLabel ?>
+        </span>
+    </div>
+
+    <!-- Balance total con desglose -->
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:16px 18px">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:6px">Balance total</div>
+        <div style="font-size:22px;font-weight:700;font-family:var(--font-mono);color:#dc2626;letter-spacing:-.02em"><?= m($totalAdeudadoKpi) ?></div>
+        <?php if ($interesPendiente > 0): ?>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;font-family:var(--font-mono)">
+            <?= m((float)$prestamo['saldo_actual']) ?> principal
+            + <?= m($interesPendiente) ?> interés
+        </div>
+        <?php else: ?>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Solo principal</div>
+        <?php endif; ?>
+    </div>
+
+    <!-- Último pago -->
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:16px 18px">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:6px">Fecha último pago</div>
+        <?php if ($ultimaFechaPago): ?>
+        <div style="font-size:22px;font-weight:700;font-family:var(--font-mono);color:#16a34a;letter-spacing:-.02em">
+            <?= date('d/m/Y', strtotime($ultimaFechaPago)) ?>
+        </div>
+        <?php else: ?>
+        <div style="font-size:18px;font-weight:600;color:var(--text-muted)">Sin pagos</div>
+        <?php endif; ?>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">
+            <?= count($pagados) ?> de <?= count($pagos) ?> pagos realizados
+        </div>
+    </div>
+
+</div>
+
+<!-- Segunda fila: monto original, cuota, pagos -->
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px">
+    <?php foreach([
+        ['Monto entregado', m($prestamo['monto']),          'var(--text-secondary)'],
+        ['Cuota',           m($prestamo['cuota']),           'var(--text-secondary)'],
+        ['Total cobrado',   m($totalCobrado),                '#16a34a'],
+    ] as [$label, $val, $color]): ?>
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:14px 18px">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:5px"><?= $label ?></div>
+        <div style="font-size:19px;font-weight:600;font-family:var(--font-mono);color:<?= $color ?>"><?= $val ?></div>
     </div>
     <?php endforeach; ?>
 </div>
@@ -127,8 +217,8 @@ function m($v){ return '$'.number_format((float)$v,2,'.',','); }
         <div style="height:100%;width:<?= $pct ?>%;background:var(--accent);border-radius:4px"></div>
     </div>
     <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--text-muted);font-family:var(--font-mono)">
-        <span>Pagado: <?= m($prestamo['monto'] - $prestamo['saldo_actual']) ?></span>
-        <span>Restante: <?= m($prestamo['saldo_actual']) ?></span>
+        <span>Cobrado: <?= m($totalCobrado) ?></span>
+        <span>Pendiente: <?= m($totalAdeudadoKpi) ?></span>
     </div>
 </div>
 
@@ -140,9 +230,9 @@ function m($v){ return '$'.number_format((float)$v,2,'.',','); }
             <?php foreach([
                 ['Frecuencia',   $prestamo['frecuencia']],
                 ['Num. pagos',   $prestamo['num_pagos']],
-                ['Tasa diaria',  $prestamo['tasa_diaria'].'%'],
+                ['Tasa diaria',  $prestamo['tasa_diaria'] > 0 ? $prestamo['tasa_diaria'].'%' : '— (pago fijo)'],
                 ['Fecha inicio', $prestamo['fecha_inicio'] ?? '—'],
-                ['Promotor',     $prestamo['promotor_nombre'] ?? '—'],
+                ['Creado por',   $prestamo['promotor_nombre'] ?? '—'],
                 ['Cobrador',     $prestamo['cobrador_nombre'] ?? '—'],
             ] as [$l, $v]): ?>
             <div>
@@ -150,6 +240,27 @@ function m($v){ return '$'.number_format((float)$v,2,'.',','); }
                 <div style="font-size:13px;font-weight:500;font-family:var(--font-mono);color:var(--text-primary);margin-top:2px"><?= htmlspecialchars((string)$v) ?></div>
             </div>
             <?php endforeach; ?>
+        </div>
+
+        <!-- Resumen de cobros -->
+        <div style="border-top:1px solid var(--border);padding:14px 18px">
+            <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);margin-bottom:10px">Resumen de cobros</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 20px">
+                <?php
+                $moraActiva = (int)($prestamo['interes_mora_activo'] ?? 0);
+                $resumen = [
+                    ['Total cobrado',         m($totalCobrado),         '#16a34a', 'Suma de todos los pagos registrados'],
+                    ['Principal pagado',      m($principalPagado),      '#3b82f6', 'Reducción real del capital entregado'],
+                    ['Interés + mora pagado', m($interesMoraPagado),    '#f59e0b', 'Cobros que cubrieron interés acumulado y/o cargo por mora'],
+                    ['Interés + mora pendiente', m($interesPendiente),  $interesPendiente > 0 ? '#dc2626' : '#64748b', 'Interés acumulado pendiente de cobro' . ($moraActiva ? ' (mora activa)' : '')],
+                ];
+                foreach ($resumen as [$l, $v, $clr, $tip]): ?>
+                <div title="<?= $tip ?>">
+                    <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted)"><?= $l ?></div>
+                    <div style="font-size:15px;font-weight:700;font-family:var(--font-mono);color:<?= $clr ?>;margin-top:2px"><?= $v ?></div>
+                </div>
+                <?php endforeach; ?>
+            </div>
         </div>
     </div>
     <!-- Info del cliente -->
@@ -184,7 +295,7 @@ $hayPendientes = $proximoPendiente !== null;
 
 <?php if (isset($_GET['ok'])): ?>
 <div style="background:#dcfce7;border:1px solid #bbf7d0;border-radius:var(--radius-sm);padding:10px 16px;margin-bottom:16px;font-size:13px;color:#166534;font-weight:500">
-    <?= $_GET['ok'] === 'meta' ? 'Datos generales actualizados correctamente.' : 'Condiciones actualizadas. La tabla de pagos fue recalculada correctamente.' ?>
+    <?= match($_GET['ok']) { 'meta' => 'Datos generales actualizados correctamente.', 'creado2' => 'Préstamo de pago fijo creado correctamente. Pendiente de desembolso.', default => 'Condiciones actualizadas. La tabla de pagos fue recalculada correctamente.' } ?>
 </div>
 <?php elseif (isset($_GET['error'])): ?>
 <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:var(--radius-sm);padding:10px 16px;margin-bottom:16px;font-size:13px;color:#991b1b;font-weight:500">
@@ -195,26 +306,31 @@ $hayPendientes = $proximoPendiente !== null;
 <?php if (($_SESSION['puesto'] ?? '') === 'admin'): ?>
 <!-- Editar datos generales del préstamo (solo admin) -->
 <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:16px">
-    <button onclick="toggleMeta()" id="metaToggleBtn"
-        style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:none;border:none;cursor:pointer;font-family:var(--font)">
-        <div style="display:flex;align-items:center;gap:10px">
-            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="7.5" r="6"/><path d="M7.5 4v4l2.5 1.5"/></svg>
-            <span style="font-size:13px;font-weight:600">Editar datos generales</span>
-        </div>
-        <svg id="metaChevron" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="transition:transform .2s;color:var(--text-muted)">
-            <path d="M3 5l4 4 4-4"/>
-        </svg>
-    </button>
-    <div id="metaPanel" style="display:none;border-top:1px solid var(--border);padding:20px">
+    <div style="padding:12px 18px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600;display:flex;align-items:center;gap:10px">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="7.5" r="6"/><path d="M7.5 4v4l2.5 1.5"/></svg>
+        <span>Datos generales ajustables</span>
+    </div>
+    <div style="padding:20px">
         <form method="POST" action="<?= APP_URL ?>/prestamos/meta" onsubmit="this.querySelector('[type=submit]').disabled=true">
             <input type="hidden" name="prestamo_id" value="<?= $prestamo['id'] ?>">
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:16px">
                 <div>
                     <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);display:block;margin-bottom:6px">Promotor</label>
                     <select name="promotor_id" style="width:100%;padding:9px 12px;background:var(--bg-input);border:1px solid var(--border-input);border-radius:var(--radius-sm);font-family:var(--font);font-size:13px;outline:none">
-                        <option value="0">— Sin asignar —</option>
+                        <?php
+                        $pid = $prestamo['promotor_id'];
+                        $foundP = false;
+                        foreach($promotores as $p) {
+                            if($pid == $p['id']) $foundP = true;
+                        }
+                        if(!$pid) {
+                            echo '<option value="0" selected>— Sin asignar —</option>';
+                        } else if(!$foundP) {
+                            echo '<option value="'.$pid.'" selected>'.htmlspecialchars($prestamo['promotor_nombre'] ?? 'Promotor #'.$pid).'</option>';
+                        }
+                        ?>
                         <?php foreach($promotores as $p): ?>
-                        <option value="<?= $p['id'] ?>" <?= $prestamo['promotor_id']==$p['id']?'selected':'' ?>><?= htmlspecialchars($p['nombre']) ?></option>
+                        <option value="<?= $p['id'] ?>" <?= $pid==$p['id']?'selected':'' ?>><?= htmlspecialchars($p['nombre']) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -222,8 +338,20 @@ $hayPendientes = $proximoPendiente !== null;
                     <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);display:block;margin-bottom:6px">Cobrador</label>
                     <select name="cobrador_id" style="width:100%;padding:9px 12px;background:var(--bg-input);border:1px solid var(--border-input);border-radius:var(--radius-sm);font-family:var(--font);font-size:13px;outline:none">
                         <option value="0">— Sin asignar —</option>
+                        <?php
+                        $cid = $prestamo['cobrador_id'];
+                        $foundC = false;
+                        if ($cid) {
+                            foreach($cobradores as $c) {
+                                if($cid == $c['id']) $foundC = true;
+                            }
+                            if(!$foundC) {
+                                echo '<option value="'.$cid.'" selected>'.htmlspecialchars($prestamo['cobrador_nombre'] ?? 'Cobrador #'.$cid).'</option>';
+                            }
+                        }
+                        ?>
                         <?php foreach($cobradores as $c): ?>
-                        <option value="<?= $c['id'] ?>" <?= $prestamo['cobrador_id']==$c['id']?'selected':'' ?>><?= htmlspecialchars($c['nombre']) ?></option>
+                        <option value="<?= $c['id'] ?>" <?= $cid==$c['id']?'selected':'' ?>><?= htmlspecialchars($c['nombre']) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -263,93 +391,14 @@ $hayPendientes = $proximoPendiente !== null;
 </div>
 <?php endif; ?>
 
-<!-- Editar condiciones -->
-<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:16px">
-    <button onclick="toggleEdit()" id="editToggleBtn"
-        style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:none;border:none;cursor:pointer;font-family:var(--font)">
-        <div style="display:flex;align-items:center;gap:10px">
-            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M10.5 1.5l3 3-9 9H1.5v-3l9-9z"/>
-            </svg>
-            <span style="font-size:13px;font-weight:600">Editar condiciones del préstamo</span>
-            <?php if (!$hayPendientes): ?>
-            <span style="font-size:11px;padding:2px 8px;background:#f4f5f7;border-radius:10px;color:var(--text-muted)">Sin pagos pendientes</span>
-            <?php endif; ?>
-        </div>
-        <svg id="editChevron" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="transition:transform .2s;color:var(--text-muted)">
-            <path d="M3 5l4 4 4-4"/>
-        </svg>
-    </button>
 
-    <div id="editPanel" style="display:none;border-top:1px solid var(--border);padding:20px">
-        <?php if (!$hayPendientes): ?>
-        <p style="font-size:13px;color:var(--text-muted);margin:0">No hay pagos pendientes para recalcular.</p>
-        <?php else: ?>
-        <?php
-            $pendientesCount = count(array_filter($pagos, fn($p) => in_array($p['estatus'], ['Pendiente','Atrasado'])));
-            $maxPagos        = $prestamo['frecuencia'] === 'Diario' ? 31 : 12;
-        ?>
-        <form method="POST" action="<?= APP_URL ?>/prestamos/editar">
-            <input type="hidden" name="prestamo_id" value="<?= $prestamo['id'] ?>">
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:14px;align-items:flex-end">
-                <div>
-                    <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);display:block;margin-bottom:6px">
-                        Tasa de interés diaria (%)
-                    </label>
-                    <input type="number" name="tasa_diaria"
-                        value="<?= $prestamo['tasa_diaria'] ?>"
-                        step="0.0001" min="0.0001" required
-                        style="width:100%;padding:9px 12px;background:var(--bg-input);border:1px solid var(--border-input);border-radius:var(--radius-sm);font-family:var(--font-mono);font-size:14px;outline:none">
-                    <div style="font-size:11px;color:var(--text-muted);margin-top:4px">
-                        Actual: <strong><?= $prestamo['tasa_diaria'] ?>%</strong>
-                    </div>
-                </div>
-                <div>
-                    <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);display:block;margin-bottom:6px">
-                        Fecha del próximo pago
-                    </label>
-                    <input type="date" name="fecha_primer_pago"
-                        value="<?= $proximoPendiente ?>"
-                        required
-                        style="width:100%;padding:9px 12px;background:var(--bg-input);border:1px solid var(--border-input);border-radius:var(--radius-sm);font-family:var(--font);font-size:14px;outline:none">
-                    <div style="font-size:11px;color:var(--text-muted);margin-top:4px">
-                        Frecuencia: <strong><?= $prestamo['frecuencia'] ?></strong>
-                    </div>
-                </div>
-                <div>
-                    <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);display:block;margin-bottom:6px">
-                        Núm. de pagos pendientes
-                    </label>
-                    <select name="num_pagos" required
-                        style="width:100%;padding:9px 12px;background:var(--bg-input);border:1px solid var(--border-input);border-radius:var(--radius-sm);font-family:var(--font);font-size:14px;outline:none;cursor:pointer">
-                        <?php for ($n = 1; $n <= $maxPagos; $n++): ?>
-                        <option value="<?= $n ?>" <?= $n === $pendientesCount ? 'selected' : '' ?>>
-                            <?= $n ?> pago<?= $n > 1 ? 's' : '' ?>
-                        </option>
-                        <?php endfor; ?>
-                    </select>
-                    <div style="font-size:11px;color:var(--text-muted);margin-top:4px">
-                        Actual: <strong><?= $pendientesCount ?></strong> · Máx: <strong><?= $maxPagos ?></strong>
-                    </div>
-                </div>
-                <div>
-                    <button type="submit" class="btn-primary" style="padding:9px 20px;white-space:nowrap"
-                        onclick="return confirm('¿Recalcular los pagos pendientes con las nuevas condiciones?\nLos pagos ya realizados no se modificarán.')">
-                        Recalcular pagos
-                    </button>
-                </div>
-            </div>
-        </form>
-        <?php endif; ?>
-    </div>
-</div>
 
 <!-- Historial de pagos -->
 <div class="table-card">
     <div class="table-header"><div class="table-title">Historial de pagos</div></div>
     <table>
         <thead>
-            <tr><th>#</th><th>Fecha prog.</th><th>Cuota</th><th>Capital</th><th>Interés</th><th>Saldo</th><th>Cobrado</th><th>Fecha pago</th><th>Días atraso</th><th>Estatus</th></tr>
+            <tr><th>#</th><th>Fecha prog.</th><th>Cuota</th><th>Capital</th><th>Interés</th><th>Saldo</th><th>Cobrado</th><th>Fecha pago</th><th>Días atraso</th><th>Estatus</th><th>Cobrado por</th></tr>
         </thead>
         <tbody>
         <?php foreach ($pagos as $p):
@@ -393,6 +442,7 @@ $hayPendientes = $proximoPendiente !== null;
             <td class="td-numeric"><?= $p['fecha_pago'] ? substr($p['fecha_pago'],0,10) : '—' ?></td>
             <td><?= $atrasoHtml ?></td>
             <td><span style="display:inline-flex;align-items:center;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600;background:<?= $pbg ?>;color:<?= $ptx ?>"><?= $ps ?></span></td>
+            <td style="font-size:12px;color:var(--text-muted)"><?= htmlspecialchars($p['cobrador_nombre'] ?? '') ?: '—' ?></td>
         </tr>
         <?php endforeach; ?>
         </tbody>
@@ -419,29 +469,10 @@ $hayPendientes = $proximoPendiente !== null;
                 <?= count(array_filter($pagos, fn($p) => $p['estatus'] === 'Atrasado')) ?> atrasados
             </td>
             <td class="td-amount" style="font-weight:700;color:#991b1b"><?= $tPend > 0 ? m($tPend).' pendiente' : '—' ?></td>
+            <td></td>
         </tr>
         </tfoot>
     </table>
 </div>
 
-<script>
-// Auto-open edit panel if there's a success/error from a recalculation
-<?php if (isset($_GET['ok']) || isset($_GET['error'])): ?>
-toggleEdit();
-<?php endif; ?>
 
-function toggleEdit() {
-    const panel   = document.getElementById('editPanel');
-    const chevron = document.getElementById('editChevron');
-    const open    = panel.style.display === 'none';
-    panel.style.display   = open ? 'block' : 'none';
-    chevron.style.transform = open ? 'rotate(180deg)' : '';
-}
-function toggleMeta() {
-    const panel   = document.getElementById('metaPanel');
-    const chevron = document.getElementById('metaChevron');
-    const open    = panel.style.display === 'none';
-    panel.style.display    = open ? 'block' : 'none';
-    chevron.style.transform = open ? 'rotate(180deg)' : '';
-}
-</script>

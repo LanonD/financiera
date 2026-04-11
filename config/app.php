@@ -4,6 +4,9 @@ define('APP_VERSION', '2.0.0');
 define('APP_URL',     'http://localhost/financiera_mvc/public');
 define('APP_ENV',     'development');  // cambiar a 'production' en hosting
 
+// Configurar zona horaria por defecto (ajusta según tu país si no es México)
+date_default_timezone_set('America/Mexico_City');
+
 // Roles válidos del sistema
 define('ROLES', ['admin', 'promo', 'collector', 'desembolso']);
 

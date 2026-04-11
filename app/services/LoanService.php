@@ -106,14 +106,15 @@ class LoanService {
     }
 
     // Redondear hacia abajo a la denominación de billete mexicano más cercana
+    // Se usan pasos de $50 para cuotas < $1,000 para minimizar el exceso
+    // absorbido por el primer pago.
     private static function roundDownMexican(float $amount): float {
-        if ($amount <= 0) return 0;
-        if ($amount < 50)    return floor($amount / 10)  * 10;
-        if ($amount < 200)   return floor($amount / 50)  * 50;
-        if ($amount < 1000)  return floor($amount / 100) * 100;
-        if ($amount < 5000)  return floor($amount / 200) * 200;
-        if ($amount < 10000) return floor($amount / 500) * 500;
-        return floor($amount / 1000) * 1000;
+        if ($amount <= 0)    return 0;
+        if ($amount < 100)   return floor($amount / 10)  * 10;   // $10s
+        if ($amount < 1000)  return floor($amount / 50)  * 50;   // $50s
+        if ($amount < 5000)  return floor($amount / 100) * 100;  // $100s
+        if ($amount < 20000) return floor($amount / 500) * 500;  // $500s
+        return floor($amount / 1000) * 1000;                     // $1000s
     }
 
     // ══════════════════════════════════════════════
@@ -125,9 +126,12 @@ class LoanService {
     //  No hay tasa de interés — la "ganancia" ya está incluida
     //  en la diferencia entre retornar y entregado.
     //
-    //  Cuota base  = roundDownMexican(monto_retornar / n)
-    //  Primer pago = monto_retornar − cuota_base × (n − 1)  [pago mayor/ajuste]
-    //  Resto       = cuota_base  (todos iguales y redondos)
+    //  Cuota base  = ceil(monto_retornar / n)  → redondeo arriba al peso
+    //  Pagos 1..n-1 = cuota_base  (todos iguales)
+    //  Último pago  = monto_retornar − cuota_base × (n − 1)  [ajuste mínimo]
+    //
+    //  Gap máximo garantizado = cuota_base × n − monto_retornar  (≤ n pesos)
+    //  Para préstamos típicos el gap suele ser < 10 pesos.
     // ══════════════════════════════════════════════
     public function calcularPagoFijo(
         float  $monto_entregado,
@@ -138,12 +142,13 @@ class LoanService {
     ): array {
         $dias = $this->frecuencias[$frecuencia] ?? 30;
 
-        // Cuota base redondeada hacia abajo (billete mexicano)
+        // Redondear cuota hacia ARRIBA a la decena más cercana (unidades en 0).
+        // El último pago absorbe el sobrante exacto.
         $cuotaExacta = $monto_retornar / max(1, $num_pagos);
-        $cuotaBase   = $num_pagos > 1 ? self::roundDownMexican($cuotaExacta) : $monto_retornar;
+        $cuotaBase   = $num_pagos > 1 ? (float)(ceil($cuotaExacta / 10) * 10) : (float)$monto_retornar;
 
-        // Primer pago absorbe el ajuste (pago mayor)
-        $primerPago  = round($monto_retornar - $cuotaBase * ($num_pagos - 1), 2);
+        // Último pago = lo que falta después de n-1 pagos normales
+        $ultimoPago  = max(0, round($monto_retornar - $cuotaBase * ($num_pagos - 1), 2));
 
         $tabla        = [];
         $saldo        = $monto_entregado;   // saldo de capital que va bajando
@@ -156,12 +161,13 @@ class LoanService {
         for ($i = 1; $i <= $num_pagos; $i++) {
             $fecha->modify("+{$dias} days");
 
-            $cuota_real = ($i === 1) ? $primerPago : $cuotaBase;
+            // Todos los pagos iguales excepto el último (ajuste)
+            $cuota_real = ($i === $num_pagos) ? $ultimoPago : $cuotaBase;
 
             // Distribución proporcional capital/interés por pago
             $ratio   = $monto_retornar > 0 ? $monto_entregado / $monto_retornar : 1;
             $capital = ($i === $num_pagos)
-                ? $saldo                                            // último pago: liquidar
+                ? $saldo                                            // último pago: liquidar saldo
                 : round($cuota_real * $ratio, 2);
             $interes = round($cuota_real - $capital, 2);
 
@@ -186,8 +192,8 @@ class LoanService {
             'monto_entregado' => $monto_entregado,
             'monto_retornar'  => $monto_retornar,
             'ganancia'        => round($monto_retornar - $monto_entregado, 2),
-            'primer_pago'     => $primerPago,
             'cuota_base'      => $cuotaBase,
+            'ultimo_pago'     => $ultimoPago,
             'num_pagos'       => $num_pagos,
             'frecuencia'      => $frecuencia,
             'tabla'           => $tabla,
