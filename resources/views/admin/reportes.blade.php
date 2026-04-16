@@ -13,21 +13,40 @@ $rangoLabel = ($fecha_desde === $fecha_hasta)
     ? \Carbon\Carbon::parse($fecha_desde)->format('d/m/Y')
     : \Carbon\Carbon::parse($fecha_desde)->format('d/m/Y') . ' — ' . \Carbon\Carbon::parse($fecha_hasta)->format('d/m/Y');
 
-// Build days map for chart
+// Build days map for chart (cobros + enviados per day)
 $diasMap = [];
 $cur = strtotime($fecha_desde);
 $end = strtotime($fecha_hasta);
 while ($cur <= $end) {
-    $diasMap[date('Y-m-d', $cur)] = ['total' => 0, 'principal' => 0, 'interes_dia' => 0];
+    $diasMap[date('Y-m-d', $cur)] = ['total' => 0, 'principal' => 0, 'interes_dia' => 0, 'enviado' => 0];
     $cur = strtotime('+1 day', $cur);
 }
 foreach ($cobros_rango as $row) {
     $dia = $row->dia ?? null;
     if ($dia && isset($diasMap[$dia])) {
-        $diasMap[$dia] = ['total' => $row->total, 'principal' => $row->principal, 'interes_dia' => $row->interes_dia];
+        $diasMap[$dia]['total']       = $row->total;
+        $diasMap[$dia]['principal']   = $row->principal;
+        $diasMap[$dia]['interes_dia'] = $row->interes_dia;
     }
 }
-$maxVal = max(1, max(array_column($diasMap, 'total') ?: [1]));
+foreach ($enviados_por_dia as $dia => $row) {
+    if (isset($diasMap[$dia])) {
+        $diasMap[$dia]['enviado'] = $row->total_enviado;
+    }
+}
+$maxVal = max(1,
+    max(array_column($diasMap, 'total') ?: [1]),
+    max(array_column($diasMap, 'enviado') ?: [1])
+);
+
+// Flujo del período
+$totalEnviado   = (float)($enviado_rango->total_enviado   ?? 0);
+$totalAcordado  = (float)($enviado_rango->total_acordado  ?? 0);
+$gananciEsp     = (float)($enviado_rango->ganancia_esperada ?? 0);
+$numPrestPer    = (int)($enviado_rango->num_prestamos ?? 0);
+$totalCobradoPer= (float)($resumen->total_monto ?? 0);
+$netoFlujo      = $totalCobradoPer - $totalEnviado;
+$pctRecuperado  = $totalEnviado > 0 ? min(100, round($totalCobradoPer / $totalEnviado * 100)) : 0;
 
 $totalCobros = max(1, (int)($resumen->total_cobros ?? 0));
 $aTiempoNum  = (int)($resumen->a_tiempo_num ?? 0);
@@ -117,7 +136,12 @@ $atajos = [
 </div>
 
 {{-- KPIs --}}
-<div class="rpt-kpi-grid">
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:16px">
+    <div class="rpt-kpi">
+        <div class="rpt-kpi-label">Enviado en período</div>
+        <div class="rpt-kpi-value" style="color:#dc2626">{{ fmtM($totalEnviado) }}</div>
+        <div class="rpt-kpi-sub">{{ $numPrestPer }} préstamo(s) iniciado(s)</div>
+    </div>
     <div class="rpt-kpi">
         <div class="rpt-kpi-label">Cobrado en período</div>
         <div class="rpt-kpi-value" style="color:#16a34a">{{ fmtM($resumen->total_monto ?? 0) }}</div>
@@ -137,6 +161,96 @@ $atajos = [
         <div class="rpt-kpi-label">Interés acumulado total</div>
         <div class="rpt-kpi-value" style="color:#f59e0b">{{ fmtM($cartera->interes_total ?? 0) }}</div>
         <div class="rpt-kpi-sub">Deuda total: {{ fmtM($cartera->deuda_total ?? 0) }}</div>
+    </div>
+</div>
+
+{{-- Flujo de capital del período --}}
+<div class="rpt-card" style="margin-bottom:16px">
+    <div class="rpt-card-header">
+        Flujo de capital del período
+        <span style="font-size:11px;color:var(--text2);font-weight:400">{{ $rangoLabel }}</span>
+    </div>
+    <div class="rpt-card-body" style="padding:20px 24px">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0;border:1px solid var(--border);border-radius:10px;overflow:hidden">
+
+            {{-- Salida --}}
+            <div style="padding:18px 20px;border-right:1px solid var(--border);background:#fff5f5">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+                    <div style="width:32px;height:32px;border-radius:8px;background:#fee2e2;display:flex;align-items:center;justify-content:center">
+                        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round"><path d="M8 2v12M4 10l4 4 4-4"/></svg>
+                    </div>
+                    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#dc2626">Dinero enviado</div>
+                </div>
+                <div style="font-size:26px;font-weight:800;font-family:monospace;color:#dc2626;letter-spacing:-.02em">{{ fmtM($totalEnviado) }}</div>
+                <div style="font-size:11px;color:#b91c1c;margin-top:4px">{{ $numPrestPer }} préstamo(s) · efectivo a la calle</div>
+                <div style="margin-top:8px;font-size:11px;color:var(--text3)">
+                    Total acordado: <span style="font-family:monospace;font-weight:600;color:var(--text2)">{{ fmtM($totalAcordado) }}</span>
+                </div>
+                <div style="font-size:11px;color:var(--text3)">
+                    Ganancia esperada: <span style="font-family:monospace;font-weight:600;color:#7c3aed">{{ fmtM($gananciEsp) }}</span>
+                </div>
+            </div>
+
+            {{-- Entrada --}}
+            <div style="padding:18px 20px;border-right:1px solid var(--border);background:#f0fdf4">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+                    <div style="width:32px;height:32px;border-radius:8px;background:#dcfce7;display:flex;align-items:center;justify-content:center">
+                        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round"><path d="M8 14V2M4 6l4-4 4 4"/></svg>
+                    </div>
+                    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#16a34a">Dinero cobrado</div>
+                </div>
+                <div style="font-size:26px;font-weight:800;font-family:monospace;color:#16a34a;letter-spacing:-.02em">{{ fmtM($totalCobradoPer) }}</div>
+                <div style="font-size:11px;color:#166534;margin-top:4px">{{ (int)($resumen->total_cobros ?? 0) }} cobro(s) en el período</div>
+                <div style="margin-top:8px;font-size:11px;color:var(--text3)">
+                    Principal: <span style="font-family:monospace;font-weight:600;color:#2563eb">{{ fmtM($resumen->total_capital ?? 0) }}</span>
+                </div>
+                <div style="font-size:11px;color:var(--text3)">
+                    Interés cobrado: <span style="font-family:monospace;font-weight:600;color:#d97706">{{ fmtM($resumen->total_interes ?? 0) }}</span>
+                </div>
+            </div>
+
+            {{-- Neto --}}
+            <div style="padding:18px 20px;border-right:1px solid var(--border);background:{{ $netoFlujo >= 0 ? '#f0fdf4' : '#fff5f5' }}">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+                    <div style="width:32px;height:32px;border-radius:8px;background:{{ $netoFlujo >= 0 ? '#dcfce7' : '#fee2e2' }};display:flex;align-items:center;justify-content:center">
+                        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="{{ $netoFlujo >= 0 ? '#16a34a' : '#dc2626' }}" stroke-width="2" stroke-linecap="round"><path d="M2 8h12M9 4l4 4-4 4"/></svg>
+                    </div>
+                    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:{{ $netoFlujo >= 0 ? '#16a34a' : '#dc2626' }}">Neto del período</div>
+                </div>
+                <div style="font-size:26px;font-weight:800;font-family:monospace;color:{{ $netoFlujo >= 0 ? '#16a34a' : '#dc2626' }};letter-spacing:-.02em">
+                    {{ $netoFlujo >= 0 ? '+' : '' }}{{ fmtM($netoFlujo) }}
+                </div>
+                <div style="font-size:11px;color:var(--text3);margin-top:4px">cobrado − enviado en el período</div>
+                <div style="margin-top:10px;height:5px;background:#f3f4f6;border-radius:3px;overflow:hidden">
+                    <div style="height:100%;width:{{ $pctRecuperado }}%;background:{{ $pctRecuperado >= 100 ? '#16a34a' : ($pctRecuperado >= 50 ? '#f59e0b' : '#dc2626') }};border-radius:3px;transition:width .4s"></div>
+                </div>
+                <div style="font-size:10px;color:var(--text3);margin-top:3px">{{ $pctRecuperado }}% recuperado del enviado</div>
+            </div>
+
+            {{-- Ratio / resumen --}}
+            <div style="padding:18px 20px;background:#fafbff">
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:14px">Indicadores</div>
+                <div style="display:flex;flex-direction:column;gap:10px">
+                    <div>
+                        <div style="font-size:10px;color:var(--text3);margin-bottom:2px">Retorno esperado (ROI)</div>
+                        <div style="font-size:15px;font-weight:700;font-family:monospace;color:#7c3aed">
+                            @php $roi = $totalEnviado > 0 ? round(($totalAcordado - $totalEnviado) / $totalEnviado * 100, 1) : 0; @endphp
+                            {{ $roi }}%
+                        </div>
+                    </div>
+                    <div>
+                        <div style="font-size:10px;color:var(--text3);margin-bottom:2px">% cobrado vs cartera activa</div>
+                        @php $vsCartera = (float)($cartera->saldo_total ?? 0); $pctVsCartera = $vsCartera > 0 ? round($totalCobradoPer / $vsCartera * 100, 1) : 0; @endphp
+                        <div style="font-size:15px;font-weight:700;font-family:monospace;color:#2563eb">{{ $pctVsCartera }}%</div>
+                    </div>
+                    <div>
+                        <div style="font-size:10px;color:var(--text3);margin-bottom:2px">Préstamos en cartera activa</div>
+                        <div style="font-size:15px;font-weight:700;font-family:monospace;color:var(--text)">{{ (int)($cartera->num_prestamos ?? 0) }}</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
     </div>
 </div>
 
@@ -195,21 +309,33 @@ $atajos = [
         <div class="rpt-card-body">
             <div class="decomp-row">
                 <span>Cobrado hoy</span>
-                <div>
+                <div style="text-align:right">
                     <span style="font-family:monospace;font-weight:700;color:#16a34a">{{ fmtM($cobros_hoy->total ?? 0) }}</span>
                     <div style="font-size:11px;color:var(--text3)">{{ (int)($cobros_hoy->num ?? 0) }} cobro(s)</div>
                 </div>
             </div>
             <div class="decomp-row">
-                <span>Desembolsado hoy</span>
-                <div>
-                    <span style="font-family:monospace;font-weight:700;color:#3b82f6">{{ fmtM($desembolsos_hoy->total ?? 0) }}</span>
+                <span>Enviado hoy</span>
+                <div style="text-align:right">
+                    <span style="font-family:monospace;font-weight:700;color:#dc2626">{{ fmtM($desembolsos_hoy->total ?? 0) }}</span>
                     <div style="font-size:11px;color:var(--text3)">{{ (int)($desembolsos_hoy->num ?? 0) }} préstamo(s)</div>
+                </div>
+            </div>
+            @php
+                $netoHoy = (float)($cobros_hoy->total ?? 0) - (float)($desembolsos_hoy->total ?? 0);
+            @endphp
+            <div class="decomp-row">
+                <span>Neto del día</span>
+                <div style="text-align:right">
+                    <span style="font-family:monospace;font-weight:700;color:{{ $netoHoy >= 0 ? '#16a34a' : '#dc2626' }}">
+                        {{ $netoHoy >= 0 ? '+' : '' }}{{ fmtM($netoHoy) }}
+                    </span>
+                    <div style="font-size:11px;color:var(--text3)">cobrado − enviado</div>
                 </div>
             </div>
             <div class="decomp-row" style="border-bottom:none">
                 <span>Interés pend. cartera</span>
-                <div>
+                <div style="text-align:right">
                     <span style="font-family:monospace;font-weight:700;color:#f59e0b">{{ fmtM($cartera->interes_total ?? 0) }}</span>
                     <div style="font-size:11px;color:var(--text3)">acumulado sin cobrar</div>
                 </div>
@@ -222,15 +348,33 @@ $atajos = [
 <div class="rpt-grid-2">
     <div class="rpt-card">
         <div class="rpt-card-header">
-            Cobros por día
-            <span style="font-size:11px;color:var(--text2);font-weight:400">{{ $rangoLabel }}</span>
+            Cobros y desembolsos por día
+            <div style="display:flex;align-items:center;gap:12px">
+                <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);font-weight:400">
+                    <span style="width:9px;height:9px;border-radius:2px;background:#93c5fd;display:inline-block"></span>Cobrado
+                </span>
+                <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);font-weight:400">
+                    <span style="width:9px;height:9px;border-radius:2px;background:#fca5a5;display:inline-block"></span>Enviado
+                </span>
+            </div>
         </div>
         <div class="rpt-card-body" style="padding-top:20px">
             <div class="chart-bars">
                 @foreach($diasMap as $fecha => $data)
-                <div class="chart-bar-wrap" title="{{ \Carbon\Carbon::parse($fecha)->format('d/m') }} · {{ fmtM($data['total']) }}">
-                    <div style="font-size:9px;color:var(--text3);font-family:monospace;text-align:center">{{ $data['total'] > 0 ? '$'.number_format((float)$data['total']/1000,0).'k' : '' }}</div>
-                    <div style="width:100%;height:{{ $maxVal > 0 ? max(2, round((float)$data['total']/$maxVal*80)) : 2 }}px;border-radius:3px 3px 0 0;background:{{ $fecha === $hoy ? 'var(--accent)' : '#93c5fd' }}"></div>
+                @php
+                    $hCobro   = $maxVal > 0 ? max(2, round((float)$data['total']   / $maxVal * 80)) : 2;
+                    $hEnviado = $maxVal > 0 ? max(2, round((float)$data['enviado'] / $maxVal * 80)) : 2;
+                    $labelVal = max($data['total'], $data['enviado']);
+                @endphp
+                <div class="chart-bar-wrap" title="{{ \Carbon\Carbon::parse($fecha)->format('d/m') }} · Cobrado: {{ fmtM($data['total']) }} · Enviado: {{ fmtM($data['enviado']) }}">
+                    <div style="font-size:9px;color:var(--text3);font-family:monospace;text-align:center">
+                        {{ $labelVal > 0 ? '$'.number_format((float)$labelVal/1000,0).'k' : '' }}
+                    </div>
+                    {{-- Dual bars: cobrado (blue) + enviado (red) side by side --}}
+                    <div style="display:flex;align-items:flex-end;gap:1px;width:100%">
+                        <div style="flex:1;height:{{ $hCobro }}px;border-radius:3px 3px 0 0;background:{{ $fecha === $hoy ? 'var(--accent)' : '#93c5fd' }}"></div>
+                        <div style="flex:1;height:{{ $hEnviado }}px;border-radius:3px 3px 0 0;background:{{ $fecha === $hoy ? '#f97316' : '#fca5a5' }}"></div>
+                    </div>
                     <div class="chart-day">{{ \Carbon\Carbon::parse($fecha)->format('d/m') }}</div>
                 </div>
                 @endforeach

@@ -51,6 +51,24 @@ class ReporteController extends Controller
             ->selectRaw("COUNT(*) as num, COALESCE(SUM(monto_entregado),0) as total")
             ->first();
 
+        // ── Dinero enviado en el período ─────────────────────────────────────
+        // Usa fecha_inicio como referencia de cuándo salió el dinero a la calle
+        $enviado_rango = Prestamo::whereBetween('fecha_inicio', [$fecha_desde, $fecha_hasta])
+            ->selectRaw("
+                COUNT(*) as num_prestamos,
+                COALESCE(SUM(monto_entregado), 0) as total_enviado,
+                COALESCE(SUM(monto), 0) as total_acordado,
+                COALESCE(SUM(monto - monto_entregado), 0) as ganancia_esperada
+            ")->first();
+
+        // ── Enviados por día (para el chart) ─────────────────────────────────
+        $enviados_por_dia = Prestamo::whereBetween('fecha_inicio', [$fecha_desde, $fecha_hasta])
+            ->selectRaw("DATE(fecha_inicio) as dia, COALESCE(SUM(monto_entregado),0) as total_enviado")
+            ->groupBy('dia')
+            ->orderBy('dia')
+            ->get()
+            ->keyBy('dia');
+
         // ── Cobros por día en rango ──────────────────────────────────────────
         $cobros_rango = Pago::whereBetween('fecha_pago', [$fecha_desde, $fecha_hasta])
             ->whereIn('estatus', ['Pagado', 'Parcial'])
@@ -107,6 +125,7 @@ class ReporteController extends Controller
 
         return view('admin.reportes', compact(
             'resumen', 'cartera', 'cobros_hoy', 'desembolsos_hoy',
+            'enviado_rango', 'enviados_por_dia',
             'cobros_rango', 'cobros_por_cobrador', 'por_estatus', 'atrasados',
             'fecha_desde', 'fecha_hasta'
         ));
