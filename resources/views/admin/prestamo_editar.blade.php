@@ -48,6 +48,14 @@
                 @endforeach
             </select>
         </div>
+        <div style="margin-bottom:16px">
+            <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:5px">Interés diario por mora ($)</label>
+            <input type="number" name="interes_diario" step="0.01" min="0"
+                value="{{ number_format((float)$prestamo->interes_diario, 2, '.', '') }}"
+                style="width:100%;padding:9px 12px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none"
+                placeholder="0.00">
+            <p style="font-size:11px;color:var(--text3);margin-top:4px">Monto que se suma cada día cuando la mora está activa. Dejar en 0 para no cobrar mora.</p>
+        </div>
         <button type="submit" class="btn btn-primary" style="width:100%">Guardar cambios</button>
     </form>
 </div>

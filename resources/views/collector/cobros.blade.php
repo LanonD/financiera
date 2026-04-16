@@ -131,9 +131,11 @@ $cobrosFuturos= $prestamos->filter(fn($p) => $p->proximo_pago === null || $p->pr
             $badgeClass = match($row->estatus) { 'Activo' => 'badge-green', 'Atrasado' => 'badge-red', default => 'badge-yellow' };
             $nombre     = $row->cliente?->nombre ?? '—';
         @endphp
+        @php $mora = (float)($row->interes_acumulado ?? 0); @endphp
         <tr data-status="{{ $row->estatus }}"
             data-id="{{ $row->id }}"
             data-pago="{{ $row->cuota }}"
+            data-mora="{{ number_format($mora, 2, '.', '') }}"
             data-nombre="{{ $nombre }}">
             <td>
                 <div style="display:flex;align-items:center;justify-content:center;gap:6px">
@@ -153,7 +155,12 @@ $cobrosFuturos= $prestamos->filter(fn($p) => $p->proximo_pago === null || $p->pr
                 </div>
             </td>
             <td style="font-family:monospace;font-size:12px">{{ $row->cliente?->celular ?? '—' }}</td>
-            <td style="text-align:right;font-family:monospace;font-size:13px;font-weight:600">${{ number_format($row->cuota,2,'.',',') }}</td>
+            <td style="text-align:right;font-family:monospace;font-size:13px;font-weight:600">
+                ${{ number_format($row->cuota,2,'.',',') }}
+                @if($mora > 0)
+                <div style="font-size:10px;color:#dc2626;font-weight:700;margin-top:1px">+${{ number_format($mora,2,'.',',') }} mora</div>
+                @endif
+            </td>
             <td style="text-align:right;font-family:monospace;font-size:13px">${{ number_format($row->saldo_actual,2,'.',',') }}</td>
             <td style="font-weight:600;color:{{ $fechaColor }};font-size:12px">{{ $fechaTxt }}</td>
             <td><span class="badge {{ $badgeClass }}">{{ $row->estatus }}</span></td>
@@ -229,7 +236,7 @@ $cobrosFuturos= $prestamos->filter(fn($p) => $p->proximo_pago === null || $p->pr
             <td>
                 @if($diasFalta !== null)
                 <span style="font-weight:600;color:{{ $urgente ? '#ca8a04' : '#3b82f6' }};font-size:12px">
-                    {{ $diasFalta === 0 ? 'Mañana' : ($diasFalta === 1 ? '1 día' : "{$diasFalta} días") }}
+                    {{ $diasFalta === 0 ? 'Hoy' : ($diasFalta === 1 ? 'Mañana' : "{$diasFalta} días") }}
                 </span>
                 @else
                 <span style="color:var(--text3)">—</span>
@@ -255,15 +262,22 @@ $cobrosFuturos= $prestamos->filter(fn($p) => $p->proximo_pago === null || $p->pr
             <button class="modal-close" onclick="cerrarModal()">×</button>
         </div>
         <div class="modal-body">
-            <div style="background:#f9fafb;border-radius:6px;padding:12px 14px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div style="background:#f9fafb;border-radius:6px;padding:12px 14px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
                 <div>
-                    <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Préstamo ID</div>
+                    <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Préstamo</div>
                     <div style="font-size:13px;font-weight:600;font-family:monospace" id="mId">—</div>
                 </div>
                 <div>
-                    <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Cuota esperada</div>
+                    <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Cuota</div>
                     <div style="font-size:13px;font-weight:600;font-family:monospace" id="mCuota">—</div>
                 </div>
+                <div id="mMoraBox" style="display:none">
+                    <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#dc2626">Mora</div>
+                    <div style="font-size:13px;font-weight:600;font-family:monospace;color:#dc2626" id="mMoraVal">—</div>
+                </div>
+            </div>
+            <div id="mTotalBox" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:8px 14px;margin-bottom:12px;font-size:12px;color:#991b1b;font-weight:600">
+                Total esperado (cuota + mora): <span id="mTotal" style="font-family:monospace">—</span>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
                 <div id="optCompleto" onclick="selectOpt('completo')" style="padding:10px 14px;border:1.5px solid var(--border);border-radius:6px;cursor:pointer;text-align:center;transition:all .15s">
@@ -303,25 +317,46 @@ const cobros = {};
 let modalRow = null;
 
 function toggleCheck(btn) {
-    const row = btn.closest('tr');
-    const id  = row.dataset.id, pago = parseFloat(row.dataset.pago);
-    const was = btn.classList.contains('checked');
+    const row  = btn.closest('tr');
+    const id   = row.dataset.id;
+    const pago = parseFloat(row.dataset.pago);
+    const mora = parseFloat(row.dataset.mora || '0');
+    const total = pago + mora;  // always collect cuota + mora when ticking "complete"
+    const was  = btn.classList.contains('checked');
     if (cobros[id]) { row.querySelector('.parcial-btn').classList.remove('active'); delete cobros[id]; }
     btn.classList.toggle('checked', !was);
     row.classList.toggle('cobro-completo', !was);
     row.classList.remove('cobro-parcial');
-    if (!was) { cobros[id] = {tipo:'completo', monto:pago, nota:''}; setTag(id, pago, 'completo'); }
+    if (!was) { cobros[id] = {tipo:'completo', monto:total, nota:''}; setTag(id, total, 'completo'); }
     else       { delete cobros[id]; setTag(id, 0, null); }
     updateStats();
 }
 
 function openModal(btn) {
     modalRow = btn.closest('tr');
-    const id = modalRow.dataset.id, pago = parseFloat(modalRow.dataset.pago);
-    document.getElementById('mNombre').textContent       = modalRow.dataset.nombre;
-    document.getElementById('mId').textContent           = '#' + id;
-    document.getElementById('mCuota').textContent        = '$' + pago.toLocaleString('es-MX');
-    document.getElementById('optCompletoVal').textContent = '$' + pago.toLocaleString('es-MX');
+    const id   = modalRow.dataset.id;
+    const pago = parseFloat(modalRow.dataset.pago);
+    const mora = parseFloat(modalRow.dataset.mora || '0');
+    const total = pago + mora;
+
+    document.getElementById('mNombre').textContent        = modalRow.dataset.nombre;
+    document.getElementById('mId').textContent            = '#' + id;
+    document.getElementById('mCuota').textContent         = '$' + pago.toLocaleString('es-MX', {minimumFractionDigits:2});
+    document.getElementById('optCompletoVal').textContent = '$' + total.toLocaleString('es-MX', {minimumFractionDigits:2});
+
+    // Show mora details if applicable
+    const moraBox  = document.getElementById('mMoraBox');
+    const totalBox = document.getElementById('mTotalBox');
+    if (mora > 0) {
+        document.getElementById('mMoraVal').textContent = '$' + mora.toLocaleString('es-MX', {minimumFractionDigits:2});
+        document.getElementById('mTotal').textContent   = '$' + total.toLocaleString('es-MX', {minimumFractionDigits:2});
+        moraBox.style.display  = '';
+        totalBox.style.display = '';
+    } else {
+        moraBox.style.display  = 'none';
+        totalBox.style.display = 'none';
+    }
+
     const ex = cobros[id];
     document.getElementById('mMonto').value = ex ? ex.monto : '';
     document.getElementById('mNota').value  = ex ? (ex.nota||'') : '';
@@ -333,28 +368,39 @@ function openModal(btn) {
 function cerrarModal() { document.getElementById('modalParcial').classList.remove('open'); modalRow = null; }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarModal(); });
 
+function getModalTotal() {
+    if (!modalRow) return 0;
+    return parseFloat(modalRow.dataset.pago) + parseFloat(modalRow.dataset.mora || '0');
+}
+
 function selectOpt(tipo) {
     document.getElementById('optCompleto').classList.toggle('opt-selected', tipo === 'completo');
     document.getElementById('optParcial').classList.toggle('opt-selected',  tipo === 'parcial');
-    if (tipo === 'completo' && modalRow) document.getElementById('mMonto').value = modalRow.dataset.pago;
-    else if (tipo === 'parcial') { document.getElementById('mMonto').value = ''; document.getElementById('mMonto').focus(); }
+    if (tipo === 'completo' && modalRow) {
+        // Pre-fill with cuota + mora so collector collects the right total
+        document.getElementById('mMonto').value = getModalTotal().toFixed(2);
+    } else if (tipo === 'parcial') {
+        document.getElementById('mMonto').value = '';
+        document.getElementById('mMonto').focus();
+    }
 }
 
 function onMontoChange() {
-    const pago = modalRow ? parseFloat(modalRow.dataset.pago) : 0;
-    const m    = parseFloat(document.getElementById('mMonto').value) || 0;
-    document.getElementById('optCompleto').classList.toggle('opt-selected', m === pago);
-    document.getElementById('optParcial').classList.toggle('opt-selected',  m > 0 && m !== pago);
+    const total = getModalTotal();
+    const m     = parseFloat(document.getElementById('mMonto').value) || 0;
+    document.getElementById('optCompleto').classList.toggle('opt-selected', Math.abs(m - total) < 0.01);
+    document.getElementById('optParcial').classList.toggle('opt-selected',  m > 0 && Math.abs(m - total) >= 0.01);
 }
 
 function confirmarPago() {
     if (!modalRow) return;
-    const id    = modalRow.dataset.id, pago = parseFloat(modalRow.dataset.pago);
+    const id    = modalRow.dataset.id;
+    const total = getModalTotal();   // cuota + mora
     const monto = parseFloat(document.getElementById('mMonto').value);
     const nota  = document.getElementById('mNota').value.trim();
     if (!monto || monto <= 0) { document.getElementById('mMonto').style.borderColor = '#dc2626'; return; }
     document.getElementById('mMonto').style.borderColor = '';
-    const tipo = monto >= pago ? 'completo' : 'parcial';
+    const tipo = monto >= total ? 'completo' : 'parcial';
     modalRow.querySelector('.check-btn').classList.toggle('checked',  tipo === 'completo');
     modalRow.querySelector('.parcial-btn').classList.toggle('active', tipo === 'parcial');
     modalRow.classList.toggle('cobro-completo', tipo === 'completo');

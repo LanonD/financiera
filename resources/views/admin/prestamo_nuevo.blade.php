@@ -63,8 +63,19 @@
     </div>
 </div>
 
+@php
+$activoMap = $clientesConPrestamo->toArray();
+@endphp
+
 <form method="POST" action="{{ route('prestamos.store') }}" id="formNuevo" onsubmit="return validarFormulario()">
 @csrf
+
+@if($errors->has('cliente_id'))
+<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:12px 16px;margin-bottom:20px;display:flex;align-items:flex-start;gap:10px">
+    <svg viewBox="0 0 20 20" fill="#ef4444" style="width:18px;height:18px;flex-shrink:0;margin-top:1px"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>
+    <span style="font-size:13px;color:#991b1b;font-weight:500">{{ $errors->first('cliente_id') }}</span>
+</div>
+@endif
 <div class="np-grid">
 
     {{-- Left panel: form --}}
@@ -89,13 +100,21 @@
                         @if($clientes->isEmpty())
                         <div class="cs-empty">No hay clientes registrados. <a href="{{ route('clientes.create') }}" style="color:var(--accent)">Crear cliente</a></div>
                         @else
-                        @foreach($clientes as $c)
-                        <div class="cs-item"
+                         @foreach($clientes as $c)
+                        @php $bloqueado = array_key_exists($c->id, $activoMap); @endphp
+                        <div class="cs-item {{ $bloqueado ? 'cs-item-bloqueado' : '' }}"
                              data-id="{{ $c->id }}"
                              data-nombre="{{ $c->nombre }}"
                              data-celular="{{ $c->celular ?? '' }}"
+                             data-bloqueado="{{ $bloqueado ? '1' : '0' }}"
+                             data-promotor="{{ $bloqueado ? $activoMap[$c->id] : '' }}"
                              onclick="csSelect(this)">
-                            <div class="cs-item-name">{{ $c->nombre }}</div>
+                            <div style="display:flex;align-items:center;justify-content:space-between">
+                                <div class="cs-item-name">{{ $c->nombre }}</div>
+                                @if($bloqueado)
+                                <span style="font-size:10px;background:#fee2e2;color:#991b1b;border-radius:4px;padding:1px 6px;font-weight:700">Activo</span>
+                                @endif
+                            </div>
                             <div class="cs-item-sub">{{ $c->celular ?? '—' }} · {{ $c->promotor?->nombre ?? '—' }}</div>
                         </div>
                         @endforeach
@@ -109,6 +128,11 @@
                         <button type="button" class="cs-clear" onclick="csClear()" title="Cambiar cliente">×</button>
                     </div>
                     <input type="hidden" name="cliente_id" id="csClienteId" required>
+                </div>
+                <!-- Active loan warning -->
+                <div id="activeLoanWarning" style="display:none;margin-top:10px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:10px 14px">
+                    <div style="font-size:12px;font-weight:700;color:#991b1b;margin-bottom:2px">⚠ Cliente con préstamo activo</div>
+                    <div id="activeLoanMsg" style="font-size:12px;color:#7f1d1d"></div>
                 </div>
                 <div class="np-hint">Solo clientes activos asignados a tu cartera</div>
             </div>
@@ -307,14 +331,29 @@ function csSelect(el) {
     document.getElementById('csSelectedName').textContent = el.dataset.nombre;
     document.getElementById('csSelectedSub').textContent  = el.dataset.celular || '';
     document.getElementById('csList').classList.remove('open');
+
+    // Show/hide active loan warning
+    const bloqueado = el.dataset.bloqueado === '1';
+    const warn = document.getElementById('activeLoanWarning');
+    const msg  = document.getElementById('activeLoanMsg');
+    if (bloqueado) {
+        msg.textContent = `Este cliente ya tiene un préstamo activo con el promotor "${el.dataset.promotor}". No se puede crear otro mientras haya uno en curso.`;
+        warn.style.display = '';
+    } else {
+        warn.style.display = 'none';
+    }
+    window._clienteBloqueado = bloqueado;
+
     checkCanSubmit();
 }
 function csClear() {
     clienteSeleccionado = null;
+    window._clienteBloqueado = false;
     document.getElementById('csClienteId').value = '';
     document.getElementById('csSearch').style.display = '';
     document.getElementById('csSearch').value = '';
     document.getElementById('csSelected').classList.remove('show');
+    document.getElementById('activeLoanWarning').style.display = 'none';
     csFilter(); checkCanSubmit();
 }
 
@@ -401,7 +440,8 @@ function checkCanSubmit() {
     const numPagos        = parseInt(document.getElementById('inNumPagos').value)          || 0;
     const clienteOk       = !!document.getElementById('csClienteId').value;
     const fechaPrimerCobro= document.getElementById('inFechaPrimerCobro').value;
-    const ok = clienteOk && entregado > 0 && retornar >= entregado && numPagos > 0 && !!fechaPrimerCobro;
+    const bloqueado       = !!window._clienteBloqueado;
+    const ok = clienteOk && !bloqueado && entregado > 0 && retornar >= entregado && numPagos > 0 && !!fechaPrimerCobro;
     const btn = document.getElementById('btnCrear');
     btn.disabled = !ok;
     btn.style.opacity = ok ? '1' : '.5';

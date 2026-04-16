@@ -20,7 +20,7 @@ class ClienteController extends Controller
             $q->whereIn('estatus', ['Activo', 'Atrasado']);
         }]);
 
-        if ($puesto === 'promo') {
+        if (in_array('promo', $user->getAllRoles()) && !in_array('admin', $user->getAllRoles())) {
             $empleado = $user->empleado;
             if ($empleado) {
                 $query->where('promotor_id', $empleado->id);
@@ -29,34 +29,37 @@ class ClienteController extends Controller
 
         $clientes = $query->where('activo', true)->orderBy('nombre')->get();
 
-        $promotores = Empleado::where('puesto', 'promo')->where('activo', true)->get();
+        $promotores = Empleado::whereJsonContains('roles', 'promo')->where('activo', true)->get();
 
         return view('admin.clientes', compact('clientes', 'promotores', 'puesto'));
     }
 
     public function create()
     {
-        $promotores = Empleado::where('puesto', 'promo')->where('activo', true)->get();
+        $promotores = Empleado::whereJsonContains('roles', 'promo')->where('activo', true)->get();
         return view('admin.cliente_crear', compact('promotores'));
     }
 
     public function store(Request $request)
     {
         $user   = Auth::user();
-        $puesto = $user->puesto;
+        $isAdmin = in_array('admin', $user->getAllRoles());
+        $isPromo = in_array('promo', $user->getAllRoles()) && !$isAdmin;
 
         $data = $request->validate([
             'nombre'      => 'required|string|max:255',
             'celular'     => 'nullable|string|max:20',
             'email'       => 'nullable|email|max:255',
-            'curp'        => 'nullable|string|max:20',
+            'curp'        => 'nullable|string|max:18|unique:clientes,curp',
             'direccion'   => 'nullable|string|max:500',
             'ocupacion'   => 'nullable|in:Empleado,Negocio propio,Independiente,Otro',
-            'promotor_id' => $puesto === 'admin' ? 'required|exists:empleados,id' : 'nullable|exists:empleados,id',
+            'promotor_id' => $isAdmin ? 'required|exists:empleados,id' : 'nullable|exists:empleados,id',
+        ], [
+            'curp.unique' => 'Este CURP ya está registrado en el sistema. El cliente ya existe.',
         ]);
 
         // If promo, assign to themselves
-        if ($puesto === 'promo') {
+        if ($isPromo) {
             $empleado = $user->empleado;
             if (!$empleado) {
                 return redirect()->back()->withErrors(['promotor_id' => 'Tu cuenta no tiene un perfil de empleado asociado. Contacta al administrador.']);
@@ -102,7 +105,7 @@ class ClienteController extends Controller
     public function edit($id)
     {
         $cliente    = Cliente::findOrFail($id);
-        $promotores = Empleado::where('puesto', 'promo')->where('activo', true)->get();
+        $promotores = Empleado::whereJsonContains('roles', 'promo')->where('activo', true)->get();
 
         return view('admin.cliente_editar', compact('cliente', 'promotores'));
     }
@@ -115,10 +118,12 @@ class ClienteController extends Controller
             'nombre'      => 'required|string|max:255',
             'celular'     => 'nullable|string|max:20',
             'email'       => 'nullable|email|max:255',
-            'curp'        => 'nullable|string|max:20',
+            'curp'        => 'nullable|string|max:18|unique:clientes,curp,' . $id,
             'direccion'   => 'nullable|string|max:500',
             'ocupacion'   => 'nullable|in:Empleado,Negocio propio,Independiente,Otro',
             'promotor_id' => 'nullable|exists:empleados,id',
+        ], [
+            'curp.unique' => 'Este CURP ya está registrado para otro cliente.',
         ]);
 
         $cliente->update($data);

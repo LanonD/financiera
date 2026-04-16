@@ -48,6 +48,7 @@ Route::middleware(['auth', 'role:admin,promo'])->group(function () {
     Route::put('/prestamos/{id}',       [PrestamoController::class, 'update'])->name('prestamos.update');
     Route::post('/prestamos/{id}/toggle-interes',     [PrestamoController::class, 'toggleInteres'])->name('prestamos.toggleInteres');
     Route::post('/prestamos/{id}/toggle-mora',        [PrestamoController::class, 'toggleMora'])->name('prestamos.toggleMora');
+    Route::post('/prestamos/{id}/set-mora',           [PrestamoController::class, 'setMora'])->name('prestamos.setMora');
     Route::post('/prestamos/calcular',  [PrestamoController::class, 'calcular'])->name('prestamos.calcular');
     Route::post('/prestamos/calcular2', [PrestamoController::class, 'calcular2'])->name('prestamos.calcular2');
     Route::get('/desembolsos',          [DesembolsoController::class, 'index'])->name('desembolsos.index');

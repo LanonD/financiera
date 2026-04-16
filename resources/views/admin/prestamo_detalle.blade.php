@@ -5,21 +5,28 @@
 @section('content')
 
 @php
-$pagados   = $pagos->where('estatus', 'Pagado');
-$pendientes= $pagos->whereIn('estatus', ['Pendiente','Atrasado']);
+$pagados    = $pagos->where('estatus', 'Pagado');
+$pendientes = $pagos->whereIn('estatus', ['Pendiente','Atrasado']);
+$parciales  = $pagos->where('estatus', 'Parcial');
 
-$cobrosEfectivos  = $pagos->whereIn('estatus', ['Pagado','Parcial']);
-$totalCobrado     = $cobrosEfectivos->sum('monto_cobrado');
-$principalPagado  = max(0, (float)$prestamo->monto - (float)$prestamo->saldo_actual);
-$interesMoraPagado= max(0, $totalCobrado - $principalPagado);
+$cobrosEfectivos = $pagos->whereIn('estatus', ['Pagado','Parcial']);
+$totalCobrado    = $cobrosEfectivos->sum('monto_cobrado');
+
+// Mora interest accumulated (updated in controller on each page load)
 $interesPendiente = (float)($prestamo->interes_acumulado ?? 0);
-$totalAcordado    = $totalCobrado + (float)$prestamo->saldo_actual + $interesPendiente;
-$pct              = $totalAcordado > 0 ? min(100, round($totalCobrado / $totalAcordado * 100)) : 0;
-$totalAdeudadoKpi = (float)$prestamo->saldo_actual + $interesPendiente;
+
+// Remaining balance = sum of pending cuotas + unpaid portion of partial payments + mora
+$remainingCuotas = (float)$pendientes->sum('monto_cuota')
+    + $parciales->sum(fn($p) => max(0, (float)$p->monto_cuota - (float)($p->monto_cobrado ?? 0)));
+$totalAdeudadoKpi = $remainingCuotas + $interesPendiente;
+
+// Progress: collected vs total agreed (monto = total to return)
+$montoTotal = max((float)$prestamo->monto, $totalCobrado);
+$pct        = $montoTotal > 0 ? min(100, round($totalCobrado / $montoTotal * 100)) : 0;
 
 $ultimaFechaPago = null;
 foreach ($pagos->sortByDesc('numero_pago') as $pg) {
-    if (!empty($pg->fecha_pago)) { $ultimaFechaPago = substr($pg->fecha_pago, 0, 10); break; }
+    if (!empty($pg->fecha_pago)) { $ultimaFechaPago = substr((string)$pg->fecha_pago, 0, 10); break; }
 }
 
 $badgeClass = match($prestamo->estatus) {
@@ -71,14 +78,14 @@ $puesto = auth()->user()->puesto;
         </span>
     </div>
     <div class="card" style="padding:16px 18px">
-        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:6px">Balance total</div>
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:6px">Balance restante</div>
         <div style="font-size:22px;font-weight:700;font-family:monospace;color:#dc2626">${{ number_format($totalAdeudadoKpi, 2, '.', ',') }}</div>
         @if($interesPendiente > 0)
         <div style="font-size:11px;color:var(--text2);margin-top:4px;font-family:monospace">
-            ${{ number_format($prestamo->saldo_actual, 2, '.', ',') }} principal + ${{ number_format($interesPendiente, 2, '.', ',') }} interés
+            ${{ number_format($remainingCuotas, 2, '.', ',') }} cuotas + ${{ number_format($interesPendiente, 2, '.', ',') }} mora
         </div>
         @else
-        <div style="font-size:11px;color:var(--text2);margin-top:4px">Solo principal</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:4px">{{ $pendientes->count() }} cuota(s) pendiente(s)</div>
         @endif
     </div>
     <div class="card" style="padding:16px 18px">
@@ -92,8 +99,13 @@ $puesto = auth()->user()->puesto;
     </div>
 </div>
 
-<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px">
-    @foreach([['Monto entregado','$'.number_format($prestamo->monto,2,'.',','),'var(--text)'],['Cuota','$'.number_format($prestamo->cuota,2,'.',','),'var(--text)'],['Total cobrado','$'.number_format($totalCobrado,2,'.',','),'#16a34a']] as [$label, $val, $color])
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px">
+    @foreach([
+        ['Monto entregado', '$'.number_format($prestamo->monto_entregado,2,'.',','), 'var(--text)'],
+        ['Total acordado',  '$'.number_format($prestamo->monto,2,'.',','),            '#2563eb'],
+        ['Cuota',           '$'.number_format($prestamo->cuota,2,'.',','),            'var(--text)'],
+        ['Total cobrado',   '$'.number_format($totalCobrado,2,'.',','),               '#16a34a'],
+    ] as [$label, $val, $color])
     <div class="card" style="padding:14px 18px">
         <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:5px">{{ $label }}</div>
         <div style="font-size:19px;font-weight:600;font-family:monospace;color:{{ $color }}">{{ $val }}</div>
@@ -133,16 +145,40 @@ $puesto = auth()->user()->puesto;
         @endif
     </div>
     <div style="padding:14px 18px">
-        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px 20px">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px 20px;margin-bottom:12px">
             <div>
-                <div style="font-size:10px;font-weight:600;text-transform:uppercase;color:var(--text3);margin-bottom:3px">Interés acumulado</div>
+                <div style="font-size:10px;font-weight:600;text-transform:uppercase;color:var(--text3);margin-bottom:3px">Mora acumulada</div>
                 <div style="font-size:18px;font-weight:700;font-family:monospace;color:#f59e0b">${{ number_format($prestamo->interes_acumulado,2,'.',',') }}</div>
             </div>
             <div>
-                <div style="font-size:10px;font-weight:600;text-transform:uppercase;color:var(--text3);margin-bottom:3px">Interés por día</div>
-                <div style="font-size:18px;font-weight:700;font-family:monospace;color:#8b5cf6">${{ number_format($prestamo->interes_diario,2,'.',',') }}</div>
+                <div style="font-size:10px;font-weight:600;text-transform:uppercase;color:var(--text3);margin-bottom:3px">Interés diario</div>
+                <div style="font-size:18px;font-weight:700;font-family:monospace;color:#8b5cf6">${{ number_format($prestamo->interes_diario,2,'.',',') }}/día</div>
+            </div>
+            <div>
+                <div style="font-size:10px;font-weight:600;text-transform:uppercase;color:var(--text3);margin-bottom:3px">Último cálculo</div>
+                <div style="font-size:13px;font-weight:600;font-family:monospace;color:var(--text2);margin-top:3px">
+                    {{ $prestamo->fecha_ultimo_interes ? $prestamo->fecha_ultimo_interes->format('d/m/Y') : 'No iniciado' }}
+                </div>
             </div>
         </div>
+        @if($puesto === 'admin')
+        <div style="border-top:1px solid var(--border);padding-top:12px">
+            <div style="font-size:10px;font-weight:600;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Configurar interés diario por mora</div>
+            <form method="POST" action="{{ route('prestamos.setMora', $prestamo->id) }}" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                @csrf
+                <span style="font-size:12px;color:var(--text2)">$</span>
+                <input type="number" name="interes_diario" step="0.01" min="0"
+                    value="{{ number_format((float)$prestamo->interes_diario, 2, '.', '') }}"
+                    style="width:90px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:monospace;outline:none"
+                    placeholder="0.00">
+                <span style="font-size:12px;color:var(--text2)">por día</span>
+                <button type="submit"
+                    style="padding:6px 14px;border-radius:6px;border:1px solid var(--accent);background:rgba(59,130,246,.08);color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)">
+                    Guardar
+                </button>
+            </form>
+        </div>
+        @endif
     </div>
 </div>
 @endif
@@ -158,7 +194,7 @@ $puesto = auth()->user()->puesto;
     </div>
     <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--text3);font-family:monospace">
         <span>Cobrado: ${{ number_format($totalCobrado,2,'.',',') }}</span>
-        <span>Pendiente: ${{ number_format($totalAdeudadoKpi,2,'.',',') }}</span>
+        <span>Restante: ${{ number_format($totalAdeudadoKpi,2,'.',',') }}</span>
     </div>
 </div>
 
@@ -171,7 +207,7 @@ $puesto = auth()->user()->puesto;
                 ['Frecuencia',   $prestamo->frecuencia],
                 ['Num. pagos',   $prestamo->num_pagos],
                 ['Tasa diaria',  $prestamo->tasa_diaria > 0 ? $prestamo->tasa_diaria.'%' : '— (pago fijo)'],
-                ['Fecha inicio', $prestamo->fecha_inicio ?? '—'],
+                ['Fecha inicio', $prestamo->fecha_inicio ? $prestamo->fecha_inicio->format('d/m/Y') : '—'],
                 ['Promotor',     $prestamo->promotor?->nombre ?? '—'],
             ] as [$l, $v])
             <div>

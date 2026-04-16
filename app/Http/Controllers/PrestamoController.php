@@ -19,7 +19,7 @@ class PrestamoController extends Controller
 
         $query = Prestamo::with(['cliente', 'promotor', 'cobrador']);
 
-        if ($puesto === 'promo') {
+        if (in_array('promo', $user->getAllRoles()) && !in_array('admin', $user->getAllRoles())) {
             $empleado = $user->empleado;
             if ($empleado) {
                 $query->where('promotor_id', $empleado->id);
@@ -58,7 +58,7 @@ class PrestamoController extends Controller
 
         $prestamos = $query->orderByDesc('id')->get()->map(function ($p) {
             $next = $p->pagos()->whereIn('estatus', ['Pendiente', 'Atrasado'])->orderBy('fecha_programada')->first();
-            $p->proximo_pago = $next?->fecha_programada;
+            $p->proximo_pago = $next?->fecha_programada?->toDateString();
             return $p;
         });
 
@@ -71,7 +71,7 @@ class PrestamoController extends Controller
         $puesto = $user->puesto;
 
         $query = Cliente::where('activo', true);
-        if ($puesto === 'promo') {
+        if (in_array('promo', $user->getAllRoles()) && !in_array('admin', $user->getAllRoles())) {
             $empleado = $user->empleado;
             if ($empleado) {
                 $query->where('promotor_id', $empleado->id);
@@ -80,7 +80,15 @@ class PrestamoController extends Controller
 
         $clientes = $query->with('promotor')->orderBy('nombre')->get();
 
-        return view('admin.prestamo_nuevo', compact('clientes'));
+        // Build map: client_id => promotor_nombre for active loans (to warn in the UI)
+        $clientesConPrestamo = Prestamo::whereIn('cliente_id', $clientes->pluck('id'))
+            ->whereIn('estatus', ['Activo', 'Atrasado', 'Pendiente'])
+            ->with('promotor')
+            ->get()
+            ->keyBy('cliente_id')
+            ->map(fn($p) => $p->promotor?->nombre ?? 'otro promotor');
+
+        return view('admin.prestamo_nuevo', compact('clientes', 'clientesConPrestamo'));
     }
 
     public function store(Request $request)
@@ -97,6 +105,23 @@ class PrestamoController extends Controller
 
         $user     = Auth::user();
         $empleado = $user->empleado;
+
+        // ── Block: One active loan per client ────────────────────────────────
+        $prestamoActivo = Prestamo::where('cliente_id', $data['cliente_id'])
+            ->whereIn('estatus', ['Activo', 'Atrasado', 'Pendiente'])
+            ->with('promotor')
+            ->first();
+
+        if ($prestamoActivo) {
+            $promotorNombre = $prestamoActivo->promotor?->nombre ?? 'otro promotor';
+            return redirect()->back()
+                ->withInput()
+                ->withErrors(['cliente_id' =>
+                    "Este cliente ya tiene un préstamo activo asignado al promotor \u201c{$promotorNombre}\u201d. "
+                  . 'No se puede crear otro préstamo mientras haya uno en curso.'
+                ]);
+        }
+        // ────────────────────────────────────────────────────────────────────
 
         $monto_entregado    = (float)$data['monto_entregado'];
         $monto_retornar     = (float)$data['monto_retornar'];
@@ -171,8 +196,24 @@ class PrestamoController extends Controller
     public function show($id)
     {
         $prestamo = Prestamo::with(['cliente', 'promotor', 'cobrador'])->findOrFail($id);
-        $pagos    = Pago::where('prestamo_id', $id)->orderBy('numero_pago')->get();
 
+        // Accumulate mora if: manually activated OR loan is overdue — and a daily rate is configured
+        $debeAcumularMora = ($prestamo->interes_mora_activo || $prestamo->estatus === 'Atrasado')
+            && (float)$prestamo->interes_diario > 0;
+        if ($debeAcumularMora) {
+            $hoy = now()->toDateString();
+            $desdeDate = $prestamo->fecha_ultimo_interes
+                ? $prestamo->fecha_ultimo_interes->toDateString()
+                : $hoy;
+            $dias = (int) Carbon::parse($desdeDate)->diffInDays($hoy);
+            if ($dias > 0) {
+                $prestamo->interes_acumulado   = round((float)$prestamo->interes_acumulado + ($dias * (float)$prestamo->interes_diario), 2);
+                $prestamo->fecha_ultimo_interes = $hoy;
+                $prestamo->save();
+            }
+        }
+
+        $pagos = Pago::where('prestamo_id', $id)->orderBy('numero_pago')->get();
         $interesInfo = ($prestamo->interes_activo || $prestamo->interes_mora_activo) ? true : null;
 
         return view('admin.prestamo_detalle', compact('prestamo', 'pagos', 'interesInfo'));
@@ -180,8 +221,9 @@ class PrestamoController extends Controller
 
     public function edit($id)
     {
-        $prestamo  = Prestamo::with(['cliente', 'promotor'])->findOrFail($id);
-        $cobradores = Empleado::where('puesto', 'collector')->where('activo', true)->get();
+        $prestamo   = Prestamo::with(['cliente', 'promotor'])->findOrFail($id);
+        // Include multi-role employees that have 'collector' among their roles
+        $cobradores = Empleado::where('activo', true)->get()->filter(fn($e) => $e->hasRole('collector'))->values();
         return view('admin.prestamo_editar', compact('prestamo', 'cobradores'));
     }
 
@@ -190,13 +232,43 @@ class PrestamoController extends Controller
         $prestamo = Prestamo::findOrFail($id);
 
         $data = $request->validate([
-            'estatus'     => 'required|in:Pendiente,Activo,Atrasado,Finalizado,Retirado',
-            'cobrador_id' => 'nullable|exists:empleados,id',
+            'estatus'         => 'required|in:Pendiente,Activo,Atrasado,Finalizado,Retirado',
+            'cobrador_id'     => 'nullable|exists:empleados,id',
+            'interes_diario'  => 'nullable|numeric|min:0',
         ]);
 
-        $prestamo->update($data);
+        $update = [
+            'estatus'     => $data['estatus'],
+            'cobrador_id' => $data['cobrador_id'] ?? null,
+        ];
+        if (isset($data['interes_diario'])) {
+            $update['interes_diario'] = (float)$data['interes_diario'];
+        }
+        $prestamo->update($update);
 
         return redirect()->route('prestamos.show', $id)->with('success', 'Préstamo actualizado correctamente.');
+    }
+
+    /**
+     * Quick inline update of mora interest daily rate from detail page
+     */
+    public function setMora(Request $request, $id)
+    {
+        $prestamo = Prestamo::findOrFail($id);
+
+        $data = $request->validate([
+            'interes_diario' => 'required|numeric|min:0',
+        ]);
+
+        $prestamo->interes_diario = (float)$data['interes_diario'];
+        // Set start date if not yet set so we know when to start counting
+        if (!$prestamo->fecha_ultimo_interes) {
+            $prestamo->fecha_ultimo_interes = now()->toDateString();
+        }
+        $prestamo->save();
+
+        return redirect()->route('prestamos.show', $id)
+            ->with('success', 'Interés diario por mora actualizado a $' . number_format($prestamo->interes_diario, 2) . '/día.');
     }
 
     public function toggleInteres($id)
@@ -212,6 +284,12 @@ class PrestamoController extends Controller
     {
         $prestamo = Prestamo::findOrFail($id);
         $prestamo->interes_mora_activo = !$prestamo->interes_mora_activo;
+
+        // When activating, record today as the start date for daily accumulation
+        if ($prestamo->interes_mora_activo && !$prestamo->fecha_ultimo_interes) {
+            $prestamo->fecha_ultimo_interes = now()->toDateString();
+        }
+
         $prestamo->save();
 
         return redirect()->route('prestamos.show', $id)->with('success', 'Interés por mora ' . ($prestamo->interes_mora_activo ? 'activado' : 'desactivado') . '.');

@@ -19,16 +19,33 @@ class PagoController extends Controller
         $puesto   = $user->puesto;
         $empleado = $user->empleado;
 
+        // Helper: bring mora interest up to date for a single prestamo
+        $acumularMora = function (\App\Models\Prestamo $p): void {
+            $debe = ($p->interes_mora_activo || $p->estatus === 'Atrasado')
+                && (float)$p->interes_diario > 0;
+            if (!$debe) return;
+            $hoy   = now()->toDateString();
+            $desde = $p->fecha_ultimo_interes ? $p->fecha_ultimo_interes->toDateString() : $hoy;
+            $dias  = (int) \Carbon\Carbon::parse($desde)->diffInDays($hoy);
+            if ($dias > 0) {
+                $p->interes_acumulado    = round((float)$p->interes_acumulado + ($dias * (float)$p->interes_diario), 2);
+                $p->fecha_ultimo_interes = $hoy;
+                $p->save();
+            }
+        };
+
         if (in_array($puesto, ['collector', 'promo']) && $empleado) {
             // Collector ve sus préstamos asignados; promo ve los suyos donde se asignó como cobrador
             $prestamos = Prestamo::with(['cliente'])
                 ->where('cobrador_id', $empleado->id)
                 ->whereIn('estatus', ['Activo', 'Atrasado'])
                 ->get()
-                ->map(function ($p) {
+                ->map(function ($p) use ($acumularMora) {
+                    $acumularMora($p);
                     $next = $p->pagos()->whereIn('estatus', ['Pendiente', 'Atrasado'])->orderBy('fecha_programada')->first();
-                    $p->proximo_pago = $next?->fecha_programada;
-                    if ($next && $next->fecha_programada < now()->toDateString()) {
+                    // toDateString() evita que Carbon genere '2026-04-15 00:00:00' que rompe comparaciones de string
+                    $p->proximo_pago = $next?->fecha_programada?->toDateString();
+                    if ($next && $p->proximo_pago < now()->toDateString()) {
                         $p->dias_atraso = now()->diffInDays($next->fecha_programada);
                     } else {
                         $p->dias_atraso = 0;
@@ -42,9 +59,10 @@ class PagoController extends Controller
             $prestamos = Prestamo::with(['cliente', 'cobrador'])
                 ->whereIn('estatus', ['Activo', 'Atrasado'])
                 ->get()
-                ->map(function ($p) {
+                ->map(function ($p) use ($acumularMora) {
+                    $acumularMora($p);
                     $next = $p->pagos()->whereIn('estatus', ['Pendiente', 'Atrasado'])->orderBy('fecha_programada')->first();
-                    $p->proximo_pago = $next?->fecha_programada;
+                    $p->proximo_pago = $next?->fecha_programada?->toDateString();
                     $p->dias_atraso  = 0;
                     return $p;
                 });
@@ -76,8 +94,8 @@ class PagoController extends Controller
 
         $prestamos = $query->get()->map(function ($p) {
             $next = $p->pagos()->whereIn('estatus', ['Pendiente', 'Atrasado'])->orderBy('fecha_programada')->first();
-            $p->proximo_pago = $next?->fecha_programada;
-            $p->dias_atraso  = ($next && $next->fecha_programada < now()->toDateString())
+            $p->proximo_pago = $next?->fecha_programada?->toDateString();
+            $p->dias_atraso  = ($next && $p->proximo_pago < now()->toDateString())
                 ? now()->diffInDays($next->fecha_programada)
                 : 0;
             // Check if paid today
@@ -100,7 +118,8 @@ class PagoController extends Controller
             });
         }
 
-        $cobradores = Empleado::where('puesto', 'collector')->where('activo', true)->get();
+        // Include multi-role employees that have 'collector' among their roles
+        $cobradores = Empleado::where('activo', true)->get()->filter(fn($e) => $e->hasRole('collector'))->values();
 
         return view('admin.cobros_asignar', compact('prestamos', 'cobradores', 'filtroDesde', 'filtroHasta', 'filtroSinCobrador', 'filtroBusqueda'));
     }
@@ -132,6 +151,7 @@ class PagoController extends Controller
 
     /**
      * Collector: register a payment (JSON endpoint)
+     * Mora interest is charged FIRST, remainder applied to the scheduled cuota.
      */
     public function registrar(Request $request)
     {
@@ -141,13 +161,29 @@ class PagoController extends Controller
         $cobros = $request->json()->all(); // { prestamoId: {tipo, monto, nota} }
 
         $registrados = 0;
-        $errors = [];
+        $errors      = [];
 
         foreach ($cobros as $prestamoId => $cobro) {
             $prestamo = Prestamo::find($prestamoId);
             if (!$prestamo) { $errors[] = "Préstamo #{$prestamoId} no encontrado"; continue; }
 
-            // Get next pending payment
+            // ── 1. Bring mora interest up to date before processing ─────────────
+            $debeAcumular = ($prestamo->interes_mora_activo || $prestamo->estatus === 'Atrasado')
+                && (float)$prestamo->interes_diario > 0;
+
+            if ($debeAcumular) {
+                $hoy       = now()->toDateString();
+                $desde     = $prestamo->fecha_ultimo_interes
+                    ? $prestamo->fecha_ultimo_interes->toDateString()
+                    : $hoy;
+                $diasMora  = (int) \Carbon\Carbon::parse($desde)->diffInDays($hoy);
+                if ($diasMora > 0) {
+                    $prestamo->interes_acumulado    = round((float)$prestamo->interes_acumulado + ($diasMora * (float)$prestamo->interes_diario), 2);
+                    $prestamo->fecha_ultimo_interes = $hoy;
+                }
+            }
+
+            // ── 2. Get next pending cuota ────────────────────────────────────────
             $pago = Pago::where('prestamo_id', $prestamoId)
                 ->whereIn('estatus', ['Pendiente', 'Atrasado'])
                 ->orderBy('numero_pago')
@@ -155,36 +191,51 @@ class PagoController extends Controller
 
             if (!$pago) { $errors[] = "Sin pago pendiente en préstamo #{$prestamoId}"; continue; }
 
-            $monto = (float)($cobro['monto'] ?? 0);
-            if ($monto <= 0) continue;
+            $montoRecibido = (float)($cobro['monto'] ?? 0);
+            if ($montoRecibido <= 0) continue;
 
-            $tipo  = $monto >= $pago->monto_cuota ? 'Pagado' : 'Parcial';
-            $nota  = $cobro['nota'] ?? null;
+            $nota = $cobro['nota'] ?? null;
 
-            // Update payment record
-            $pago->monto_cobrado = $monto;
-            $pago->tipo_cobro    = $tipo === 'Pagado' ? 'completo' : 'parcial';
-            $pago->nota_cobro    = $nota;
-            $pago->fecha_pago    = now()->toDateString();
-            $pago->estatus       = $tipo;
-            $pago->cobrador_id   = $empleado?->id;
-            $pago->save();
+            // ── 3. Apply to mora FIRST ───────────────────────────────────────────
+            $moraPendiente = (float)$prestamo->interes_acumulado;
+            $pagoMora      = 0;
 
-            // Update loan balance
-            if ($tipo === 'Pagado') {
-                $prestamo->saldo_actual = max(0, $prestamo->saldo_actual - $pago->capital);
-                // Check if all paid
-                $remaining = Pago::where('prestamo_id', $prestamoId)
-                    ->whereIn('estatus', ['Pendiente', 'Atrasado'])
-                    ->count();
-                if ($remaining === 0) {
-                    $prestamo->estatus = 'Finalizado';
-                } else {
-                    $prestamo->estatus = 'Activo';
-                }
-                $prestamo->save();
+            if ($moraPendiente > 0) {
+                $pagoMora              = min($montoRecibido, $moraPendiente);
+                $prestamo->interes_acumulado = round($moraPendiente - $pagoMora, 2);
+                $montoRecibido        -= $pagoMora;
+
+                $notaMora = 'Mora cobrada: $' . number_format($pagoMora, 2);
+                $nota     = $nota ? $nota . ' | ' . $notaMora : $notaMora;
             }
 
+            // ── 4. Apply remainder to cuota ──────────────────────────────────────
+            if ($montoRecibido > 0) {
+                $tipo = $montoRecibido >= $pago->monto_cuota ? 'Pagado' : 'Parcial';
+
+                $pago->monto_cobrado = $montoRecibido;
+                $pago->tipo_cobro    = $tipo === 'Pagado' ? 'completo' : 'parcial';
+                $pago->nota_cobro    = $nota;
+                $pago->fecha_pago    = now()->toDateString();
+                $pago->estatus       = $tipo;
+                $pago->cobrador_id   = $empleado?->id;
+                $pago->save();
+
+                if ($tipo === 'Pagado') {
+                    $prestamo->saldo_actual = max(0, $prestamo->saldo_actual - $pago->capital);
+                    $remaining = Pago::where('prestamo_id', $prestamoId)
+                        ->whereIn('estatus', ['Pendiente', 'Atrasado'])
+                        ->count();
+                    $prestamo->estatus = $remaining === 0 ? 'Finalizado' : 'Activo';
+                }
+            } elseif ($pagoMora > 0) {
+                // Payment covered only mora (nothing left for cuota)
+                // Note it on the pago without changing its estatus
+                $pago->nota_cobro = ($pago->nota_cobro ? $pago->nota_cobro . ' | ' : '') . $nota;
+                $pago->save();
+            }
+
+            $prestamo->save();
             $registrados++;
         }
 
