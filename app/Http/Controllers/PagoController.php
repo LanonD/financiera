@@ -19,11 +19,31 @@ class PagoController extends Controller
         $puesto   = $user->puesto;
         $empleado = $user->empleado;
 
-        // Helper: bring mora interest up to date for a single prestamo
+        // Helper: auto-activate mora and accumulate daily interest
         $acumularMora = function (\App\Models\Prestamo $p): void {
-            $debe = ($p->interes_mora_activo || $p->estatus === 'Atrasado')
-                && (float)$p->interes_diario > 0;
-            if (!$debe) return;
+            if (!in_array($p->estatus, ['Activo', 'Atrasado'])) return;
+
+            // Auto-activate $10/day when a payment is overdue
+            $primerVencido = $p->pagos()
+                ->whereIn('estatus', ['Pendiente', 'Atrasado'])
+                ->where('fecha_programada', '<', now()->toDateString())
+                ->orderBy('fecha_programada')
+                ->first();
+
+            if ($primerVencido) {
+                $changed = false;
+                if ($p->estatus === 'Activo') { $p->estatus = 'Atrasado'; $changed = true; }
+                if ((float)$p->interes_diario == 0) { $p->interes_diario = 10.00; $changed = true; }
+                if (!$p->interes_mora_activo) { $p->interes_mora_activo = true; $changed = true; }
+                if (!$p->fecha_ultimo_interes) {
+                    $p->fecha_ultimo_interes = $primerVencido->fecha_programada->toDateString();
+                    $changed = true;
+                }
+                if ($changed) $p->save();
+            }
+
+            if (!((float)$p->interes_diario > 0 && ($p->interes_mora_activo || $p->estatus === 'Atrasado'))) return;
+
             $hoy   = now()->toDateString();
             $desde = $p->fecha_ultimo_interes ? $p->fecha_ultimo_interes->toDateString() : $hoy;
             $dias  = (int) \Carbon\Carbon::parse($desde)->diffInDays($hoy);
@@ -167,16 +187,29 @@ class PagoController extends Controller
             $prestamo = Prestamo::find($prestamoId);
             if (!$prestamo) { $errors[] = "Préstamo #{$prestamoId} no encontrado"; continue; }
 
-            // ── 1. Bring mora interest up to date before processing ─────────────
-            $debeAcumular = ($prestamo->interes_mora_activo || $prestamo->estatus === 'Atrasado')
-                && (float)$prestamo->interes_diario > 0;
+            // ── 1. Auto-activate mora and bring interest up to date ─────────────
+            if (in_array($prestamo->estatus, ['Activo', 'Atrasado'])) {
+                $primerVencido = Pago::where('prestamo_id', $prestamoId)
+                    ->whereIn('estatus', ['Pendiente', 'Atrasado'])
+                    ->where('fecha_programada', '<', now()->toDateString())
+                    ->orderBy('fecha_programada')
+                    ->first();
+                if ($primerVencido) {
+                    if ($prestamo->estatus === 'Activo') $prestamo->estatus = 'Atrasado';
+                    if ((float)$prestamo->interes_diario == 0) $prestamo->interes_diario = 10.00;
+                    if (!$prestamo->interes_mora_activo) $prestamo->interes_mora_activo = true;
+                    if (!$prestamo->fecha_ultimo_interes)
+                        $prestamo->fecha_ultimo_interes = $primerVencido->fecha_programada->toDateString();
+                }
+            }
 
-            if ($debeAcumular) {
-                $hoy       = now()->toDateString();
-                $desde     = $prestamo->fecha_ultimo_interes
+            if ((float)$prestamo->interes_diario > 0
+                && ($prestamo->interes_mora_activo || $prestamo->estatus === 'Atrasado')) {
+                $hoy      = now()->toDateString();
+                $desde    = $prestamo->fecha_ultimo_interes
                     ? $prestamo->fecha_ultimo_interes->toDateString()
                     : $hoy;
-                $diasMora  = (int) \Carbon\Carbon::parse($desde)->diffInDays($hoy);
+                $diasMora = (int) \Carbon\Carbon::parse($desde)->diffInDays($hoy);
                 if ($diasMora > 0) {
                     $prestamo->interes_acumulado    = round((float)$prestamo->interes_acumulado + ($diasMora * (float)$prestamo->interes_diario), 2);
                     $prestamo->fecha_ultimo_interes = $hoy;

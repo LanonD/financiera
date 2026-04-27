@@ -204,24 +204,53 @@ class PrestamoController extends Controller
             $prestamo->save();
         }
 
-        // Accumulate mora if: manually activated OR loan is overdue — and a daily rate is configured
-        $debeAcumularMora = ($prestamo->interes_mora_activo || $prestamo->estatus === 'Atrasado')
-            && (float)$prestamo->interes_diario > 0;
-        if ($debeAcumularMora) {
+        // Auto-activate mora ($10/day default) when there are overdue payments
+        if (in_array($prestamo->estatus, ['Activo', 'Atrasado'])) {
+            $primerVencido = Pago::where('prestamo_id', $id)
+                ->whereIn('estatus', ['Pendiente', 'Atrasado'])
+                ->where('fecha_programada', '<', now()->toDateString())
+                ->orderBy('fecha_programada')
+                ->first();
+
+            if ($primerVencido) {
+                $changed = false;
+                if ($prestamo->estatus === 'Activo') {
+                    $prestamo->estatus = 'Atrasado';
+                    $changed = true;
+                }
+                if ((float)$prestamo->interes_diario == 0) {
+                    $prestamo->interes_diario = 10.00;
+                    $changed = true;
+                }
+                if (!$prestamo->interes_mora_activo) {
+                    $prestamo->interes_mora_activo = true;
+                    $changed = true;
+                }
+                if (!$prestamo->fecha_ultimo_interes) {
+                    $prestamo->fecha_ultimo_interes = $primerVencido->fecha_programada->toDateString();
+                    $changed = true;
+                }
+                if ($changed) $prestamo->save();
+            }
+        }
+
+        // Accumulate daily mora
+        if ((float)$prestamo->interes_diario > 0
+            && ($prestamo->interes_mora_activo || $prestamo->estatus === 'Atrasado')) {
             $hoy = now()->toDateString();
             $desdeDate = $prestamo->fecha_ultimo_interes
                 ? $prestamo->fecha_ultimo_interes->toDateString()
                 : $hoy;
             $dias = (int) Carbon::parse($desdeDate)->diffInDays($hoy);
             if ($dias > 0) {
-                $prestamo->interes_acumulado   = round((float)$prestamo->interes_acumulado + ($dias * (float)$prestamo->interes_diario), 2);
+                $prestamo->interes_acumulado    = round((float)$prestamo->interes_acumulado + ($dias * (float)$prestamo->interes_diario), 2);
                 $prestamo->fecha_ultimo_interes = $hoy;
                 $prestamo->save();
             }
         }
 
         $pagos = Pago::where('prestamo_id', $id)->orderBy('numero_pago')->get();
-        $interesInfo = ($prestamo->interes_activo || $prestamo->interes_mora_activo) ? true : null;
+        $interesInfo = ($prestamo->interes_activo || $prestamo->interes_mora_activo || (float)$prestamo->interes_acumulado > 0) ? true : null;
 
         return view('admin.prestamo_detalle', compact('prestamo', 'pagos', 'interesInfo'));
     }
@@ -280,6 +309,32 @@ class PrestamoController extends Controller
 
         return redirect()->route('prestamos.show', $id)
             ->with('success', 'Interés diario por mora actualizado a $' . number_format($prestamo->interes_diario, 2) . '/día.');
+    }
+
+    /**
+     * Admin: edit principal, total acordado, and mora acumulada directly
+     */
+    public function updateCampos(Request $request, $id)
+    {
+        $prestamo = Prestamo::findOrFail($id);
+
+        $data = $request->validate([
+            'monto_entregado'   => 'required|numeric|min:0',
+            'monto'             => 'required|numeric|min:0',
+            'interes_acumulado' => 'required|numeric|min:0',
+        ]);
+
+        $prestamo->monto_entregado   = round((float)$data['monto_entregado'], 2);
+        $prestamo->monto             = round((float)$data['monto'], 2);
+        $prestamo->interes_acumulado = round((float)$data['interes_acumulado'], 2);
+        // Keep saldo_actual in sync if principal changed
+        if ($prestamo->isDirty('monto_entregado')) {
+            $pagado = $prestamo->pagos()->whereIn('estatus', ['Pagado', 'Parcial'])->sum('capital');
+            $prestamo->saldo_actual = max(0, round((float)$data['monto_entregado'] - (float)$pagado, 2));
+        }
+        $prestamo->save();
+
+        return redirect()->route('prestamos.show', $id)->with('success', 'Campos actualizados correctamente.');
     }
 
     public function toggleInteres($id)
