@@ -58,7 +58,7 @@
         </a>
         <div>
             <h2 style="font-size:20px;font-weight:700;margin-bottom:2px">Nuevo préstamo</h2>
-            <p style="color:var(--text2);font-size:13px">Acuerda el monto entregado y el total a retornar con el cliente</p>
+            <p style="color:var(--text2);font-size:13px">Ingresa el monto entregado y el porcentaje de rentabilidad acordado</p>
         </div>
     </div>
 </div>
@@ -67,7 +67,7 @@
 $activoMap = $clientesConPrestamo->toArray();
 @endphp
 
-<form method="POST" action="{{ route('prestamos.store') }}" id="formNuevo" onsubmit="return validarFormulario()">
+<form method="POST" action="{{ route('prestamos.store') }}" id="formNuevo" onsubmit="return manejarSubmit(event)">
 @csrf
 
 @if($errors->has('cliente_id'))
@@ -146,22 +146,23 @@ $activoMap = $clientesConPrestamo->toArray();
                 <div class="np-hint">Monto real que recibirá el cliente</div>
             </div>
 
-            {{-- Monto a retornar --}}
+            {{-- % Rentabilidad → calcula monto_retornar --}}
             <div>
-                <label class="np-label">Total a retornar ($)</label>
-                <input type="number" name="monto_retornar" id="inRetornar"
-                       class="np-input" placeholder="65,000" step="0.01" min="1"
+                <label class="np-label">% Rentabilidad</label>
+                <input type="number" id="inRentabilidad"
+                       class="np-input" placeholder="30" step="0.1" min="0.1"
                        oninput="calcPreview()" required>
-                <div class="np-hint">Suma total de todos los pagos del cliente</div>
+                <div class="np-hint">Porcentaje de ganancia sobre el monto entregado</div>
             </div>
+            <input type="hidden" name="monto_retornar" id="inRetornar">
 
-            {{-- Ganancia inline --}}
-            <div id="gananciaBox" style="display:none;background:rgba(22,163,74,.07);border:1px solid rgba(22,163,74,.2);border-radius:6px;padding:10px 14px">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-                    <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#166534">Ganancia del acuerdo</span>
-                    <span style="font-size:11px;color:#166534" id="ganPct">—</span>
+            {{-- Total a retornar calculado --}}
+            <div id="retornarBox" style="display:none;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.2);border-radius:6px;padding:10px 14px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+                    <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#1d4ed8">Total a retornar</span>
+                    <span style="font-size:11px;color:#1d4ed8" id="retornarGan">—</span>
                 </div>
-                <div id="ganVal" style="font-size:22px;font-weight:700;font-family:monospace;color:#16a34a"></div>
+                <div id="retornarVal" style="font-size:22px;font-weight:700;font-family:monospace;color:#2563eb"></div>
             </div>
 
             {{-- Num pagos + frecuencia --}}
@@ -187,8 +188,9 @@ $activoMap = $clientesConPrestamo->toArray();
                 <label class="np-label">Fecha de inicio del préstamo</label>
                 <input type="date" name="fecha_inicio" id="inFechaInicio"
                        class="np-input" value="{{ date('Y-m-d') }}"
+                       min="{{ date('Y-m-d') }}"
                        style="font-family:var(--font)" oninput="onFechaInicioChange()" required>
-                <div class="np-hint">Día en que se entrega el dinero al cliente</div>
+                <div class="np-hint">Hoy o fecha futura — día en que se entrega el dinero al cliente</div>
             </div>
 
             {{-- Fecha primer cobro --}}
@@ -196,6 +198,7 @@ $activoMap = $clientesConPrestamo->toArray();
                 <label class="np-label">Fecha del primer cobro</label>
                 <input type="date" name="fecha_primer_cobro" id="inFechaPrimerCobro"
                        class="np-input" value="{{ date('Y-m-d', strtotime('+30 days')) }}"
+                       min="{{ date('Y-m-d') }}"
                        style="font-family:var(--font)" oninput="calcPreview()" required>
                 <div class="np-hint" id="hintPrimerCobro">Se calcula automáticamente según la frecuencia — puedes ajustarlo</div>
             </div>
@@ -367,22 +370,29 @@ function addDays(dateStr, days) {
 function fmtDate(dateStr) { const [y, m, d] = dateStr.split('-'); return `${d}/${m}/${y}`; }
 
 function calcPreview() {
-    const entregado       = parseFloat(document.getElementById('inEntregado').value)       || 0;
-    const retornar        = parseFloat(document.getElementById('inRetornar').value)        || 0;
-    const numPagos        = parseInt(document.getElementById('inNumPagos').value)          || 0;
+    const entregado       = parseFloat(document.getElementById('inEntregado').value)    || 0;
+    const rentPctInput    = parseFloat(document.getElementById('inRentabilidad').value) || 0;
+    const numPagos        = parseInt(document.getElementById('inNumPagos').value)       || 0;
     const frecuencia      = document.getElementById('inFrecuencia').value;
     const fechaInicio     = document.getElementById('inFechaInicio').value;
     const fechaPrimerCobro= document.getElementById('inFechaPrimerCobro').value;
     const dias            = DIAS[frecuencia] || 30;
 
-    if (entregado > 0 && retornar > entregado) {
+    // Compute retornar from entregado + % rentabilidad
+    const retornar = entregado > 0 && rentPctInput > 0
+        ? Math.round(entregado * (1 + rentPctInput / 100) * 100) / 100
+        : 0;
+
+    // Update hidden field for form submission
+    document.getElementById('inRetornar').value = retornar || '';
+
+    if (entregado > 0 && retornar > 0) {
         const gan = retornar - entregado;
-        const pct = (gan / entregado * 100).toFixed(1);
-        document.getElementById('gananciaBox').style.display = '';
-        document.getElementById('ganVal').textContent = fmtMXN(gan);
-        document.getElementById('ganPct').textContent = pct + '% rentabilidad';
+        document.getElementById('retornarBox').style.display = '';
+        document.getElementById('retornarVal').textContent = fmtMXN(retornar);
+        document.getElementById('retornarGan').textContent = 'Ganancia: ' + fmtMXN(gan);
     } else {
-        document.getElementById('gananciaBox').style.display = 'none';
+        document.getElementById('retornarBox').style.display = 'none';
     }
 
     const ok = entregado > 0 && retornar >= entregado && numPagos > 0 && fechaInicio && fechaPrimerCobro;
@@ -411,14 +421,15 @@ function calcPreview() {
     document.getElementById('pvFrecInfo').textContent = `Primer cobro: ${fmtDate(fechaPrimerCobro)} · cada ${dias} días`;
     document.getElementById('pvTablaCount').textContent = `${numPagos} pagos · ${frecuencia}`;
 
-    // Build schedule: payment i → fechaPrimerCobro + dias*(i-1)
-    const ratio = retornar > 0 ? entregado / retornar : 1;
+    // Build schedule — interest-first: all interest collected before any principal
+    let interesPendiente = Math.round((retornar - entregado) * 100) / 100;
     let saldo = entregado; let rows = '';
     for (let i = 1; i <= numPagos; i++) {
         const fecha   = addDays(fechaPrimerCobro, dias * (i - 1));
         const cuota   = i === numPagos ? ultimoPago : cuotaBase;
-        const capital = i === numPagos ? saldo : Math.round(cuota * ratio * 100) / 100;
-        const interes = Math.round((cuota - capital) * 100) / 100;
+        const interes = Math.min(cuota, Math.round(interesPendiente * 100) / 100);
+        const capital = Math.round((cuota - interes) * 100) / 100;
+        interesPendiente = Math.max(0, Math.round((interesPendiente - interes) * 100) / 100);
         saldo = Math.max(0, Math.round((saldo - capital) * 100) / 100);
         const esUlt = i === numPagos && numPagos > 1;
         rows += `<tr ${esUlt ? 'style="background:rgba(245,158,11,.05)"' : ''}>
@@ -435,26 +446,72 @@ function calcPreview() {
 }
 
 function checkCanSubmit() {
-    const entregado       = parseFloat(document.getElementById('inEntregado').value)       || 0;
-    const retornar        = parseFloat(document.getElementById('inRetornar').value)        || 0;
-    const numPagos        = parseInt(document.getElementById('inNumPagos').value)          || 0;
+    const entregado       = parseFloat(document.getElementById('inEntregado').value)    || 0;
+    const rentPctInput    = parseFloat(document.getElementById('inRentabilidad').value) || 0;
+    const retornar        = parseFloat(document.getElementById('inRetornar').value)     || 0;
+    const numPagos        = parseInt(document.getElementById('inNumPagos').value)       || 0;
     const clienteOk       = !!document.getElementById('csClienteId').value;
     const fechaPrimerCobro= document.getElementById('inFechaPrimerCobro').value;
     const bloqueado       = !!window._clienteBloqueado;
-    const ok = clienteOk && !bloqueado && entregado > 0 && retornar >= entregado && numPagos > 0 && !!fechaPrimerCobro;
+    const ok = clienteOk && !bloqueado && entregado > 0 && rentPctInput > 0 && retornar >= entregado && numPagos > 0 && !!fechaPrimerCobro;
     const btn = document.getElementById('btnCrear');
     btn.disabled = !ok;
     btn.style.opacity = ok ? '1' : '.5';
 }
 
-function validarFormulario() {
+function manejarSubmit(e) {
     if (!document.getElementById('csClienteId').value) {
         alert('Selecciona un cliente para continuar.');
         return false;
     }
+
+    // ── Offline: save locally ─────────────────────────────────────────────────
+    if (!navigator.onLine) {
+        e.preventDefault();
+
+        const datos = {
+            cliente_id:         document.getElementById('csClienteId').value,
+            monto_entregado:    document.getElementById('inEntregado').value,
+            monto_retornar:     document.getElementById('inRetornar').value,
+            num_pagos:          document.getElementById('inNumPagos').value,
+            frecuencia:         document.getElementById('inFrecuencia').value,
+            fecha_inicio:       document.getElementById('inFechaInicio').value,
+            fecha_primer_cobro: document.getElementById('inFechaPrimerCobro').value,
+            _clienteNombre:     clienteSeleccionado?.nombre || '(sin nombre)',
+        };
+
+        if (!window.OfflineSync) { alert('Módulo offline no cargado. Intenta recargar la página.'); return false; }
+
+        const entry = window.OfflineSync.guardarOffline(datos);
+        mostrarExitoOffline(entry);
+        return false;
+    }
+
+    // ── Online: normal submit ─────────────────────────────────────────────────
     document.getElementById('btnCrear').textContent = 'Creando…';
     document.getElementById('btnCrear').disabled = true;
     return true;
+}
+
+function mostrarExitoOffline(entry) {
+    const monto = parseFloat(entry.data.monto_entregado || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+    const hora  = new Date(entry.savedAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+
+    document.getElementById('formNuevo').outerHTML = `
+    <div style="max-width:480px;margin:40px auto;text-align:center;padding:36px 32px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 4px 24px rgba(0,0,0,.06)">
+        <div style="width:56px;height:56px;border-radius:50%;background:#fef9c3;border:2px solid #fcd34d;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:24px">☁</div>
+        <h3 style="font-size:17px;font-weight:700;margin-bottom:6px">Guardado sin conexión</h3>
+        <p style="font-size:13px;color:var(--text2);margin-bottom:18px">El préstamo se enviará automáticamente al servidor cuando recuperes internet.</p>
+        <div style="background:#f9fafb;border:1px solid var(--border);border-radius:8px;padding:14px 16px;text-align:left;margin-bottom:20px;font-size:13px">
+            <div style="font-weight:700;margin-bottom:4px">${entry.clienteNombre}</div>
+            <div style="color:var(--text2)">Entrega: ${monto} · ${entry.data.frecuencia} · ${entry.data.num_pagos} pagos</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:4px">Guardado a las ${hora}</div>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:center">
+            <a href="{{ route('prestamos.crear') }}" class="btn" style="background:#f3f4f6;color:var(--text)">+ Otro préstamo</a>
+            <a href="{{ route('prestamos.index') }}" class="btn btn-primary">Ver préstamos</a>
+        </div>
+    </div>`;
 }
 
 document.addEventListener('DOMContentLoaded', () => { autoFechaPrimerCobro(); calcPreview(); });

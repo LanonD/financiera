@@ -209,8 +209,16 @@ class PagoController extends Controller
                 $nota     = $nota ? $nota . ' | ' . $notaMora : $notaMora;
             }
 
-            // ── 4. Apply remainder to cuota ──────────────────────────────────────
+            // ── 4. Apply remainder to cuota (interest first, then capital) ──────
             if ($montoRecibido > 0) {
+                $interesDelPago  = (float)$pago->interes;
+                $capitalDelPago  = (float)$pago->capital;
+
+                // Interest is always collected before principal
+                $interesACobrar  = min($montoRecibido, $interesDelPago);
+                $restanteTrasInt = $montoRecibido - $interesACobrar;
+                $capitalACobrar  = min($restanteTrasInt, $capitalDelPago);
+
                 $tipo = $montoRecibido >= $pago->monto_cuota ? 'Pagado' : 'Parcial';
 
                 $pago->monto_cobrado = $montoRecibido;
@@ -221,8 +229,12 @@ class PagoController extends Controller
                 $pago->cobrador_id   = $empleado?->id;
                 $pago->save();
 
+                // Reduce saldo by capital actually collected (even on partial)
+                if ($capitalACobrar > 0) {
+                    $prestamo->saldo_actual = max(0, round((float)$prestamo->saldo_actual - $capitalACobrar, 2));
+                }
+
                 if ($tipo === 'Pagado') {
-                    $prestamo->saldo_actual = max(0, $prestamo->saldo_actual - $pago->capital);
                     $remaining = Pago::where('prestamo_id', $prestamoId)
                         ->whereIn('estatus', ['Pendiente', 'Atrasado'])
                         ->count();

@@ -41,6 +41,7 @@ $estatusColor = match($prestamo->estatus) {
     'Activo'     => ['#dcfce7','#166534'],
     'Atrasado'   => ['#fee2e2','#991b1b'],
     'Finalizado' => ['#f1f5f9','#475569'],
+    'Retirado'   => ['#f1f5f9','#64748b'],
     'Pendiente'  => ['#fef9c3','#854d0e'],
     default      => ['#f1f5f9','#64748b'],
 };
@@ -76,6 +77,12 @@ $puesto = auth()->user()->puesto;
             <span style="width:7px;height:7px;border-radius:50%;background:{{ $estatusTx }};display:inline-block"></span>
             {{ $prestamo->estatus }}
         </span>
+        @if($prestamo->estatus === 'Pendiente')
+        @php $diasRestantes = max(0, 5 - (int)$prestamo->created_at->diffInDays(now())); @endphp
+        <div style="margin-top:8px;font-size:11px;color:{{ $diasRestantes <= 1 ? '#dc2626' : '#ca8a04' }};font-weight:600">
+            ⏳ {{ $diasRestantes }} día(s) para retiro automático
+        </div>
+        @endif
     </div>
     <div class="card" style="padding:16px 18px">
         <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:6px">Balance restante</div>
@@ -204,11 +211,12 @@ $puesto = auth()->user()->puesto;
         <div style="padding:12px 18px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600">Detalles del crédito</div>
         <div style="padding:16px 18px;display:grid;grid-template-columns:1fr 1fr;gap:10px 20px">
             @foreach([
-                ['Frecuencia',   $prestamo->frecuencia],
-                ['Num. pagos',   $prestamo->num_pagos],
-                ['Tasa diaria',  $prestamo->tasa_diaria > 0 ? $prestamo->tasa_diaria.'%' : '— (pago fijo)'],
-                ['Fecha inicio', $prestamo->fecha_inicio ? $prestamo->fecha_inicio->format('d/m/Y') : '—'],
-                ['Promotor',     $prestamo->promotor?->nombre ?? '—'],
+                ['Frecuencia',       $prestamo->frecuencia],
+                ['Num. pagos',       $prestamo->num_pagos],
+                ['Tasa diaria',      $prestamo->tasa_diaria > 0 ? $prestamo->tasa_diaria.'%' : '— (pago fijo)'],
+                ['Fecha inicio',     $prestamo->fecha_inicio ? $prestamo->fecha_inicio->format('d/m/Y') : '—'],
+                ['Fecha solicitud',  $prestamo->created_at ? $prestamo->created_at->format('d/m/Y H:i') : '—'],
+                ['Promotor',         $prestamo->promotor?->nombre ?? '—'],
             ] as [$l, $v])
             <div>
                 <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">{{ $l }}</div>

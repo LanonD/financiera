@@ -18,6 +18,7 @@ class Prestamo extends Model
         'interes_diario', 'interes_mora_activo',
         'fecha_inicio', 'fecha_fin', 'estatus',
         'monto_entregado', 'forma_entrega', 'fecha_entrega', 'nota_entrega',
+        'doc_ine', 'doc_pagare', 'doc_comprobante', 'doc_foto_domicilio',
     ];
 
     protected $casts = [

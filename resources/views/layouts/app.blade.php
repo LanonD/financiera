@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>PrestaCRM — @yield('title', 'Panel')</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -68,6 +69,10 @@
     .alert{padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:16px}
     .alert-success{background:#dcfce7;border:1px solid #86efac;color:#15803d}
     .alert-error{background:#fee2e2;border:1px solid #fca5a5;color:#991b1b}
+    /* Offline UI */
+    #offline-banner{display:none;position:sticky;top:56px;z-index:49;background:#fef9c3;border-bottom:1px solid #fcd34d;padding:8px 28px;font-size:12px;font-weight:600;color:#92400e;display:none;align-items:center;gap:8px}
+    .offline-badge{display:none;align-items:center;justify-content:center;min-width:17px;height:17px;padding:0 5px;border-radius:999px;background:#ef4444;color:#fff;font-size:10px;font-weight:700;line-height:1;margin-left:auto}
+    #offline-pending-panel{display:none;background:#fffbeb;border:1px solid #fcd34d;border-radius:var(--radius);margin-bottom:16px;overflow:hidden}
     </style>
     @stack('styles')
 </head>
@@ -105,6 +110,7 @@
             <a href="{{ route('prestamos.index') }}" class="nav-item {{ str_starts_with($uri,'prestamos') ? 'active' : '' }}">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M5 7h6M5 10h4"/></svg>
                 Préstamos
+                <span class="offline-badge">0</span>
             </a>
             <a href="{{ route('desembolsos.index') }}" class="nav-item {{ str_starts_with($uri,'desembolsos') ? 'active' : '' }}">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 2v12M4 6l4-4 4 4"/></svg>
@@ -127,6 +133,7 @@
             <a href="{{ route('prestamos.index') }}" class="nav-item {{ str_starts_with($uri,'prestamos') ? 'active' : '' }}">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M5 7h6M5 10h4"/></svg>
                 Mis préstamos
+                <span class="offline-badge">0</span>
             </a>
             <a href="{{ route('clientes.index') }}" class="nav-item {{ str_starts_with($uri,'clientes') ? 'active' : '' }}">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="6" cy="5" r="2.5"/><path d="M1 14c0-2.761 2.239-5 5-5"/><circle cx="11" cy="5" r="2.5"/><path d="M15 14c0-2.761-2.239-5-5-5"/></svg>
@@ -177,6 +184,13 @@
         </div>
     </div>
 
+    {{-- Offline banner --}}
+    <div id="offline-banner" style="display:none;align-items:center;gap:8px;position:sticky;top:56px;z-index:49;background:#fef9c3;border-bottom:1px solid #fcd34d;padding:8px 28px;font-size:12px;font-weight:600;color:#92400e">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55M5 12.55a10.94 10.94 0 0 1 5.17-2.39M10.71 5.05A16 16 0 0 1 22.56 9M1.42 9a15.91 15.91 0 0 1 4.7-2.88M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/></svg>
+        Sin conexión — los préstamos nuevos se guardarán localmente y se enviarán al recuperar internet.
+        <button onclick="window.OfflineSync?.sincronizar()" style="margin-left:auto;padding:3px 12px;border-radius:999px;border:1px solid #d97706;background:transparent;color:#92400e;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font)">Sincronizar ahora</button>
+    </div>
+
     <div class="content">
         @if(session('success'))
             <div class="alert alert-success">{{ session('success') }}</div>
@@ -185,9 +199,33 @@
             <div class="alert alert-error">{{ session('error') }}</div>
         @endif
 
+        {{-- Pending offline loans panel --}}
+        <div id="offline-pending-panel" style="display:none;background:#fffbeb;border:1px solid #fcd34d;border-radius:var(--radius);margin-bottom:16px;overflow:hidden">
+            <div style="padding:10px 16px;border-bottom:1px solid #fcd34d;display:flex;align-items:center;justify-content:space-between;gap:12px">
+                <div style="display:flex;align-items:center;gap:8px">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#92400e" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    <span style="font-size:12px;font-weight:700;color:#92400e">Préstamos guardados sin conexión</span>
+                    <span class="offline-badge" style="position:relative;display:inline-flex">0</span>
+                </div>
+                <button onclick="window.OfflineSync?.sincronizar()" style="padding:4px 14px;border-radius:999px;border:1px solid #d97706;background:#fef3c7;color:#92400e;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font)">
+                    ↑ Enviar al servidor
+                </button>
+            </div>
+            <div id="offline-pending-list"></div>
+        </div>
+
         @yield('content')
     </div>
 </main>
+
+<script src="{{ asset('js/offline-sync.js') }}"></script>
+<script>
+// Register Service Worker
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+        .catch(err => console.warn('SW registration failed:', err));
+}
+</script>
 
 @stack('scripts')
 </body>

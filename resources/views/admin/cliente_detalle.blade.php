@@ -167,6 +167,7 @@ $onTimePct = $totalPagados > 0 ? round($enTiempo / $totalPagados * 100) : 0;
                 <span>Saldo ${{ number_format($loan->saldo_actual,2,'.',',') }}</span>
                 <span>{{ $pagosCount }}/{{ $loan->num_pagos }} pagos · ${{ number_format($totalPagadoMonto,0,'.',',') }} cobrado</span>
                 <span>Promotor: {{ $loan->promotor?->nombre ?? '—' }}</span>
+                <span>Solicitud: {{ $loan->created_at?->format('d/m/Y') ?? '—' }}</span>
             </div>
         </div>
         <svg class="loan-chevron {{ $idx === 0 ? 'open' : '' }}" id="chev-{{ $loan->id }}" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6l4 4 4-4"/></svg>
@@ -230,6 +231,41 @@ $onTimePct = $totalPagados > 0 ? round($enTiempo / $totalPagados * 100) : 0;
             @endforeach
             </tbody>
         </table>
+        </div>
+        @endif
+
+        {{-- Documentos del desembolso --}}
+        @if($loan->doc_ine || $loan->doc_pagare || $loan->doc_comprobante || $loan->doc_foto_domicilio)
+        <div style="padding:14px 18px;border-top:1px solid var(--border);background:#fafafa">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px;display:flex;align-items:center;gap:6px">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                Documentos del desembolso
+                @if($loan->fecha_entrega)
+                <span style="font-weight:400;color:var(--text3)">— entregado {{ \Carbon\Carbon::parse($loan->fecha_entrega)->format('d/m/Y') }}</span>
+                @endif
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px">
+                @foreach([
+                    ['INE', $loan->doc_ine, '#0369a1', '#e0f2fe', '#bae6fd'],
+                    ['Pagaré firmado', $loan->doc_pagare, '#065f46', '#d1fae5', '#6ee7b7'],
+                    ['Comprobante domicilio', $loan->doc_comprobante, '#7c3aed', '#ede9fe', '#c4b5fd'],
+                    ['Foto vivienda', $loan->doc_foto_domicilio, '#9a3412', '#ffedd5', '#fdba74'],
+                ] as [$docLabel, $docPath, $color, $bg, $border])
+                @if($docPath)
+                <a href="{{ asset('storage/'.$docPath) }}" target="_blank"
+                   style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:{{ $bg }};border:1px solid {{ $border }};border-radius:6px;font-size:12px;color:{{ $color }};text-decoration:none;font-weight:500">
+                    @php $ext = strtolower(pathinfo($docPath, PATHINFO_EXTENSION)); @endphp
+                    @if(in_array($ext, ['jpg','jpeg','png','webp']))
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                    @else
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    @endif
+                    {{ $docLabel }}
+                    <span style="font-size:10px;opacity:.7;font-weight:400;text-transform:uppercase">{{ $ext }}</span>
+                </a>
+                @endif
+                @endforeach
+            </div>
         </div>
         @endif
     </div>

@@ -99,8 +99,9 @@ class PrestamoController extends Controller
             'monto_retornar'      => 'required|numeric|min:1',
             'num_pagos'           => 'required|integer|min:1',
             'frecuencia'          => 'required|in:Diario,Semanal,Quincenal,Mensual',
-            'fecha_inicio'        => 'required|date',
-            'fecha_primer_cobro'  => 'required|date|after_or_equal:fecha_inicio',
+            // Allow up to 7 days in the past to support offline sync
+            'fecha_inicio'        => 'required|date|after_or_equal:' . now()->subDays(7)->toDateString(),
+            'fecha_primer_cobro'  => 'required|date|after_or_equal:' . now()->subDays(7)->toDateString(),
         ]);
 
         $user     = Auth::user();
@@ -161,17 +162,17 @@ class PrestamoController extends Controller
             'fecha_entrega'       => null,
         ]);
 
-        // Create payment schedule
-        $ratio = $monto_retornar > 0 ? $monto_entregado / $monto_retornar : 1;
-        $saldo = $monto_entregado;
+        // Create payment schedule — interest-first: all interest collected before principal
+        $interes_restante = round($monto_retornar - $monto_entregado, 2);
+        $saldo            = $monto_entregado;
 
         for ($i = 1; $i <= $num_pagos; $i++) {
-            // Pago 1 → fecha_primer_cobro, pago 2 → +dias, pago 3 → +2*dias, etc.
             $fecha_prog = Carbon::parse($fecha_primer_cobro)->addDays($dias * ($i - 1))->toDateString();
             $cuota      = ($i === $num_pagos) ? $ultimo_pago : $cuota_base;
-            $capital    = ($i === $num_pagos) ? $saldo : round($cuota * $ratio * 100) / 100;
-            $interes    = round(($cuota - $capital) * 100) / 100;
-            $saldo      = max(0, round(($saldo - $capital) * 100) / 100);
+            $interes    = min($cuota, round($interes_restante, 2));
+            $capital    = round($cuota - $interes, 2);
+            $interes_restante = max(0, round($interes_restante - $interes, 2));
+            $saldo      = max(0, round($saldo - $capital, 2));
 
             Pago::create([
                 'prestamo_id'      => $prestamo->id,
@@ -196,6 +197,12 @@ class PrestamoController extends Controller
     public function show($id)
     {
         $prestamo = Prestamo::with(['cliente', 'promotor', 'cobrador'])->findOrFail($id);
+
+        // Auto-retire pending loans with no disbursement after 5 days
+        if ($prestamo->estatus === 'Pendiente' && $prestamo->created_at->diffInDays(now()) >= 5) {
+            $prestamo->estatus = 'Retirado';
+            $prestamo->save();
+        }
 
         // Accumulate mora if: manually activated OR loan is overdue — and a daily rate is configured
         $debeAcumularMora = ($prestamo->interes_mora_activo || $prestamo->estatus === 'Atrasado')
@@ -243,6 +250,10 @@ class PrestamoController extends Controller
         ];
         if (isset($data['interes_diario'])) {
             $update['interes_diario'] = (float)$data['interes_diario'];
+        }
+        // Al revertir a Pendiente, limpiar fecha_entrega para que aparezca en desembolsos
+        if ($data['estatus'] === 'Pendiente') {
+            $update['fecha_entrega'] = null;
         }
         $prestamo->update($update);
 
