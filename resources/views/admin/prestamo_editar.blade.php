@@ -24,6 +24,42 @@
 <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:13px;color:#991b1b;font-weight:500">{{ session('error') }}</div>
 @endif
 
+{{-- Campos financieros --}}
+@php $interesAcordado = round((float)$prestamo->monto - (float)$prestamo->monto_entregado, 2); @endphp
+<div class="card" style="padding:0;overflow:hidden;margin-bottom:20px">
+    <div style="padding:12px 18px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600">Campos financieros</div>
+    <form method="POST" action="{{ route('prestamos.campos', $prestamo->id) }}" style="padding:20px">
+        @csrf
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px">
+            <div>
+                <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:5px">Principal entregado ($)</label>
+                <input type="number" name="monto_entregado" step="0.01" min="0"
+                    value="{{ number_format((float)$prestamo->monto_entregado, 2, '.', '') }}"
+                    style="width:100%;padding:9px 12px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-size:14px;font-family:monospace;outline:none">
+                <p style="font-size:11px;color:var(--text3);margin-top:4px">Dinero real entregado al cliente.</p>
+            </div>
+            <div>
+                <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:5px">Total acordado — deuda completa ($)</label>
+                <input type="number" name="monto" step="0.01" min="0"
+                    value="{{ number_format((float)$prestamo->monto, 2, '.', '') }}"
+                    style="width:100%;padding:9px 12px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-size:14px;font-family:monospace;outline:none">
+                <p style="font-size:11px;color:var(--text3);margin-top:4px">Principal + interés. Interés acordado actual: <strong>${{ number_format($interesAcordado, 2, '.', ',') }}</strong></p>
+            </div>
+            <div>
+                <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#d97706;margin-bottom:5px">Interés por mora acumulado ($)</label>
+                <input type="number" name="interes_acumulado" step="0.01" min="0"
+                    value="{{ number_format((float)$prestamo->interes_acumulado, 2, '.', '') }}"
+                    style="width:100%;padding:9px 12px;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;font-size:14px;font-family:monospace;outline:none;color:#92400e">
+                <p style="font-size:11px;color:#92400e;margin-top:4px">El sistema la aumenta ${{ number_format((float)$prestamo->interes_diario ?: 10, 2) }}/día si hay pagos vencidos.</p>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary"
+            onclick="return confirm('¿Guardar los cambios en los campos financieros?')">
+            Guardar campos financieros
+        </button>
+    </form>
+</div>
+
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
 
 {{-- Estatus y cobrador --}}

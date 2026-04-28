@@ -106,90 +106,23 @@ $puesto = auth()->user()->puesto;
     </div>
 </div>
 
+@php $interesAcordado = round((float)$prestamo->monto - (float)$prestamo->monto_entregado, 2); @endphp
 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px">
     @foreach([
-        ['Cuota',         '$'.number_format($prestamo->cuota,2,'.',','),        'var(--text)'],
-        ['Total cobrado', '$'.number_format($totalCobrado,2,'.',','),            '#16a34a'],
+        ['Total préstamo',  '$'.number_format($prestamo->monto,2,'.',','), '#2563eb'],
+        ['Cuota',           '$'.number_format($prestamo->cuota,2,'.',','), 'var(--text)'],
+        ['Total cobrado',   '$'.number_format($totalCobrado,2,'.',','),    '#16a34a'],
     ] as [$label, $val, $color])
     <div class="card" style="padding:14px 18px">
         <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:5px">{{ $label }}</div>
         <div style="font-size:19px;font-weight:600;font-family:monospace;color:{{ $color }}">{{ $val }}</div>
-    </div>
-    @endforeach
-</div>
-
-{{-- Financial breakdown — editable by admin --}}
-@php
-$interesAcordado = round((float)$prestamo->monto - (float)$prestamo->monto_entregado, 2);
-@endphp
-<div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
-    <div style="padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-        <span style="font-size:13px;font-weight:600">Desglose financiero</span>
-        @if($puesto === 'admin')
-        <span style="font-size:11px;color:var(--text3)">Solo admin puede editar</span>
+        @if($label === 'Total préstamo')
+        <div style="font-size:10px;color:var(--text3);margin-top:3px;font-family:monospace">
+            ${{ number_format($prestamo->monto_entregado,2,'.',',') }} principal + ${{ number_format($interesAcordado,2,'.',',') }} interés
+        </div>
         @endif
     </div>
-    @if($puesto === 'admin')
-    <form method="POST" action="{{ route('prestamos.campos', $prestamo->id) }}" style="padding:16px 18px">
-        @csrf
-        <div style="display:grid;grid-template-columns:repeat(3,1fr) auto;gap:12px;align-items:end">
-            <div>
-                <label style="display:block;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:5px">Principal entregado</label>
-                <div style="display:flex;align-items:center;border:1px solid var(--border);border-radius:6px;overflow:hidden">
-                    <span style="padding:0 8px;font-size:13px;color:var(--text3);background:#f9fafb;border-right:1px solid var(--border)">$</span>
-                    <input type="number" name="monto_entregado" step="0.01" min="0"
-                        value="{{ number_format((float)$prestamo->monto_entregado, 2, '.', '') }}"
-                        style="flex:1;padding:7px 10px;border:none;font-size:14px;font-family:monospace;outline:none;width:100%">
-                </div>
-            </div>
-            <div>
-                <label style="display:block;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:5px">Total acordado (con interés)</label>
-                <div style="display:flex;align-items:center;border:1px solid var(--border);border-radius:6px;overflow:hidden">
-                    <span style="padding:0 8px;font-size:13px;color:var(--text3);background:#f9fafb;border-right:1px solid var(--border)">$</span>
-                    <input type="number" name="monto" step="0.01" min="0"
-                        value="{{ number_format((float)$prestamo->monto, 2, '.', '') }}"
-                        style="flex:1;padding:7px 10px;border:none;font-size:14px;font-family:monospace;outline:none;width:100%">
-                </div>
-                <div style="font-size:10px;color:var(--text3);margin-top:3px">Interés acordado: ${{ number_format($interesAcordado, 2, '.', ',') }}</div>
-            </div>
-            <div>
-                <label style="display:block;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#f59e0b;margin-bottom:5px">Interés por mora acumulado</label>
-                <div style="display:flex;align-items:center;border:1px solid #fcd34d;border-radius:6px;overflow:hidden;background:#fffbeb">
-                    <span style="padding:0 8px;font-size:13px;color:#92400e;background:#fef3c7;border-right:1px solid #fcd34d">$</span>
-                    <input type="number" name="interes_acumulado" step="0.01" min="0"
-                        value="{{ number_format((float)$prestamo->interes_acumulado, 2, '.', '') }}"
-                        style="flex:1;padding:7px 10px;border:none;font-size:14px;font-family:monospace;outline:none;background:#fffbeb;color:#92400e;width:100%">
-                </div>
-                <div style="font-size:10px;color:#92400e;margin-top:3px">${{ number_format((float)$prestamo->interes_diario, 2) }}/día · auto $10/día si vencido</div>
-            </div>
-            <div>
-                <button type="submit"
-                    style="padding:8px 18px;border-radius:6px;border:1px solid var(--accent);background:rgba(59,130,246,.08);color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap"
-                    onclick="return confirm('¿Guardar cambios en los campos financieros?')">
-                    Guardar
-                </button>
-            </div>
-        </div>
-    </form>
-    @else
-    <div style="padding:16px 18px;display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
-        @foreach([
-            ['Principal entregado', '$'.number_format($prestamo->monto_entregado,2,'.',','), 'var(--text)'],
-            ['Total acordado',      '$'.number_format($prestamo->monto,2,'.',','),            '#2563eb'],
-            ['Interés por mora',    '$'.number_format($prestamo->interes_acumulado,2,'.',','),'#f59e0b'],
-        ] as [$l, $v, $c])
-        <div>
-            <div style="font-size:10px;font-weight:600;text-transform:uppercase;color:var(--text3);margin-bottom:3px">{{ $l }}</div>
-            <div style="font-size:18px;font-weight:700;font-family:monospace;color:{{ $c }}">{{ $v }}</div>
-        </div>
-        @endforeach
-    </div>
-    @endif
-    @if(session('success') && str_contains(session('success'), 'Campos'))
-    <div style="padding:8px 18px;background:#f0fdf4;border-top:1px solid #bbf7d0;font-size:12px;color:#166534;font-weight:600">
-        ✓ {{ session('success') }}
-    </div>
-    @endif
+    @endforeach
 </div>
 
 {{-- Interest panel --}}
@@ -282,6 +215,18 @@ $interesAcordado = round((float)$prestamo->monto - (float)$prestamo->monto_entre
     <div class="card" style="padding:0;overflow:hidden">
         <div style="padding:12px 18px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600">Detalles del crédito</div>
         <div style="padding:16px 18px;display:grid;grid-template-columns:1fr 1fr;gap:10px 20px">
+            {{-- Total préstamo con desglose --}}
+            <div style="grid-column:span 2">
+                <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Total préstamo / Deuda</div>
+                <div style="font-size:15px;font-weight:700;font-family:monospace;color:#2563eb;margin-top:2px">
+                    ${{ number_format($prestamo->monto,2,'.',',') }}
+                </div>
+                <div style="font-size:11px;color:var(--text3);margin-top:1px;font-family:monospace">
+                    ${{ number_format($prestamo->monto_entregado,2,'.',',') }} principal
+                    + ${{ number_format($interesAcordado,2,'.',',') }} interés
+                </div>
+            </div>
+
             @foreach([
                 ['Frecuencia',       $prestamo->frecuencia],
                 ['Num. pagos',       $prestamo->num_pagos],
