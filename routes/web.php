@@ -28,8 +28,12 @@ Route::middleware(['auth', 'role:admin'])->group(function () {
     Route::put('/empleados/{id}',      [EmpleadoController::class, 'update'])->name('empleados.update');
     Route::delete('/empleados/{id}',   [EmpleadoController::class, 'destroy'])->name('empleados.destroy');
     Route::get('/reportes',            [ReporteController::class, 'index'])->name('reportes.index');
-    Route::get('/cobros/asignar',      [PagoController::class, 'asignar'])->name('cobros.asignar');
-    Route::post('/cobros/asignar',     [PagoController::class, 'guardarAsignacion'])->name('cobros.guardarAsignacion');
+});
+
+// Admin + Promo: asignar cobros
+Route::middleware(['auth', 'role:admin,promo'])->group(function () {
+    Route::get('/cobros/asignar',  [PagoController::class, 'asignar'])->name('cobros.asignar');
+    Route::post('/cobros/asignar', [PagoController::class, 'guardarAsignacion'])->name('cobros.guardarAsignacion');
 });
 
 // Admin + Promo
@@ -50,6 +54,10 @@ Route::middleware(['auth', 'role:admin,promo'])->group(function () {
     Route::post('/prestamos/{id}/toggle-mora',        [PrestamoController::class, 'toggleMora'])->name('prestamos.toggleMora');
     Route::post('/prestamos/{id}/set-mora',           [PrestamoController::class, 'setMora'])->name('prestamos.setMora');
     Route::post('/prestamos/{id}/campos',             [PrestamoController::class, 'updateCampos'])->name('prestamos.campos');
+    Route::post('/prestamos/{id}/cobro-extra',        [PagoController::class, 'registrarExtra'])->name('prestamos.cobroExtra');
+    Route::post('/prestamos/{id}/agendar-cobro',      [PagoController::class, 'agendarCobro'])->name('prestamos.agendarCobro');
+    Route::post('/prestamos/{id}/payment-hold',       [PagoController::class, 'togglePaymentHold'])->name('prestamos.paymentHold');
+    Route::post('/prestamos/{id}/actualizar-frecuencia', [PrestamoController::class, 'actualizarFrecuencia'])->name('prestamos.actualizarFrecuencia');
     Route::post('/prestamos/calcular',  [PrestamoController::class, 'calcular'])->name('prestamos.calcular');
     Route::post('/prestamos/calcular2', [PrestamoController::class, 'calcular2'])->name('prestamos.calcular2');
     Route::get('/desembolsos',          [DesembolsoController::class, 'index'])->name('desembolsos.index');

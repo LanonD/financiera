@@ -14,6 +14,8 @@ class DesembolsoController extends Controller
     {
         $user     = Auth::user();
         $empleado = $user->empleado;
+        $roles    = $user->getAllRoles();
+        $isAdmin  = in_array('admin', $roles);
 
         // Auto-retire pending loans older than 5 days with no disbursement
         Prestamo::where('estatus', 'Pendiente')
@@ -25,8 +27,13 @@ class DesembolsoController extends Controller
             ->where('estatus', 'Pendiente')
             ->whereNull('fecha_entrega');
 
-        if ($user->puesto === 'desembolso' && $empleado) {
+        // Desembolsador sin rol admin: solo ve los préstamos que le fueron asignados
+        if (!$isAdmin && in_array('desembolso', $roles) && $empleado) {
             $query->where('desembolso_id', $empleado->id);
+        }
+        // Promo sin rol admin: solo ve los préstamos de sus propios clientes
+        elseif (!$isAdmin && in_array('promo', $roles) && $empleado) {
+            $query->where('promotor_id', $empleado->id);
         }
 
         $prestamos_pendientes = $query->orderBy('created_at')->get();
