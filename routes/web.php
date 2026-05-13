@@ -55,6 +55,7 @@ Route::middleware(['auth', 'role:admin,promo'])->group(function () {
     Route::post('/prestamos/{id}/set-mora',           [PrestamoController::class, 'setMora'])->name('prestamos.setMora');
     Route::post('/prestamos/{id}/campos',             [PrestamoController::class, 'updateCampos'])->name('prestamos.campos');
     Route::post('/prestamos/{id}/cobro-extra',        [PagoController::class, 'registrarExtra'])->name('prestamos.cobroExtra');
+    Route::post('/prestamos/{id}/pagar-cuota',        [PagoController::class, 'pagarCuota'])->name('prestamos.pagarCuota');
     Route::post('/prestamos/{id}/agendar-cobro',      [PagoController::class, 'agendarCobro'])->name('prestamos.agendarCobro');
     Route::post('/prestamos/{id}/payment-hold',       [PagoController::class, 'togglePaymentHold'])->name('prestamos.paymentHold');
     Route::post('/prestamos/{id}/actualizar-frecuencia', [PrestamoController::class, 'actualizarFrecuencia'])->name('prestamos.actualizarFrecuencia');

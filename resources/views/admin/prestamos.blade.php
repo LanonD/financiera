@@ -151,54 +151,42 @@ $listaCobradoresP = $prestamos->pluck('cobrador.nombre')->filter()->unique()->so
     <table>
         <thead>
             <tr>
-                <th>ID</th><th>Cliente</th><th>Monto</th><th>Cuota</th>
-                <th>Frecuencia</th><th>Próximo cobro</th><th>Saldo pendiente</th>
-                <th>Estatus</th><th>Acción</th>
+                <th>Monto</th><th>Cuota</th><th>Última cuota</th>
+                <th>Frecuencia</th><th>Saldo pendiente</th><th>Acción</th>
             </tr>
         </thead>
         <tbody id="tableBody">
         @forelse($prestamos as $row)
         @php
-            $badgeClass = match($row->estatus) {
-                'Activo'     => 'badge-green',
-                'Atrasado'   => 'badge-red',
-                'Finalizado' => 'badge-gray',
-                'Retirado'   => 'badge-gray',
-                default      => 'badge-yellow',
-            };
-            $nombre       = $row->cliente?->nombre ?? '—';
-            $saldoTotal   = $row->saldo_actual + ($row->interes_acumulado ?? 0);
-            $proximoCobro = $row->proximo_pago;
-            $hoy          = date('Y-m-d');
-            $cobrovencido = $proximoCobro && $proximoCobro < $hoy;
-            $promotorNom  = $row->promotor?->nombre ?? '';
-            $cobradorNom  = $row->cobrador?->nombre ?? '';
-            $busqueda     = strtolower($nombre . ' ' . $row->id . ' ' . $promotorNom . ' ' . $cobradorNom);
+            $nombre      = $row->cliente?->nombre ?? '—';
+            $saldoTotal  = $row->saldo_actual + ($row->interes_acumulado ?? 0);
+            $promotorNom = $row->promotor?->nombre ?? '';
+            $cobradorNom = $row->cobrador?->nombre ?? '';
+            $busqueda    = strtolower($nombre . ' ' . $row->id . ' ' . $promotorNom . ' ' . $cobradorNom);
+            $ultimaCuota = $row->fecha_fin;
         @endphp
         <tr data-status="{{ $row->estatus }}"
             data-promotor="{{ $promotorNom }}"
             data-cobrador="{{ $cobradorNom }}"
             data-busqueda="{{ $busqueda }}">
-            <td style="font-size:12px;color:var(--text2);font-weight:600">#{{ $row->id }}</td>
-            <td>
-                <div style="display:flex;align-items:center;gap:8px">
-                    <span style="width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">{{ strtoupper(substr($nombre,0,2)) }}</span>
-                    {{ $nombre }}
-                </div>
-            </td>
             <td style="font-family:monospace;font-size:13px;font-weight:600">${{ number_format($row->monto, 0, '.', ',') }}</td>
             <td style="font-family:monospace;font-size:13px">${{ number_format($row->cuota, 0, '.', ',') }}</td>
-            <td style="font-size:12px;color:var(--text2)">{{ $row->frecuencia }}</td>
-            <td style="font-family:monospace;font-size:12px;{{ $cobrovencido ? 'color:#ef4444;font-weight:600' : '' }}">
-                {{ $proximoCobro ? \Carbon\Carbon::parse($proximoCobro)->format('d/m/Y') : '—' }}
-                @if($cobrovencido) <span style="font-size:10px;background:#fee2e2;color:#dc2626;padding:1px 5px;border-radius:4px">Vencido</span> @endif
+            <td style="font-family:monospace;font-size:12px;color:var(--text2)">
+                {{ $ultimaCuota ? \Carbon\Carbon::parse($ultimaCuota)->format('d/m/Y') : '—' }}
             </td>
-            <td style="font-family:monospace;font-size:13px">${{ number_format($saldoTotal, 0, '.', ',') }}</td>
-            <td><span class="badge {{ $badgeClass }}">{{ $row->estatus }}</span></td>
-            <td><a class="btn btn-sm" style="background:#f3f4f6;color:var(--text)" href="{{ route('prestamos.show', $row->id) }}">Ver</a></td>
+            <td style="font-size:12px;color:var(--text2)">{{ $row->frecuencia }}</td>
+            <td style="font-family:monospace;font-size:13px">
+                ${{ number_format($saldoTotal, 0, '.', ',') }}
+                @if($row->interes_acumulado > 0)
+                    <div style="font-size:10px;color:#f59e0b;font-weight:600">+${{ number_format($row->interes_acumulado,0,'.',',') }} mora</div>
+                @endif
+            </td>
+            <td>
+                <a class="btn btn-sm" style="background:#f3f4f6;color:var(--text)" href="{{ route('prestamos.show', $row->id) }}">Ver</a>
+            </td>
         </tr>
         @empty
-        <tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text3)">No hay préstamos con los filtros seleccionados</td></tr>
+        <tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text3)">No hay préstamos con los filtros seleccionados</td></tr>
         @endforelse
         </tbody>
     </table>

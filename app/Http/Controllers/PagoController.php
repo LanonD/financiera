@@ -278,7 +278,13 @@ class PagoController extends Controller
                     $remaining = Pago::where('prestamo_id', $prestamoId)
                         ->whereIn('estatus', ['Pendiente', 'Atrasado'])
                         ->count();
-                    $prestamo->estatus = $remaining === 0 ? 'Finalizado' : 'Activo';
+                    if ($remaining === 0) {
+                        $prestamo->estatus             = 'Finalizado';
+                        $prestamo->interes_mora_activo = false;
+                        $prestamo->interes_diario      = 0;
+                    } else {
+                        $prestamo->estatus = 'Activo';
+                    }
                 }
             } elseif ($pagoMora > 0) {
                 // Payment covered only mora (nothing left for cuota)
@@ -353,8 +359,10 @@ class PagoController extends Controller
         // Auto-finalize: if both capital and mora reach 0, the loan is fully paid
         $mensajeFin = '';
         if ((float)$prestamo->saldo_actual <= 0 && (float)$prestamo->interes_acumulado <= 0) {
-            $prestamo->estatus       = 'Finalizado';
-            $prestamo->payment_hold  = false;
+            $prestamo->estatus             = 'Finalizado';
+            $prestamo->payment_hold        = false;
+            $prestamo->interes_mora_activo = false;
+            $prestamo->interes_diario      = 0;
 
             // Mark remaining pending plan pagos as liquidated (paid early, $0)
             Pago::where('prestamo_id', $prestamo->id)
@@ -574,5 +582,109 @@ class PagoController extends Controller
             ->update(['cobrador_id' => $empleado->id]);
 
         return redirect()->back()->with('success', 'Te has asignado como cobrador de este préstamo.');
+    }
+
+    /**
+     * Admin / Promo: register a payment for a specific cuota (pago) selected by the user.
+     * Applies mora first, then the remainder to the chosen cuota.
+     */
+    public function pagarCuota(Request $request, $prestamoId)
+    {
+        $request->validate([
+            'pago_id' => 'required|integer|exists:pagos,id',
+            'monto'   => 'required|numeric|min:0.01',
+            'nota'    => 'nullable|string|max:255',
+        ]);
+
+        $user     = Auth::user();
+        $empleado = $user->empleado;
+        $prestamo = Prestamo::findOrFail($prestamoId);
+
+        // Verify the pago belongs to this prestamo and is payable
+        $pago = Pago::where('id', $request->pago_id)
+            ->where('prestamo_id', $prestamoId)
+            ->whereIn('estatus', ['Pendiente', 'Atrasado'])
+            ->firstOrFail();
+
+        if (!in_array($prestamo->estatus, ['Activo', 'Atrasado'])) {
+            return redirect()->back()->with('error', 'El préstamo no está activo.');
+        }
+
+        // ── Bring mora up to date ───────────────────────────────────────────
+        if ((float)$prestamo->interes_diario > 0
+            && in_array($prestamo->estatus, ['Activo', 'Atrasado'])
+            && ($prestamo->interes_mora_activo || $prestamo->estatus === 'Atrasado')) {
+            $hoy   = now()->toDateString();
+            $desde = $prestamo->fecha_ultimo_interes
+                ? $prestamo->fecha_ultimo_interes->toDateString()
+                : $hoy;
+            $dias  = (int) \Carbon\Carbon::parse($desde)->diffInDays($hoy);
+            if ($dias > 0) {
+                $prestamo->interes_acumulado    = round((float)$prestamo->interes_acumulado + ($dias * (float)$prestamo->interes_diario), 2);
+                $prestamo->fecha_ultimo_interes = $hoy;
+            }
+        }
+
+        $montoRecibido = (float)$request->monto;
+        $nota          = $request->nota ?? '';
+
+        // ── Apply to mora first ─────────────────────────────────────────────
+        $moraPendiente = (float)$prestamo->interes_acumulado;
+        $pagoMora      = 0;
+        if ($moraPendiente > 0 && $montoRecibido > 0) {
+            $pagoMora                    = min($montoRecibido, $moraPendiente);
+            $prestamo->interes_acumulado = round($moraPendiente - $pagoMora, 2);
+            $montoRecibido              -= $pagoMora;
+            $nota .= ($nota ? ' | ' : '') . 'Mora: $' . number_format($pagoMora, 2);
+        }
+
+        // ── Apply remainder to the chosen cuota ─────────────────────────────
+        if ($montoRecibido > 0) {
+            $interesACobrar = min($montoRecibido, (float)$pago->interes);
+            $restante       = $montoRecibido - $interesACobrar;
+            $capitalACobrar = min($restante, (float)$pago->capital);
+
+            $tipo = $montoRecibido >= (float)$pago->monto_cuota ? 'Pagado' : 'Parcial';
+
+            $pago->monto_cobrado = $montoRecibido;
+            $pago->tipo_cobro    = $tipo === 'Pagado' ? 'completo' : 'parcial';
+            $pago->nota_cobro    = $nota ?: null;
+            $pago->fecha_pago    = now()->toDateString();
+            $pago->estatus       = $tipo;
+            $pago->cobrador_id   = $empleado?->id;
+            $pago->save();
+
+            if ($capitalACobrar > 0) {
+                $prestamo->saldo_actual = max(0, round((float)$prestamo->saldo_actual - $capitalACobrar, 2));
+            }
+
+            // Check if all payments are now done
+            if ($tipo === 'Pagado') {
+                $remaining = Pago::where('prestamo_id', $prestamoId)
+                    ->whereIn('estatus', ['Pendiente', 'Atrasado'])
+                    ->count();
+                if ($remaining === 0) {
+                    $prestamo->estatus             = 'Finalizado';
+                    $prestamo->interes_mora_activo = false;
+                    $prestamo->interes_diario      = 0;
+                } else {
+                    $prestamo->estatus = 'Activo';
+                }
+            }
+        } elseif ($pagoMora > 0) {
+            // Payment covered only mora, annotate pago but keep it pending
+            $pago->nota_cobro = ($pago->nota_cobro ? $pago->nota_cobro . ' | ' : '') . $nota;
+            $pago->save();
+        }
+
+        $prestamo->save();
+
+        $totalPagado = (float)$request->monto;
+        $msg = 'Cuota #' . $pago->numero_pago . ' — $' . number_format($totalPagado, 2) . ' registrada.';
+        if ($prestamo->estatus === 'Finalizado') {
+            $msg .= ' ✓ Préstamo finalizado.';
+        }
+
+        return redirect()->back()->with('success', $msg);
     }
 }

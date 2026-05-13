@@ -234,8 +234,9 @@ class PrestamoController extends Controller
             }
         }
 
-        // Accumulate daily mora
+        // Accumulate daily mora — only for active loans (never for Finalizado/Retirado)
         if ((float)$prestamo->interes_diario > 0
+            && in_array($prestamo->estatus, ['Activo', 'Atrasado'])
             && ($prestamo->interes_mora_activo || $prestamo->estatus === 'Atrasado')) {
             $hoy = now()->toDateString();
             $desdeDate = $prestamo->fecha_ultimo_interes
@@ -249,7 +250,7 @@ class PrestamoController extends Controller
             }
         }
 
-        $pagos = Pago::where('prestamo_id', $id)->orderBy('numero_pago')->get();
+        $pagos = Pago::where('prestamo_id', $id)->orderBy('fecha_programada')->orderBy('numero_pago')->get();
         $interesInfo = ($prestamo->interes_activo || $prestamo->interes_mora_activo || (float)$prestamo->interes_acumulado > 0) ? true : null;
 
         return view('admin.prestamo_detalle', compact('prestamo', 'pagos', 'interesInfo'));
@@ -359,6 +360,47 @@ class PrestamoController extends Controller
         $prestamo->save();
 
         return redirect()->route('prestamos.show', $id)->with('success', 'Interés por mora ' . ($prestamo->interes_mora_activo ? 'activado' : 'desactivado') . '.');
+    }
+
+    /**
+     * Admin / Promo: update the payment frequency and recalculate future pending dates.
+     */
+    public function actualizarFrecuencia(Request $request, $id)
+    {
+        $request->validate([
+            'frecuencia'      => 'required|in:Diario,Semanal,Quincenal,Mensual',
+            'fecha_nuevo_inicio' => 'required|date',
+        ]);
+
+        $prestamo = Prestamo::findOrFail($id);
+
+        $pagosPendientes = Pago::where('prestamo_id', $id)
+            ->whereIn('estatus', ['Pendiente', 'Atrasado'])
+            ->where('tipo_pago', 'plan')
+            ->orderBy('numero_pago')
+            ->get();
+
+        if ($pagosPendientes->isEmpty()) {
+            return redirect()->back()->with('error', 'No hay pagos del plan pendientes para reprogramar.');
+        }
+
+        $diasMap = ['Diario' => 1, 'Semanal' => 7, 'Quincenal' => 14, 'Mensual' => 30];
+        $dias    = $diasMap[$request->frecuencia] ?? 7;
+        $fecha   = Carbon::parse($request->fecha_nuevo_inicio);
+
+        foreach ($pagosPendientes as $i => $pago) {
+            if ($request->frecuencia === 'Mensual') {
+                $pago->fecha_programada = Carbon::parse($request->fecha_nuevo_inicio)->addMonths($i)->toDateString();
+            } else {
+                $pago->fecha_programada = Carbon::parse($request->fecha_nuevo_inicio)->addDays($dias * $i)->toDateString();
+            }
+            $pago->save();
+        }
+
+        $prestamo->frecuencia = $request->frecuencia;
+        $prestamo->save();
+
+        return redirect()->back()->with('success', 'Frecuencia actualizada a ' . $request->frecuencia . '. ' . $pagosPendientes->count() . ' pagos reprogramados.');
     }
 
     /**
