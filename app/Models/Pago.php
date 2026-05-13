@@ -14,7 +14,7 @@ class Pago extends Model
     protected $fillable = [
         'prestamo_id', 'cobrador_id',
         'numero_pago', 'monto_cuota', 'interes', 'capital', 'saldo_restante',
-        'monto_cobrado', 'tipo_cobro', 'nota_cobro',
+        'monto_cobrado', 'tipo_cobro', 'nota_cobro', 'tipo_pago',
         'fecha_programada', 'fecha_pago', 'estatus',
     ];
 

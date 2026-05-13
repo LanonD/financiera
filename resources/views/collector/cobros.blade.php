@@ -31,6 +31,16 @@ tr.cobro-parcial{background:#fffbeb}
 .range-wrap{margin-top:4px}
 .range-track{height:5px;background:#f3f4f6;border-radius:3px;overflow:hidden}
 .range-fill{height:100%;background:var(--accent);border-radius:3px;transition:width .3s}
+@media(max-width:640px){
+    .cobrador-bar{gap:10px;}
+    .cobrador-stat{min-width:unset!important;flex:1 1 calc(33% - 10px);}
+    .cobros-header{flex-direction:column!important;align-items:stretch!important;}
+    .cobros-header .search-box{max-width:100%!important;}
+}
+@media(max-width:500px){
+    .cobro-modal-grid{grid-template-columns:1fr!important;}
+    .cobro-modal-grid-2{grid-template-columns:1fr!important;}
+}
 </style>
 @endpush
 
@@ -262,7 +272,7 @@ $cobrosFuturos= $prestamos->filter(fn($p) => $p->proximo_pago === null || $p->pr
             <button class="modal-close" onclick="cerrarModal()">×</button>
         </div>
         <div class="modal-body">
-            <div style="background:#f9fafb;border-radius:6px;padding:12px 14px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+            <div class="cobro-modal-grid" style="background:#f9fafb;border-radius:6px;padding:12px 14px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
                 <div>
                     <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Préstamo</div>
                     <div style="font-size:13px;font-weight:600;font-family:monospace" id="mId">—</div>
@@ -279,7 +289,7 @@ $cobrosFuturos= $prestamos->filter(fn($p) => $p->proximo_pago === null || $p->pr
             <div id="mTotalBox" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:8px 14px;margin-bottom:12px;font-size:12px;color:#991b1b;font-weight:600">
                 Total esperado (cuota + mora): <span id="mTotal" style="font-family:monospace">—</span>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+            <div class="cobro-modal-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
                 <div id="optCompleto" onclick="selectOpt('completo')" style="padding:10px 14px;border:1.5px solid var(--border);border-radius:6px;cursor:pointer;text-align:center;transition:all .15s">
                     <div style="font-size:10px;font-weight:600;text-transform:uppercase;color:var(--text3)">Pago completo</div>
                     <div style="font-size:16px;font-weight:600;font-family:monospace" id="optCompletoVal">—</div>

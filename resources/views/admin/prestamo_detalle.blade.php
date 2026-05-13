@@ -94,7 +94,7 @@ $puesto = auth()->user()->puesto;
 </div>
 
 {{-- KPI cards --}}
-<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px">
+<div class="rd-grid-3" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px">
     <div class="card" style="padding:16px 18px">
         <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:8px">Estatus</div>
         <span style="display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:999px;font-size:14px;font-weight:700;background:{{ $estatusBg }};color:{{ $estatusTx }}">
@@ -133,7 +133,7 @@ $puesto = auth()->user()->puesto;
 </div>
 
 @php $interesAcordado = round((float)$prestamo->monto - (float)$prestamo->monto_entregado, 2); @endphp
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px">
+<div class="rd-grid-4" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px">
     @foreach([
         ['Total préstamo',  '$'.number_format($prestamo->monto,2,'.',','), '#2563eb'],
         ['Cuota',           '$'.number_format($prestamo->cuota,2,'.',','), 'var(--text)'],
@@ -150,6 +150,19 @@ $puesto = auth()->user()->puesto;
     </div>
     @endforeach
 </div>
+
+@push('styles')
+<style>
+@media(max-width:768px){
+    .rd-grid-3,.rd-grid-4{ grid-template-columns:repeat(2,1fr)!important; }
+    .rd-grid-2{ grid-template-columns:1fr!important; }
+    .rd-grid-2-inner{ grid-template-columns:1fr!important; }
+}
+@media(max-width:480px){
+    .rd-grid-3,.rd-grid-4,.rd-grid-2{ grid-template-columns:1fr!important; }
+}
+</style>
+@endpush
 
 {{-- Actions panel: cobro extra, agendar, pago diferido, cambiar frecuencia --}}
 @if(in_array($prestamo->estatus, ['Activo','Atrasado']) && in_array($puesto, ['admin','promo']))
@@ -230,7 +243,7 @@ $puesto = auth()->user()->puesto;
         @endif
     </div>
     <div style="padding:14px 18px">
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px 20px;margin-bottom:12px">
+        <div class="rd-grid-3" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px 20px;margin-bottom:12px">
             <div>
                 <div style="font-size:10px;font-weight:600;text-transform:uppercase;color:var(--text3);margin-bottom:3px">Mora acumulada</div>
                 <div style="font-size:18px;font-weight:700;font-family:monospace;color:#f59e0b">${{ number_format($prestamo->interes_acumulado,2,'.',',') }}</div>
@@ -291,11 +304,11 @@ $puesto = auth()->user()->puesto;
     </div>
 </div>
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+<div class="rd-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
     {{-- Credit details --}}
     <div class="card" style="padding:0;overflow:hidden">
         <div style="padding:12px 18px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600">Detalles del crédito</div>
-        <div style="padding:16px 18px;display:grid;grid-template-columns:1fr 1fr;gap:10px 20px">
+        <div class="rd-grid-2-inner" style="padding:16px 18px;display:grid;grid-template-columns:1fr 1fr;gap:10px 20px">
             {{-- Total préstamo con desglose acordado y restante --}}
             <div style="grid-column:span 2">
                 <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Total préstamo / Deuda acordada</div>

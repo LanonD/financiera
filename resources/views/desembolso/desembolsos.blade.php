@@ -2,6 +2,15 @@
 
 @section('title', 'Desembolsos pendientes')
 
+@push('styles')
+<style>
+@media(max-width:768px){
+    .desemb-header{flex-direction:column!important;align-items:stretch!important;gap:10px!important;}
+    .desemb-header .btn{width:100%!important;justify-content:center!important;}
+}
+</style>
+@endpush
+
 @section('content')
 
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">

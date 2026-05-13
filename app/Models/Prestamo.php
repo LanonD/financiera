@@ -19,6 +19,7 @@ class Prestamo extends Model
         'fecha_inicio', 'fecha_fin', 'estatus',
         'monto_entregado', 'forma_entrega', 'fecha_entrega', 'nota_entrega',
         'doc_ine', 'doc_pagare', 'doc_comprobante', 'doc_foto_domicilio',
+        'payment_hold',
     ];
 
     protected $casts = [
@@ -31,6 +32,7 @@ class Prestamo extends Model
         'monto_entregado'     => 'decimal:2',
         'interes_activo'      => 'boolean',
         'interes_mora_activo' => 'boolean',
+        'payment_hold'        => 'boolean',
         'fecha_inicio'        => 'date',
         'fecha_fin'           => 'date',
         'fecha_ultimo_interes'=> 'date',

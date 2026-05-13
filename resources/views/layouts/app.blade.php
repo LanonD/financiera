@@ -73,6 +73,69 @@
     #offline-banner{display:none;position:sticky;top:56px;z-index:49;background:#fef9c3;border-bottom:1px solid #fcd34d;padding:8px 28px;font-size:12px;font-weight:600;color:#92400e;display:none;align-items:center;gap:8px}
     .offline-badge{display:none;align-items:center;justify-content:center;min-width:17px;height:17px;padding:0 5px;border-radius:999px;background:#ef4444;color:#fff;font-size:10px;font-weight:700;line-height:1;margin-left:auto}
     #offline-pending-panel{display:none;background:#fffbeb;border:1px solid #fcd34d;border-radius:var(--radius);margin-bottom:16px;overflow:hidden}
+
+    /* ═══════════════════════════════════════
+       RESPONSIVE — sidebar drawer + layout
+    ═══════════════════════════════════════ */
+
+    /* Hamburger button (hidden on desktop) */
+    .btn-hamburger{display:none;align-items:center;justify-content:center;background:none;border:none;padding:7px;border-radius:6px;cursor:pointer;color:var(--text2);flex-shrink:0}
+    .btn-hamburger:hover{background:rgba(0,0,0,0.05)}
+
+    /* Sidebar overlay */
+    .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:99;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
+    .sidebar-overlay.is-open{display:block}
+
+    /* Sidebar transition for smooth slide */
+    .sidebar{transition:transform .25s cubic-bezier(.4,0,.2,1)}
+
+    /* ── 768px ── */
+    @media(max-width:768px){
+        /* Sidebar becomes a slide-in drawer */
+        .sidebar{transform:translateX(-100%);z-index:100}
+        .sidebar.is-open{transform:translateX(0);box-shadow:6px 0 24px rgba(0,0,0,0.35)}
+
+        /* Main takes full width */
+        .main{margin-left:0!important}
+
+        /* Topbar */
+        .topbar{padding:0 14px;gap:10px}
+        .btn-hamburger{display:flex}
+
+        /* Content */
+        .content{padding:16px}
+
+        /* KPI grid: 2 cols */
+        .kpi-grid{grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px}
+
+        /* Cards */
+        .card{padding:14px}
+
+        /* Dialogs / modals */
+        dialog{max-width:calc(100vw - 20px)!important;width:calc(100vw - 20px)!important;margin:10px auto!important}
+
+        /* Offline banner padding */
+        #offline-banner{padding:8px 16px}
+    }
+
+    /* ── 640px ── */
+    @media(max-width:640px){
+        /* KPI grid: 2 cols still */
+        .kpi-grid{grid-template-columns:repeat(2,1fr)}
+
+        /* Tables: ensure white-space nowrap on cells */
+        tbody td,thead th{white-space:nowrap}
+
+        /* Topbar title truncate */
+        .topbar-title{font-size:13px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    }
+
+    /* ── 480px ── */
+    @media(max-width:480px){
+        /* KPI: 1 col */
+        .kpi-grid{grid-template-columns:1fr}
+        .content{padding:12px}
+    }
     </style>
     @stack('styles')
 </head>
@@ -177,9 +240,18 @@
     </div>
 </aside>
 
+{{-- Sidebar overlay (mobile) --}}
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
 {{-- Main --}}
 <main class="main">
     <div class="topbar">
+        {{-- Hamburger (visible on mobile only) --}}
+        <button class="btn-hamburger" id="sidebarToggle" aria-label="Abrir menú">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M2 4h14M2 9h14M2 14h14"/>
+            </svg>
+        </button>
         <span class="topbar-title">@yield('title', 'Panel')</span>
         <div class="topbar-right">
             @yield('topbar_actions')
@@ -227,6 +299,35 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js', { scope: '/' })
         .catch(err => console.warn('SW registration failed:', err));
 }
+
+// ── Sidebar toggle (mobile) ──────────────────────────────
+(function () {
+    var toggle  = document.getElementById('sidebarToggle');
+    var overlay = document.getElementById('sidebarOverlay');
+    var sidebar = document.querySelector('.sidebar');
+    if (!toggle) return;
+
+    function openSidebar() {
+        sidebar.classList.add('is-open');
+        overlay.classList.add('is-open');
+        document.body.style.overflow = 'hidden';
+    }
+    function closeSidebar() {
+        sidebar.classList.remove('is-open');
+        overlay.classList.remove('is-open');
+        document.body.style.overflow = '';
+    }
+
+    toggle.addEventListener('click', openSidebar);
+    overlay.addEventListener('click', closeSidebar);
+
+    // Close when a nav link is tapped on mobile
+    document.querySelectorAll('.nav-item').forEach(function (item) {
+        item.addEventListener('click', function () {
+            if (window.innerWidth <= 768) closeSidebar();
+        });
+    });
+})();
 </script>
 
 @stack('scripts')

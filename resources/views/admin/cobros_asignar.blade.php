@@ -184,6 +184,15 @@
         100% { opacity: 1; }
     }
     .pulse-dot { animation: pulse 2s infinite; }
+    @media(max-width:768px){
+        .filter-grid{grid-template-columns:1fr!important;gap:12px!important;}
+        .stats-dashboard{grid-template-columns:repeat(2,1fr)!important;}
+    }
+    @media(max-width:480px){
+        .stats-dashboard{grid-template-columns:1fr!important;}
+        .filter-actions{flex-direction:column!important;}
+        .filter-actions button{width:100%;}
+    }
 </style>
 @endpush
 

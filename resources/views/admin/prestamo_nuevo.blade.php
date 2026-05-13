@@ -45,6 +45,17 @@
 .empty-preview{padding:48px 20px;text-align:center;color:var(--text3)}
 .schedule-table th,.schedule-table td{padding:9px 14px;font-size:12px}
 .schedule-table thead{background:#f9fafb}
+@media(max-width:900px){
+    .np-grid{grid-template-columns:1fr!important;}
+    .np-preview{display:none!important;}
+}
+@media(max-width:640px){
+    .kpi-grid-2{grid-template-columns:1fr!important;}
+    .np-form-section{padding:16px!important;}
+}
+@media(max-width:600px){
+    .np-2col{grid-template-columns:1fr!important;}
+}
 </style>
 @endpush
 
@@ -166,7 +177,7 @@ $activoMap = $clientesConPrestamo->toArray();
             </div>
 
             {{-- Num pagos + frecuencia --}}
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="np-2col" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
                 <div>
                     <label class="np-label">Número de pagos</label>
                     <input type="number" name="num_pagos" id="inNumPagos"
@@ -508,7 +519,7 @@ function mostrarExitoOffline(entry) {
             <div style="font-size:11px;color:var(--text3);margin-top:4px">Guardado a las ${hora}</div>
         </div>
         <div style="display:flex;gap:10px;justify-content:center">
-            <a href="{{ route('prestamos.crear') }}" class="btn" style="background:#f3f4f6;color:var(--text)">+ Otro préstamo</a>
+            <a href="{{ route('prestamos.create') }}" class="btn" style="background:#f3f4f6;color:var(--text)">+ Otro préstamo</a>
             <a href="{{ route('prestamos.index') }}" class="btn btn-primary">Ver préstamos</a>
         </div>
     </div>`;

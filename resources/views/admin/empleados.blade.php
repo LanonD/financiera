@@ -197,9 +197,15 @@
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
     /* Responsive */
-    @media (max-width: 768px) {
-        .filter-panel { flex-direction: column; align-items: stretch; }
-        .table-premium th:nth-child(4), .table-premium td:nth-child(4) { display: none; }
+    @media(max-width:768px){
+        .filter-panel{flex-direction:column;align-items:stretch;}
+        .filter-panel input,.filter-panel select{width:100%!important;max-width:100%!important;}
+        .table-premium th:nth-child(4),.table-premium td:nth-child(4){display:none;}
+        .table-premium th:nth-child(5),.table-premium td:nth-child(5){display:none;}
+    }
+    @media(max-width:600px){
+        .table-premium th:nth-child(3),.table-premium td:nth-child(3){display:none;}
+        .emp-modal-grid{grid-template-columns:1fr!important;}
     }
 </style>
 @endpush
@@ -343,7 +349,7 @@
         <form method="POST" action="{{ route('empleados.store') }}">
             @csrf
             <div class="modal-body-p">
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div class="emp-modal-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                     <div class="filter-group">
                         <label>Usuario (Login)</label>
                         <input type="text" name="usuario" required class="filter-input">
@@ -403,7 +409,7 @@
         <form id="formEdit" method="POST" action="">
             @csrf @method('PUT')
             <div class="modal-body-p">
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div class="emp-modal-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                     <div class="filter-group" style="grid-column: span 2">
                         <label>Nombre Completo</label>
                         <input type="text" name="nombre" id="edit_nombre" required class="filter-input">
