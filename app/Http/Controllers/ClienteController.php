@@ -16,9 +16,7 @@ class ClienteController extends Controller
         $user   = Auth::user();
         $puesto = $user->puesto;
 
-        $query = Cliente::with(['promotor', 'prestamos' => function ($q) {
-            $q->whereIn('estatus', ['Activo', 'Atrasado']);
-        }]);
+        $query = Cliente::with(['promotor', 'prestamos.pagos']);
 
         if (in_array('promo', $user->getAllRoles()) && !in_array('admin', $user->getAllRoles())) {
             $empleado = $user->empleado;
