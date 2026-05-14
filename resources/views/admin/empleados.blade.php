@@ -196,16 +196,39 @@
 
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-    /* Responsive */
+    /* ── Responsive ─────────────────────────────── */
     @media(max-width:768px){
-        .filter-panel{flex-direction:column;align-items:stretch;}
+        /* Header stacks, button full width */
+        .content-header{flex-direction:column;align-items:flex-start;gap:12px;margin-bottom:20px;}
+        .content-header .btn{width:100%;justify-content:center;}
+
+        /* Filter panel */
+        .filter-panel{flex-direction:column;align-items:stretch;gap:16px;padding:16px;}
+        .filter-group{width:100%;}
         .filter-panel input,.filter-panel select{width:100%!important;max-width:100%!important;}
+
+        /* Pills wrap so "Desembolso" no se corte */
+        .status-group{flex-wrap:wrap;}
+        .status-pill{flex:1;text-align:center;min-width:70px;}
+
+        /* Table: hide low-priority columns */
         .table-premium th:nth-child(4),.table-premium td:nth-child(4){display:none;}
         .table-premium th:nth-child(5),.table-premium td:nth-child(5){display:none;}
+
+        /* Table padding reduce */
+        .table-premium th,.table-premium td{padding:12px 14px;}
     }
     @media(max-width:600px){
         .table-premium th:nth-child(3),.table-premium td:nth-child(3){display:none;}
         .emp-modal-grid{grid-template-columns:1fr!important;}
+        .modal-body-p{padding:20px 16px;}
+        .modal-header-p{padding:16px 20px;}
+        .modal-footer-p{padding:16px 20px;flex-direction:column;}
+        .modal-footer-p .btn{width:100%;justify-content:center;}
+    }
+    @media(max-width:480px){
+        .content-header h2{font-size:20px;}
+        .filter-panel{padding:14px;}
     }
 </style>
 @endpush
@@ -243,7 +266,7 @@
     </div>
     <div class="filter-group">
         <label>Rango o Nivel</label>
-        <select class="filter-input" id="eRango" onchange="filtrarEmpleados()" style="width:140px">
+        <select class="filter-input" id="eRango" onchange="filtrarEmpleados()">
             <option value="">Todos</option>
             <option>Bronce</option><option>Plata</option><option>Oro</option><option>Platino</option><option>Diamante</option>
         </select>
