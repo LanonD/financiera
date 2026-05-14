@@ -145,6 +145,14 @@
 
         {{-- Actions --}}
         <div class="ow-card-footer">
+            {{-- Reset password --}}
+            <button type="button" class="btn btn-sm"
+                style="background:#eff6ff;color:#2563eb"
+                onclick="abrirResetPassword({{ $admin->id }}, '{{ addslashes($admin->usuario) }}')">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:13px;height:13px"><rect x="3" y="7" width="10" height="8" rx="1.5"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/><circle cx="8" cy="11" r="1" fill="currentColor" stroke="none"/></svg>
+                Contraseña
+            </button>
+
             {{-- Toggle activo/inactivo --}}
             <form method="POST" action="{{ route('owner.admins.toggle', $admin->id) }}" style="margin:0">
                 @csrf
@@ -171,6 +179,53 @@
     @endforeach
 </div>
 @endif
+
+{{-- ── Modal: Reset contraseña ─────────────────────────────── --}}
+<div class="ow-modal-overlay" id="modalReset">
+    <div class="ow-modal">
+        <div class="ow-modal-header">
+            <div>
+                <div class="ow-modal-title">Cambiar contraseña</div>
+                <div style="font-size:12px;color:var(--text3);margin-top:2px">Usuario: <strong id="resetUsuarioLabel">—</strong></div>
+            </div>
+            <button class="ow-modal-close" onclick="cerrarResetPassword()">&times;</button>
+        </div>
+
+        <form method="POST" id="resetForm" action="" onsubmit="return submitOnce(this)">
+            @csrf
+            <div class="ow-modal-body">
+
+                @if($errors->has('password') && session('reset_admin_id'))
+                <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:10px 14px;font-size:12px;color:#991b1b">
+                    {{ $errors->first('password') }}
+                </div>
+                @endif
+
+                <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e">
+                    ⚠️ La nueva contraseña reemplazará la actual de inmediato. El administrador deberá usarla en su próximo inicio de sesión.
+                </div>
+                <div class="ow-field">
+                    <label>Nueva contraseña *</label>
+                    <input type="password" name="password" placeholder="Mínimo 6 caracteres" required autocomplete="new-password">
+                </div>
+                <div class="ow-field">
+                    <label>Confirmar nueva contraseña *</label>
+                    <input type="password" name="password_confirmation" placeholder="Repite la nueva contraseña" required autocomplete="new-password">
+                </div>
+            </div>
+            <div class="ow-modal-footer">
+                <button type="button" class="btn" style="background:#f3f4f6;color:var(--text)"
+                    onclick="cerrarResetPassword()">
+                    Cancelar
+                </button>
+                <button type="submit" class="btn btn-primary">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:13px;height:13px"><rect x="3" y="7" width="10" height="8" rx="1.5"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/></svg>
+                    Guardar contraseña
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
 
 {{-- ── Modal: Crear nuevo administrador ───────────────────── --}}
 <div class="ow-modal-overlay" id="modalCrear">
@@ -225,16 +280,41 @@
 
 @push('scripts')
 <script>
-// Abrir modal si hay errores de validación
-@if($errors->any())
+// ── Modal Crear ─────────────────────────────────────────────
+@if($errors->any() && !session('reset_admin_id'))
 document.getElementById('modalCrear').classList.add('open');
 @endif
 
-// Cerrar al click en overlay
 document.getElementById('modalCrear').addEventListener('click', function(e) {
     if (e.target === this) this.classList.remove('open');
 });
 
+// ── Modal Reset Password ─────────────────────────────────────
+const RESET_BASE = '{{ url("owner/admins") }}/';
+
+function abrirResetPassword(adminId, usuario) {
+    document.getElementById('resetUsuarioLabel').textContent = usuario;
+    document.getElementById('resetForm').action = RESET_BASE + adminId + '/reset-password';
+    // Limpiar inputs
+    document.getElementById('resetForm').querySelectorAll('input[type="password"]').forEach(i => i.value = '');
+    document.getElementById('modalReset').classList.add('open');
+    document.getElementById('resetForm').querySelector('input[type="password"]').focus();
+}
+
+function cerrarResetPassword() {
+    document.getElementById('modalReset').classList.remove('open');
+}
+
+document.getElementById('modalReset').addEventListener('click', function(e) {
+    if (e.target === this) cerrarResetPassword();
+});
+
+// Re-abrir modal reset si hay error de validación de password
+@if($errors->has('password') && session('reset_admin_id'))
+abrirResetPassword({{ session('reset_admin_id') }}, '{{ addslashes(session("reset_usuario", "")) }}');
+@endif
+
+// ── Shared ───────────────────────────────────────────────────
 function submitOnce(form) {
     var btn = form.querySelector('button[type="submit"]');
     if (btn && btn.disabled) return false;

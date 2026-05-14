@@ -8,6 +8,7 @@ use App\Models\Prestamo;
 use App\Models\Cliente;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
 
 class OwnerController extends Controller
 {
@@ -21,15 +22,11 @@ class OwnerController extends Controller
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function (User $u) {
-                // Estadísticas agregadas del sistema asociadas a este admin
-                $empleado = $u->empleado;
-
-                // Empleados registrados en el sistema (todos — sin tenancy)
-                // Se muestran globales como indicador de actividad
+                // Estadísticas scoped a este admin (multi-tenancy)
                 $u->stats = [
-                    'empleados' => Empleado::where('activo', true)->count(),
-                    'clientes'  => Cliente::where('activo', true)->count(),
-                    'prestamos' => Prestamo::whereIn('estatus', ['Activo', 'Atrasado'])->count(),
+                    'empleados' => Empleado::where('admin_id', $u->id)->where('activo', true)->count(),
+                    'clientes'  => Cliente::where('admin_id', $u->id)->where('activo', true)->count(),
+                    'prestamos' => Prestamo::where('admin_id', $u->id)->whereIn('estatus', ['Activo', 'Atrasado'])->count(),
                 ];
                 return $u;
             });
@@ -86,6 +83,35 @@ class OwnerController extends Controller
 
         return redirect()->route('owner.dashboard')
             ->with('success', "Usuario \"{$user->usuario}\" {$estado}.");
+    }
+
+    /**
+     * Resetear la contraseña de un admin.
+     */
+    public function resetPassword(Request $request, int $id)
+    {
+        $user = User::where('id', $id)->where('puesto', 'admin')->firstOrFail();
+
+        $validator = Validator::make($request->all(), [
+            'password' => 'required|string|min:6|confirmed',
+        ], [
+            'password.required'  => 'Ingresa una nueva contraseña.',
+            'password.min'       => 'La contraseña debe tener al menos 6 caracteres.',
+            'password.confirmed' => 'Las contraseñas no coinciden.',
+        ]);
+
+        if ($validator->fails()) {
+            return redirect()->route('owner.dashboard')
+                ->withErrors($validator)
+                ->with('reset_admin_id', $id)
+                ->with('reset_usuario', $user->usuario);
+        }
+
+        $user->password = Hash::make($request->password);
+        $user->save();
+
+        return redirect()->route('owner.dashboard')
+            ->with('success', "Contraseña de \"{$user->usuario}\" actualizada correctamente.");
     }
 
     /**
