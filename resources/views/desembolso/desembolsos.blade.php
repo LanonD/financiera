@@ -7,6 +7,20 @@
 @media(max-width:768px){
     .desemb-header{flex-direction:column!important;align-items:stretch!important;gap:10px!important;}
     .desemb-header .btn{width:100%!important;justify-content:center!important;}
+    /* Page header stacks */
+    .desemb-page-header{flex-direction:column!important;align-items:flex-start!important;gap:8px!important;}
+    /* Modal responsive */
+    #modalDesembolso > div{max-width:calc(100vw - 20px)!important;width:calc(100vw - 20px)!important;margin:10px auto!important;}
+    .desemb-modal-grid{grid-template-columns:1fr!important;}
+    .desemb-modal-footer{flex-direction:column!important;gap:8px!important;}
+    .desemb-modal-footer .btn{width:100%!important;justify-content:center!important;}
+    /* File upload labels: stack vertically on mobile */
+    #lbl_ine,#lbl_pagare,#lbl_comprobante,#lbl_foto{flex-direction:column!important;}
+    #lbl_ine label,#lbl_pagare label,#lbl_comprobante label,#lbl_foto label{width:100%!important;}
+}
+@media(max-width:480px){
+    #modalDesembolso > div{padding:0!important;}
+    #modalDesembolso > div > div[style*="padding:20px"]{padding:14px!important;}
 }
 </style>
 @endpush
@@ -105,7 +119,7 @@
         </div>
 
         {{-- Monto y forma --}}
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+        <div class="desemb-modal-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
             <div>
                 <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:5px">Monto a entregar ($)</label>
                 <input type="number" id="dsbMonto" step="0.01" min="1" readonly
@@ -223,7 +237,7 @@
         <div id="dsbError" style="display:none;margin-top:10px;padding:10px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:12px;color:#991b1b"></div>
     </div>
 
-    <div style="padding:14px 20px;border-top:1px solid var(--border);background:#f9fafb;display:flex;gap:8px;justify-content:flex-end">
+    <div class="desemb-modal-footer" style="padding:14px 20px;border-top:1px solid var(--border);background:#f9fafb;display:flex;gap:8px;justify-content:flex-end">
         <button onclick="cerrarModal()"
                 class="btn" style="background:#f3f4f6;border:1px solid var(--border);color:var(--text2)">Cancelar</button>
         <button id="btnConfirmar" onclick="confirmarDesembolso()" class="btn btn-primary">

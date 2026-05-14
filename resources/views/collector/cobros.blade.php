@@ -31,6 +31,19 @@ tr.cobro-parcial{background:#fffbeb}
 .range-wrap{margin-top:4px}
 .range-track{height:5px;background:#f3f4f6;border-radius:3px;overflow:hidden}
 .range-fill{height:100%;background:var(--accent);border-radius:3px;transition:width .3s}
+@media(max-width:768px){
+    /* Page header: title + button stacks to column, button full width */
+    .cobros-page-header{flex-direction:column!important;align-items:stretch!important;}
+    .cobros-page-header .btn{width:100%!important;justify-content:center!important;}
+    /* Card sub-headers: search row wraps */
+    .cobros-card-header{flex-direction:column!important;align-items:stretch!important;gap:8px!important;}
+    .cobros-card-header input{max-width:100%!important;width:100%!important;}
+    /* Modal sizing */
+    .modal{max-width:calc(100vw - 20px)!important;width:calc(100vw - 20px)!important;}
+    .modal-body{padding:14px!important;}
+    .modal-footer{flex-direction:column!important;gap:8px!important;}
+    .modal-footer .btn{width:100%!important;justify-content:center!important;}
+}
 @media(max-width:640px){
     .cobrador-bar{gap:10px;}
     .cobrador-stat{min-width:unset!important;flex:1 1 calc(33% - 10px);}
@@ -40,6 +53,7 @@ tr.cobro-parcial{background:#fffbeb}
 @media(max-width:500px){
     .cobro-modal-grid{grid-template-columns:1fr!important;}
     .cobro-modal-grid-2{grid-template-columns:1fr!important;}
+    .cobrador-stat{flex:1 1 calc(50% - 10px);}
 }
 </style>
 @endpush
@@ -53,7 +67,7 @@ $cobrosHoy    = $prestamos->filter(fn($p) => $p->proximo_pago !== null && $p->pr
 $cobrosFuturos= $prestamos->filter(fn($p) => $p->proximo_pago === null || $p->proximo_pago > $hoy)->values();
 @endphp
 
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+<div class="cobros-page-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
     <div>
         <h2 style="font-size:20px;font-weight:700;margin-bottom:4px">Mis cobros</h2>
         <p style="color:var(--text2);font-size:13px">Cobros del día y próximos asignados</p>
@@ -95,7 +109,7 @@ $cobrosFuturos= $prestamos->filter(fn($p) => $p->proximo_pago === null || $p->pr
 
 {{-- Today's collections --}}
 <div class="card" style="padding:0;overflow:hidden;margin-bottom:20px">
-    <div style="padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+    <div class="cobros-card-header" style="padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
         <div>
             <div style="font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px">
                 <span style="width:8px;height:8px;border-radius:50%;background:#ca8a04;display:inline-block"></span>
@@ -188,7 +202,7 @@ $cobrosFuturos= $prestamos->filter(fn($p) => $p->proximo_pago === null || $p->pr
 
 {{-- Future collections --}}
 <div class="card" style="padding:0;overflow:hidden">
-    <div style="padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+    <div class="cobros-card-header" style="padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
         <div>
             <div style="font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px">
                 <span style="width:8px;height:8px;border-radius:50%;background:#3b82f6;display:inline-block"></span>

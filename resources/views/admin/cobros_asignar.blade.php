@@ -189,15 +189,29 @@
         .header-p .btn{width:100%;justify-content:center;}
         .filter-card{padding:16px!important;border-radius:14px!important;}
         .filter-grid{grid-template-columns:1fr!important;gap:12px!important;}
+        /* Date inputs in filter row: full width, stacked */
+        .filter-grid > div[style*="display: flex"]{flex-wrap:wrap!important;gap:8px!important;}
+        .filter-grid input[type=date]{width:100%!important;min-width:unset!important;}
+        .filter-grid input[type=text]{width:100%!important;}
         .stats-dashboard{grid-template-columns:repeat(2,1fr)!important;gap:12px!important;}
         .section-p-header{flex-direction:column!important;align-items:flex-start!important;gap:10px!important;}
         .table-p th,.table-p td{padding:10px 14px!important;}
+        /* Assignment select dropdown: full width */
+        .select-p{width:100%!important;}
+        /* Footer bar: stack on mobile */
+        .footer-bar{flex-direction:column!important;align-items:stretch!important;gap:12px!important;border-radius:16px!important;padding:16px!important;}
+        .footer-bar > div:last-child{flex-direction:column!important;gap:8px!important;}
+        .footer-bar .btn{width:100%!important;justify-content:center!important;}
     }
     @media(max-width:480px){
         .stats-dashboard{grid-template-columns:1fr!important;}
         .filter-actions{flex-direction:column!important;}
         .filter-actions button{width:100%;}
         .stat-p-val{font-size:20px!important;}
+        /* Hide less-important table columns on very small screens, keep Acciones */
+        .table-p th:nth-child(2),.table-p td:nth-child(2),
+        .table-p th:nth-child(3),.table-p td:nth-child(3),
+        .table-p th:nth-child(4),.table-p td:nth-child(4){display:none!important;}
     }
 </style>
 @endpush

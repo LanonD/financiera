@@ -197,8 +197,13 @@
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
     /* ── Responsive ─────────────────────────────── */
+
+    /* REGLA CLAVE: col 5 (Acciones) NUNCA se oculta */
+    .table-premium th:nth-child(5),
+    .table-premium td:nth-child(5){ display:table-cell!important; }
+
     @media(max-width:768px){
-        /* Header stacks, button full width */
+        /* Header apila, botón ancho completo */
         .content-header{flex-direction:column;align-items:flex-start;gap:12px;margin-bottom:20px;}
         .content-header .btn{width:100%;justify-content:center;}
 
@@ -207,24 +212,36 @@
         .filter-group{width:100%;}
         .filter-panel input,.filter-panel select{width:100%!important;max-width:100%!important;}
 
-        /* Pills wrap so "Desembolso" no se corte */
+        /* Pills wrap */
         .status-group{flex-wrap:wrap;}
         .status-pill{flex:1;text-align:center;min-width:70px;}
 
-        /* Table: hide low-priority columns */
-        .table-premium th:nth-child(4),.table-premium td:nth-child(4){display:none;}
-        .table-premium th:nth-child(5),.table-premium td:nth-child(5){display:none;}
+        /* Tabla: quitar width fijo, reducir padding */
+        .table-premium th:first-child{width:auto!important;}
+        .table-premium th,.table-premium td{padding:10px 12px;}
 
-        /* Table padding reduce */
-        .table-premium th,.table-premium td{padding:12px 14px;}
+        /* Ocultar "Capacidad" (col 4) — Acciones (col 5) SIEMPRE visible */
+        .table-premium th:nth-child(4),.table-premium td:nth-child(4){display:none;}
+    }
+    @media(max-width:540px){
+        /* Ocultar "WhatsApp" (col 2) en pantallas muy pequeñas */
+        .table-premium th:nth-child(2),.table-premium td:nth-child(2){display:none;}
+        /* Ocultar "Rango" (col 3) */
+        .table-premium th:nth-child(3),.table-premium td:nth-child(3){display:none;}
+        /* Avatar más pequeño */
+        .user-avatar-circle{width:28px!important;height:28px!important;font-size:11px!important;}
     }
     @media(max-width:600px){
-        .table-premium th:nth-child(3),.table-premium td:nth-child(3){display:none;}
         .emp-modal-grid{grid-template-columns:1fr!important;}
         .modal-body-p{padding:20px 16px;}
         .modal-header-p{padding:16px 20px;}
         .modal-footer-p{padding:16px 20px;flex-direction:column;}
         .modal-footer-p .btn{width:100%;justify-content:center;}
+        .modal-box{border-radius:14px!important;}
+    }
+    @media(max-width:480px){
+        .content-header h2{font-size:20px;}
+        .filter-panel{padding:14px;}
     }
     @media(max-width:480px){
         .content-header h2{font-size:20px;}
@@ -301,7 +318,7 @@
             <table class="table-premium">
                 <thead>
                     <tr>
-                        <th style="width: 300px">Empleado</th>
+                        <th>Empleado</th>
                         <th>WhatsApp / Cel</th>
                         <th>Rango</th>
                         <th>Capacidad</th>

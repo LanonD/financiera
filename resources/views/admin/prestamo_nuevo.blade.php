@@ -48,10 +48,24 @@
 @media(max-width:900px){
     .np-grid{grid-template-columns:1fr!important;}
     .np-preview{display:none!important;}
+    /* On medium screens, unstick the panel */
+    .np-panel{position:static!important;}
+}
+@media(max-width:768px){
+    /* Page header back button row stacks */
+    .np-page-header{flex-wrap:wrap!important;gap:8px!important;}
+    /* Form submit buttons: full width */
+    .np-form > div:last-child{flex-direction:column!important;}
+    .np-form > div:last-child .btn,
+    .np-form > div:last-child button{flex:none!important;width:100%!important;justify-content:center!important;}
+    /* Inputs: ensure no fixed widths */
+    .np-input,.np-select,.cs-input{width:100%!important;box-sizing:border-box!important;}
 }
 @media(max-width:640px){
     .kpi-grid-2{grid-template-columns:1fr!important;}
     .np-form-section{padding:16px!important;}
+    .np-form{padding:14px!important;}
+    .np-panel{border-radius:10px!important;}
 }
 @media(max-width:600px){
     .np-2col{grid-template-columns:1fr!important;}
@@ -61,7 +75,7 @@
 
 @section('content')
 
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+<div class="np-page-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
     <div style="display:flex;align-items:center;gap:12px">
         <a href="{{ route('prestamos.index') }}" class="btn btn-sm" style="background:#f3f4f6;color:var(--text)">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 2L4 6l4 4"/></svg>

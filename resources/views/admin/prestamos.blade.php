@@ -2,9 +2,38 @@
 
 @section('title', $puesto === 'promo' ? 'Mis préstamos' : 'Todos los préstamos')
 
+@push('styles')
+<style>
+@media(max-width:768px){
+    /* Page header: title + button stacks */
+    .prestamos-page-header{flex-direction:column!important;align-items:stretch!important;gap:10px!important;}
+    .prestamos-page-header .btn{width:100%!important;justify-content:center!important;}
+    /* Frecuencia pills: allow wrapping */
+    .freq-pills-row{flex-direction:column!important;align-items:flex-start!important;gap:6px!important;}
+    .freq-pills-row > div{flex-wrap:wrap!important;}
+    /* Filter card: all filter rows stack */
+    .filter-row-amounts{flex-direction:column!important;align-items:flex-start!important;gap:10px!important;}
+    .filter-row-amounts .divider-v{display:none!important;}
+    /* Monto inputs: full width instead of 110px */
+    .filter-monto-pair{flex-direction:column!important;gap:6px!important;}
+    .filter-monto-pair input{width:100%!important;}
+    /* Date filter inputs: full width instead of 140px */
+    .filter-date-pair{flex-direction:column!important;gap:6px!important;}
+    .filter-date-pair input{width:100%!important;}
+    /* JS filter bar */
+    .js-filter-bar .divider-v{display:none!important;}
+    .js-filter-bar > div{width:100%!important;}
+    .js-filter-bar select,.js-filter-bar input[type=text]{width:100%!important;min-width:unset!important;}
+}
+@media(max-width:480px){
+    .freq-pills-row > div span{font-size:11px!important;padding:4px 8px!important;}
+}
+</style>
+@endpush
+
 @section('content')
 
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+<div class="prestamos-page-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
     <div>
         <h2 style="font-size:20px;font-weight:700;margin-bottom:4px">{{ $puesto === 'promo' ? 'Mis préstamos' : 'Todos los préstamos' }}</h2>
         <p style="color:var(--text2);font-size:13px">{{ $puesto === 'promo' ? 'Cartera personal asignada' : 'Gestión completa de créditos' }}</p>
@@ -33,9 +62,9 @@ $frecuencias = ['Diario','Semanal','Quincenal','Mensual'];
 <form method="GET" action="{{ route('prestamos.index') }}" id="frmFiltros">
 <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;margin-bottom:12px;display:flex;flex-direction:column;gap:12px">
 
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <div class="freq-pills-row" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <span style="font-size:12px;font-weight:600;color:var(--text3);min-width:90px">Frecuencia</span>
-        <div style="display:flex;gap:4px">
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
             <span style="padding:5px 12px;border-radius:20px;border:1px solid {{ empty($filtros['frecuencia']) ? 'var(--accent)' : 'var(--border)' }};background:{{ empty($filtros['frecuencia']) ? 'var(--accent)' : '#f9fafb' }};color:{{ empty($filtros['frecuencia']) ? '#fff' : 'var(--text2)' }};font-size:12px;font-weight:500;cursor:pointer"
                   onclick="setFrecuencia('')">Todas</span>
             @foreach($frecuencias as $fr)
@@ -46,10 +75,10 @@ $frecuencias = ['Diario','Semanal','Quincenal','Mensual'];
         <input type="hidden" name="frecuencia" id="hFrecuencia" value="{{ $filtros['frecuencia'] }}">
     </div>
 
-    <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
+    <div class="filter-row-amounts" style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
         <div>
             <label style="display:block;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Monto prestado</label>
-            <div style="display:flex;gap:6px;align-items:center">
+            <div class="filter-monto-pair" style="display:flex;gap:6px;align-items:center">
                 <input style="padding:6px 10px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:var(--font);outline:none;width:110px"
                        type="number" name="monto_min" min="0" step="100"
                        placeholder="Desde $" value="{{ $filtros['monto_min'] > 0 ? $filtros['monto_min'] : '' }}">
@@ -60,11 +89,11 @@ $frecuencias = ['Diario','Semanal','Quincenal','Mensual'];
             </div>
         </div>
 
-        <div style="width:1px;height:32px;background:var(--border);align-self:flex-end"></div>
+        <div class="divider-v" style="width:1px;height:32px;background:var(--border);align-self:flex-end"></div>
 
         <div>
             <label style="display:block;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Fecha a cobrar</label>
-            <div style="display:flex;gap:6px;align-items:center">
+            <div class="filter-date-pair" style="display:flex;gap:6px;align-items:center">
                 <input style="padding:6px 10px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:var(--font);outline:none;width:140px"
                        type="date" name="desde" value="{{ $filtros['desde'] }}">
                 <span style="color:var(--text3);font-size:13px">–</span>
@@ -90,13 +119,13 @@ $listaPromotores = $prestamos->pluck('promotor.nombre')->filter()->unique()->sor
 $listaCobradoresP = $prestamos->pluck('cobrador.nombre')->filter()->unique()->sort()->values();
 @endphp
 
-<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 18px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+<div class="js-filter-bar" style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 18px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
     <div>
         <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:4px">Buscar</label>
         <input style="padding:7px 10px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:var(--font);outline:none;min-width:200px"
                type="text" id="globalSearch" placeholder="Nombre, ID, promotor…" oninput="filterTable()">
     </div>
-    <div style="width:1px;height:32px;background:var(--border);align-self:flex-end"></div>
+    <div class="divider-v" style="width:1px;height:32px;background:var(--border);align-self:flex-end"></div>
     <div>
         <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:4px">Estatus</label>
         <div style="display:flex;gap:4px;flex-wrap:wrap">
@@ -107,7 +136,7 @@ $listaCobradoresP = $prestamos->pluck('cobrador.nombre')->filter()->unique()->so
         </div>
     </div>
     @if($puesto === 'admin' && $listaPromotores->isNotEmpty())
-    <div style="width:1px;height:32px;background:var(--border);align-self:flex-end"></div>
+    <div class="divider-v" style="width:1px;height:32px;background:var(--border);align-self:flex-end"></div>
     <div>
         <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:4px">Promotor</label>
         <select style="padding:6px 10px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:var(--font);outline:none;min-width:140px"
@@ -120,7 +149,7 @@ $listaCobradoresP = $prestamos->pluck('cobrador.nombre')->filter()->unique()->so
     </div>
     @endif
     @if($listaCobradoresP->isNotEmpty())
-    <div style="width:1px;height:32px;background:var(--border);align-self:flex-end"></div>
+    <div class="divider-v" style="width:1px;height:32px;background:var(--border);align-self:flex-end"></div>
     <div>
         <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:4px">Cobrador</label>
         <select style="padding:6px 10px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:var(--font);outline:none;min-width:140px"
