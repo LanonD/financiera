@@ -51,6 +51,26 @@
         </div>
         @endforeach
 
+        {{-- MAPA --}}
+        <div style="grid-column:1/-1">
+
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);display:block;margin-bottom:5px">
+                Ubicación en mapa
+            </label>
+
+            <div id="map"
+                 style="width:100%;height:320px;border-radius:8px;border:1px solid var(--border);overflow:hidden">
+            </div>
+
+            <input type="hidden" name="latitud" id="latitud" value="{{ old('latitud') }}">
+            <input type="hidden" name="longitud" id="longitud" value="{{ old('longitud') }}">
+
+            <p style="font-size:12px;color:var(--text2);margin-top:6px">
+                Da clic en el mapa o mueve el marcador para seleccionar la ubicación exacta.
+            </p>
+
+        </div>
+
         <div>
             <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);display:block;margin-bottom:5px">Ocupación</label>
             <select name="ocupacion" style="width:100%;padding:9px 11px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-family:var(--font);font-size:13px;outline:none">
@@ -81,3 +101,103 @@
 </div>
 
 @endsection
+
+
+@push('scripts')
+
+<script>
+
+let map;
+let marker;
+let geocoder;
+
+function initMap() {
+
+    const defaultLocation = {
+        lat: 19.4326,
+        lng: -99.1332
+    };
+
+    const latInput = document.getElementById('latitud');
+    const lngInput = document.getElementById('longitud');
+
+    const direccionInput = document.querySelector('input[name="direccion"]');
+
+    const initialLocation = (latInput.value && lngInput.value)
+        ? {
+            lat: parseFloat(latInput.value),
+            lng: parseFloat(lngInput.value)
+        }
+        : defaultLocation;
+
+    map = new google.maps.Map(document.getElementById('map'), {
+        center: initialLocation,
+        zoom: 15,
+    });
+
+    geocoder = new google.maps.Geocoder();
+
+    marker = new google.maps.Marker({
+        position: initialLocation,
+        map: map,
+        draggable: true,
+    });
+
+    latInput.value = initialLocation.lat;
+    lngInput.value = initialLocation.lng;
+
+    map.addListener('click', function(event) {
+        setLocation(event.latLng);
+    });
+
+    marker.addListener('dragend', function(event) {
+        setLocation(event.latLng);
+    });
+
+    function setLocation(latLng) {
+
+        marker.setPosition(latLng);
+
+        latInput.value = latLng.lat();
+        lngInput.value = latLng.lng();
+
+        geocoder.geocode({
+            location: latLng
+        }, function(results, status) {
+
+            if (status === 'OK' && results[0]) {
+                direccionInput.value = results[0].formatted_address;
+            }
+
+        });
+    }
+
+    // Obtener ubicación actual
+    if (navigator.geolocation && !latInput.value && !lngInput.value) {
+
+        navigator.geolocation.getCurrentPosition(function(position) {
+
+            const userLocation = {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude
+            };
+
+            map.setCenter(userLocation);
+
+            marker.setPosition(userLocation);
+
+            latInput.value = userLocation.lat;
+            lngInput.value = userLocation.lng;
+
+        });
+
+    }
+}
+
+</script>
+
+<script async defer
+src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAfb3MRYco1aN4yaJyXmK8jperHTMJl07E&callback=initMap">
+</script>
+
+@endpush

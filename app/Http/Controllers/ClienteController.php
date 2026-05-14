@@ -60,6 +60,8 @@ class ClienteController extends Controller
             'email'       => 'nullable|email|max:255',
             'curp'        => 'nullable|string|max:18|unique:clientes,curp',
             'direccion'   => 'nullable|string|max:500',
+            'latitud'     => 'nullable|numeric',
+            'longitud'    => 'nullable|numeric',
             'ocupacion'   => 'nullable|in:Empleado,Negocio propio,Independiente,Otro',
             'promotor_id' => $isAdmin ? 'required|exists:empleados,id' : 'nullable|exists:empleados,id',
         ], [
@@ -129,6 +131,8 @@ class ClienteController extends Controller
             'email'       => 'nullable|email|max:255',
             'curp'        => 'nullable|string|max:18|unique:clientes,curp,' . $id,
             'direccion'   => 'nullable|string|max:500',
+            'latitud'     => 'nullable|numeric',
+            'longitud'    => 'nullable|numeric',
             'ocupacion'   => 'nullable|in:Empleado,Negocio propio,Independiente,Otro',
             'promotor_id' => 'nullable|exists:empleados,id',
         ], [
