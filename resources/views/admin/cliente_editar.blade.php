@@ -2,6 +2,17 @@
 
 @section('title', 'Editar cliente')
 
+@push('styles')
+<style>
+@media(max-width:600px){
+    .frm-grid-2col{ grid-template-columns:1fr!important; }
+    .frm-grid-2col [style*="grid-column"]{ grid-column:unset!important; }
+    .frm-footer .btn{ flex:1; justify-content:center; }
+    .card[style*="max-width:700px"]{ max-width:100%!important; }
+}
+</style>
+@endpush
+
 @section('content')
 
 <a href="{{ route('clientes.show', $cliente->id) }}" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);margin-bottom:16px;text-decoration:none">
@@ -18,7 +29,7 @@
 <form method="POST" action="{{ route('clientes.update', $cliente->id) }}" onsubmit="this.querySelector('[type=submit]').disabled=true">
     @csrf
     @method('PUT')
-    <div style="padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div class="frm-grid-2col" style="padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:16px">
 
         @php
         $fields = [
@@ -60,7 +71,7 @@
         </div>
 
     </div>
-    <div style="padding:14px 20px;border-top:1px solid var(--border);background:#f9fafb;display:flex;gap:8px;justify-content:flex-end">
+    <div class="frm-footer" style="padding:14px 20px;border-top:1px solid var(--border);background:#f9fafb;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
         <a href="{{ route('clientes.show', $cliente->id) }}" class="btn" style="background:#f3f4f6;color:var(--text)">Cancelar</a>
         <button type="submit" class="btn btn-primary">Guardar cambios</button>
     </div>

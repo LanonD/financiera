@@ -2,6 +2,16 @@
 
 @section('title', 'Detalle de Empleado')
 
+@push('styles')
+<style>
+.content-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:32px;}
+@media(max-width:768px){
+    .content-header{flex-direction:column;align-items:flex-start;gap:10px;}
+    .content-header .btn{width:100%;justify-content:center;}
+}
+</style>
+@endpush
+
 @section('content')
 
 <div class="content-header">

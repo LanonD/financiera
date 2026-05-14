@@ -39,6 +39,22 @@
 .pago-row-pendiente{background:#fafafa;opacity:.85}
 .pill-pago{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600}
 .diff-badge{font-size:11px;font-weight:700;font-family:monospace}
+
+/* ── Responsive ─────────────────────────────── */
+@media(max-width:768px){
+    .cl-header{grid-template-columns:auto 1fr!important;}
+    .cl-header>a.btn{grid-column:1/-1;justify-content:center;width:100%;}
+    .cl-name{font-size:18px;}
+    .score-card{flex-direction:column;align-items:flex-start;gap:14px;}
+    .loan-meta{font-size:11px;gap:8px;}
+    .info-grid{grid-template-columns:repeat(2,1fr)!important;}
+}
+@media(max-width:480px){
+    .cl-header{grid-template-columns:1fr!important;}
+    .cl-avatar{width:44px!important;height:44px!important;font-size:16px!important;}
+    .info-grid{grid-template-columns:1fr!important;}
+    .score-stats{gap:14px;}
+}
 </style>
 @endpush
 

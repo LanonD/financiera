@@ -97,6 +97,23 @@ $atajos = [
 .punct-box{border-radius:8px;padding:12px;text-align:center}
 .punct-num{font-size:20px;font-weight:700;font-family:monospace;line-height:1}
 .punct-label{font-size:11px;margin-top:3px}
+
+/* ── Responsive ─────────────────────────────── */
+@media(max-width:768px){
+    .rpt-kpi-grid{grid-template-columns:repeat(2,1fr)!important;gap:10px!important;}
+    .rpt-grid-3{grid-template-columns:1fr!important;}
+    .rpt-grid-2{grid-template-columns:1fr!important;}
+    .rpt-card-header{flex-direction:column!important;align-items:flex-start!important;gap:8px!important;}
+    .bar-label{width:70px!important;}
+    div[style*="justify-content:space-between"][style*="flex-wrap:wrap"]>span{
+        font-size:10px!important;
+    }
+}
+@media(max-width:480px){
+    .rpt-kpi-grid{grid-template-columns:repeat(2,1fr)!important;}
+    .rpt-kpi-value{font-size:20px!important;}
+    .rpt-card-body{padding:12px 14px!important;}
+}
 </style>
 @endpush
 

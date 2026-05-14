@@ -2,6 +2,17 @@
 
 @section('title', 'Editar préstamo #' . $prestamo->id)
 
+@push('styles')
+<style>
+@media(max-width:768px){
+    .pe-grid-3{grid-template-columns:1fr!important;}
+    .pe-grid-2{grid-template-columns:1fr!important;}
+    /* page header wrap */
+    div[style*="justify-content:space-between"][style*="flex-wrap:wrap"]{flex-direction:column!important;}
+}
+</style>
+@endpush
+
 @section('content')
 
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
@@ -30,7 +41,7 @@
     <div style="padding:12px 18px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600">Campos financieros</div>
     <form method="POST" action="{{ route('prestamos.campos', $prestamo->id) }}" style="padding:20px">
         @csrf
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px">
+        <div class="pe-grid-3" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px">
             <div>
                 <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:5px">Principal entregado ($)</label>
                 <input type="number" name="monto_entregado" step="0.01" min="0"
@@ -60,7 +71,7 @@
     </form>
 </div>
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+<div class="pe-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
 
 {{-- Estatus y cobrador --}}
 <div class="card" style="padding:0;overflow:hidden">

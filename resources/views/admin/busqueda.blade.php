@@ -2,6 +2,15 @@
 
 @section('title', 'Búsqueda avanzada')
 
+@push('styles')
+<style>
+@media(max-width:640px){
+    form[action*="busqueda"] .btn{width:100%;}
+    form[action*="busqueda"] > div{width:100%;}
+}
+</style>
+@endpush
+
 @section('content')
 
 <div style="margin-bottom:20px">
@@ -10,7 +19,7 @@
 </div>
 
 <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;margin-bottom:20px">
-    <form method="GET" action="{{ route('busqueda.index') }}" style="display:flex;gap:10px;align-items:flex-end;width:100%">
+    <form method="GET" action="{{ route('busqueda.index') }}" style="display:flex;gap:10px;align-items:flex-end;width:100%;flex-wrap:wrap">
         <div style="flex:1">
             <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:5px">Buscar por nombre o teléfono</label>
             <input style="width:100%;padding:9px 12px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:var(--font);outline:none"
