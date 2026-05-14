@@ -17,7 +17,10 @@ class PrestamoController extends Controller
         $user   = Auth::user();
         $puesto = $user->puesto;
 
-        $query = Prestamo::with(['cliente', 'promotor', 'cobrador']);
+        $adminId = $user->adminId();
+
+        $query = Prestamo::with(['cliente', 'promotor', 'cobrador'])
+            ->where('admin_id', $adminId);
 
         if (in_array('promo', $user->getAllRoles()) && !in_array('admin', $user->getAllRoles())) {
             $empleado = $user->empleado;
@@ -70,7 +73,8 @@ class PrestamoController extends Controller
         $user   = Auth::user();
         $puesto = $user->puesto;
 
-        $query = Cliente::where('activo', true);
+        $adminId = $user->adminId();
+        $query   = Cliente::where('activo', true)->where('admin_id', $adminId);
         if (in_array('promo', $user->getAllRoles()) && !in_array('admin', $user->getAllRoles())) {
             $empleado = $user->empleado;
             if ($empleado) {
@@ -141,6 +145,7 @@ class PrestamoController extends Controller
         $promotor_id = $empleado?->id ?? $cliente->promotor_id;
 
         $prestamo = Prestamo::create([
+            'admin_id'            => auth()->user()->adminId(),
             'cliente_id'          => $data['cliente_id'],
             'promotor_id'         => $promotor_id,
             'cobrador_id'         => null,

@@ -16,7 +16,10 @@ class ClienteController extends Controller
         $user   = Auth::user();
         $puesto = $user->puesto;
 
-        $query = Cliente::with(['promotor', 'prestamos.pagos']);
+        $adminId = $user->adminId();
+
+        $query = Cliente::with(['promotor', 'prestamos.pagos'])
+            ->where('admin_id', $adminId);
 
         if (in_array('promo', $user->getAllRoles()) && !in_array('admin', $user->getAllRoles())) {
             $empleado = $user->empleado;
@@ -27,14 +30,21 @@ class ClienteController extends Controller
 
         $clientes = $query->where('activo', true)->orderBy('nombre')->get();
 
-        $promotores = Empleado::whereJsonContains('roles', 'promo')->where('activo', true)->get();
+        $promotores = Empleado::whereJsonContains('roles', 'promo')
+            ->where('admin_id', $adminId)
+            ->where('activo', true)
+            ->get();
 
         return view('admin.clientes', compact('clientes', 'promotores', 'puesto'));
     }
 
     public function create()
     {
-        $promotores = Empleado::whereJsonContains('roles', 'promo')->where('activo', true)->get();
+        $adminId    = auth()->user()->adminId();
+        $promotores = Empleado::whereJsonContains('roles', 'promo')
+            ->where('admin_id', $adminId)
+            ->where('activo', true)
+            ->get();
         return view('admin.cliente_crear', compact('promotores'));
     }
 
@@ -65,7 +75,8 @@ class ClienteController extends Controller
             $data['promotor_id'] = $empleado->id;
         }
 
-        $data['activo'] = true;
+        $data['activo']   = true;
+        $data['admin_id'] = auth()->user()->adminId();
 
         Cliente::create($data);
 

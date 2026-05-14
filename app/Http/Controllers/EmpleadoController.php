@@ -13,8 +13,12 @@ class EmpleadoController extends Controller
 {
     public function index()
     {
-        // Fetch all active employees, then split into sections by their roles JSON
-        $todos = Empleado::where('activo', true)->with('usuario')->get();
+        $adminId = auth()->user()->adminId();
+
+        $todos = Empleado::where('activo', true)
+            ->where('admin_id', $adminId)
+            ->with('usuario')
+            ->get();
 
         $promotores = $todos->filter(fn($e) => $e->hasRole('promo'))->values();
         $cobradores = $todos->filter(fn($e) => $e->hasRole('collector'))->values();
@@ -114,6 +118,7 @@ class EmpleadoController extends Controller
         ]);
 
         Empleado::create([
+            'admin_id'         => auth()->id(),
             'usuario_id'       => $user->id,
             'nombre'           => $request->nombre,
             'celular'          => $request->celular,

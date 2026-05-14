@@ -12,7 +12,7 @@ class Cliente extends Model
     protected $table = 'clientes';
 
     protected $fillable = [
-        'promotor_id', 'nombre', 'celular', 'email', 'fijo', 'direccion',
+        'admin_id', 'promotor_id', 'nombre', 'celular', 'email', 'fijo', 'direccion',
         'curp', 'ocupacion',
         'ine', 'pagare', 'contrato', 'comprobante', 'foto_vivienda',
         'latitud', 'longitud',

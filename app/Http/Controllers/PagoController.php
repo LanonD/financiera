@@ -57,6 +57,8 @@ class PagoController extends Controller
             }
         };
 
+        $adminId = $user->adminId();
+
         $isCollectorOrPromo = !$isAdmin
             && ($empleado !== null)
             && (in_array('collector', $roles) || in_array('promo', $roles));
@@ -64,6 +66,7 @@ class PagoController extends Controller
         if ($isCollectorOrPromo) {
             // Collector/promo ven solo los préstamos donde están asignados como cobradores
             $prestamos = Prestamo::with(['cliente'])
+                ->where('admin_id', $adminId)
                 ->where('cobrador_id', $empleado->id)
                 ->whereIn('estatus', ['Activo', 'Atrasado'])
                 ->get()
@@ -82,8 +85,9 @@ class PagoController extends Controller
 
             $cobrador = $empleado;
         } else {
-            // Admin sees all
+            // Admin sees all loans within their tenant scope
             $prestamos = Prestamo::with(['cliente', 'cobrador'])
+                ->where('admin_id', $adminId)
                 ->whereIn('estatus', ['Activo', 'Atrasado'])
                 ->get()
                 ->map(function ($p) use ($acumularMora) {
@@ -104,12 +108,14 @@ class PagoController extends Controller
      */
     public function asignar(Request $request)
     {
+        $adminId          = auth()->user()->adminId();
         $filtroDesde      = $request->query('desde', '');
         $filtroHasta      = $request->query('hasta', '');
         $filtroSinCobrador= (bool)$request->query('sin_cobrador', false);
         $filtroBusqueda   = $request->query('busqueda', '');
 
         $query = Prestamo::with(['cliente', 'cobrador'])
+            ->where('admin_id', $adminId)
             ->whereIn('estatus', ['Activo', 'Atrasado']);
 
         if ($filtroSinCobrador) {
@@ -145,8 +151,12 @@ class PagoController extends Controller
             });
         }
 
-        // Include multi-role employees that have 'collector' among their roles
-        $cobradores = Empleado::where('activo', true)->get()->filter(fn($e) => $e->hasRole('collector'))->values();
+        // Include multi-role employees that have 'collector' among their roles (scoped to admin)
+        $cobradores = Empleado::where('activo', true)
+            ->where('admin_id', $adminId)
+            ->get()
+            ->filter(fn($e) => $e->hasRole('collector'))
+            ->values();
 
         return view('admin.cobros_asignar', compact('prestamos', 'cobradores', 'filtroDesde', 'filtroHasta', 'filtroSinCobrador', 'filtroBusqueda'));
     }

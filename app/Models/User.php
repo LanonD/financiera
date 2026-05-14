@@ -50,6 +50,18 @@ class User extends Authenticatable
         return $this->puesto ? [$this->puesto] : [];
     }
 
+    /**
+     * Retorna el admin_id que corresponde a este usuario.
+     * - Si es admin: su propio id.
+     * - Si es promo/collector/desembolso: el admin_id de su registro en empleados.
+     * Se usa para aislar datos entre administradores (multi-tenancy).
+     */
+    public function adminId(): ?int
+    {
+        if ($this->puesto === 'admin') return $this->id;
+        return $this->empleado?->admin_id;
+    }
+
     // Redireccion por rol después del login
     public function dashboardRoute(): string
     {

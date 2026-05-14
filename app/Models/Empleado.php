@@ -12,7 +12,7 @@ class Empleado extends Model
     protected $table = 'empleados';
 
     protected $fillable = [
-        'usuario_id', 'nombre', 'celular', 'email', 'fijo', 'direccion',
+        'admin_id', 'usuario_id', 'nombre', 'celular', 'email', 'fijo', 'direccion',
         'puesto', 'roles', 'rango', 'capacidad_maxima', 'monto_ocupado',
         'ine', 'pagare', 'contrato', 'comprobante',
         'latitud', 'longitud',

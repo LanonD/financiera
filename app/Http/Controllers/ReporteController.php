@@ -6,17 +6,23 @@ use Illuminate\Http\Request;
 use App\Models\Pago;
 use App\Models\Prestamo;
 use App\Models\Empleado;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class ReporteController extends Controller
 {
     public function index(Request $request)
     {
+        $adminId     = Auth::user()->adminId();
         $fecha_hasta = $request->query('hasta', now()->toDateString());
         $fecha_desde = $request->query('desde', now()->startOfMonth()->toDateString());
 
+        // Prestamo IDs belonging to this admin (used to scope Pago queries)
+        $prestamoIds = Prestamo::where('admin_id', $adminId)->pluck('id');
+
         // ── Resumen del período ──────────────────────────────────────────────
         $resumen = Pago::whereBetween('fecha_pago', [$fecha_desde, $fecha_hasta])
+            ->whereIn('prestamo_id', $prestamoIds)
             ->whereIn('estatus', ['Pagado', 'Parcial'])
             ->selectRaw("
                 COUNT(*) as total_cobros,
@@ -30,7 +36,8 @@ class ReporteController extends Controller
             ")->first();
 
         // ── Cartera activa ───────────────────────────────────────────────────
-        $cartera = Prestamo::whereIn('estatus', ['Activo', 'Atrasado'])
+        $cartera = Prestamo::where('admin_id', $adminId)
+            ->whereIn('estatus', ['Activo', 'Atrasado'])
             ->selectRaw("
                 COUNT(*) as num_prestamos,
                 COALESCE(SUM(saldo_actual), 0) as saldo_total,
@@ -42,18 +49,21 @@ class ReporteController extends Controller
         $hoy = now()->toDateString();
 
         $cobros_hoy = Pago::whereDate('fecha_pago', $hoy)
+            ->whereIn('prestamo_id', $prestamoIds)
             ->whereIn('estatus', ['Pagado', 'Parcial'])
             ->selectRaw("COUNT(*) as num, COALESCE(SUM(monto_cobrado),0) as total")
             ->first();
 
-        $desembolsos_hoy = Prestamo::whereDate('fecha_entrega', $hoy)
+        $desembolsos_hoy = Prestamo::where('admin_id', $adminId)
+            ->whereDate('fecha_entrega', $hoy)
             ->whereNotNull('fecha_entrega')
             ->selectRaw("COUNT(*) as num, COALESCE(SUM(monto_entregado),0) as total")
             ->first();
 
         // ── Dinero enviado en el período ─────────────────────────────────────
         // Usa fecha_inicio como referencia de cuándo salió el dinero a la calle
-        $enviado_rango = Prestamo::whereBetween('fecha_inicio', [$fecha_desde, $fecha_hasta])
+        $enviado_rango = Prestamo::where('admin_id', $adminId)
+            ->whereBetween('fecha_inicio', [$fecha_desde, $fecha_hasta])
             ->selectRaw("
                 COUNT(*) as num_prestamos,
                 COALESCE(SUM(monto_entregado), 0) as total_enviado,
@@ -62,7 +72,8 @@ class ReporteController extends Controller
             ")->first();
 
         // ── Enviados por día (para el chart) ─────────────────────────────────
-        $enviados_por_dia = Prestamo::whereBetween('fecha_inicio', [$fecha_desde, $fecha_hasta])
+        $enviados_por_dia = Prestamo::where('admin_id', $adminId)
+            ->whereBetween('fecha_inicio', [$fecha_desde, $fecha_hasta])
             ->selectRaw("DATE(fecha_inicio) as dia, COALESCE(SUM(monto_entregado),0) as total_enviado")
             ->groupBy('dia')
             ->orderBy('dia')
@@ -71,6 +82,7 @@ class ReporteController extends Controller
 
         // ── Cobros por día en rango ──────────────────────────────────────────
         $cobros_rango = Pago::whereBetween('fecha_pago', [$fecha_desde, $fecha_hasta])
+            ->whereIn('prestamo_id', $prestamoIds)
             ->whereIn('estatus', ['Pagado', 'Parcial'])
             ->selectRaw("
                 DATE(fecha_pago) as dia,
@@ -84,6 +96,7 @@ class ReporteController extends Controller
 
         // ── Cobros por cobrador ──────────────────────────────────────────────
         $cobros_por_cobrador = Pago::whereBetween('fecha_pago', [$fecha_desde, $fecha_hasta])
+            ->whereIn('prestamo_id', $prestamoIds)
             ->whereIn('estatus', ['Pagado', 'Parcial'])
             ->whereNotNull('cobrador_id')
             ->join('empleados', 'pagos.cobrador_id', '=', 'empleados.id')
@@ -100,7 +113,8 @@ class ReporteController extends Controller
             ->get();
 
         // ── Préstamos por estatus ────────────────────────────────────────────
-        $por_estatus = Prestamo::selectRaw("
+        $por_estatus = Prestamo::where('admin_id', $adminId)
+            ->selectRaw("
                 estatus,
                 COUNT(*) as num,
                 COALESCE(SUM(saldo_actual),0) as saldo
@@ -111,6 +125,7 @@ class ReporteController extends Controller
 
         // ── Top 10 atrasados ─────────────────────────────────────────────────
         $atrasados = Prestamo::with('cliente')
+            ->where('prestamos.admin_id', $adminId)
             ->where('prestamos.estatus', 'Atrasado')
             ->join('pagos as p2', function ($j) {
                 $j->on('prestamos.id', '=', 'p2.prestamo_id')

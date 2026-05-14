@@ -16,14 +16,17 @@ class DesembolsoController extends Controller
         $empleado = $user->empleado;
         $roles    = $user->getAllRoles();
         $isAdmin  = in_array('admin', $roles);
+        $adminId  = $user->adminId();
 
-        // Auto-retire pending loans older than 5 days with no disbursement
-        Prestamo::where('estatus', 'Pendiente')
+        // Auto-retire pending loans older than 5 days with no disbursement (scoped to this admin)
+        Prestamo::where('admin_id', $adminId)
+            ->where('estatus', 'Pendiente')
             ->whereNull('fecha_entrega')
             ->where('created_at', '<', now()->subDays(5))
             ->update(['estatus' => 'Retirado']);
 
         $query = Prestamo::with(['cliente', 'promotor'])
+            ->where('admin_id', $adminId)
             ->where('estatus', 'Pendiente')
             ->whereNull('fecha_entrega');
 

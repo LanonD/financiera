@@ -12,7 +12,7 @@ class Prestamo extends Model
     protected $table = 'prestamos';
 
     protected $fillable = [
-        'cliente_id', 'promotor_id', 'cobrador_id', 'desembolso_id',
+        'admin_id', 'cliente_id', 'promotor_id', 'cobrador_id', 'desembolso_id',
         'monto', 'tasa_diaria', 'num_pagos', 'frecuencia', 'cuota', 'saldo_actual',
         'interes_acumulado', 'fecha_ultimo_interes', 'interes_activo',
         'interes_diario', 'interes_mora_activo',
