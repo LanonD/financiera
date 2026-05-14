@@ -54,6 +54,7 @@ class User extends Authenticatable
     public function dashboardRoute(): string
     {
         return match($this->puesto) {
+            'owner'       => 'owner.dashboard',
             'admin'       => 'dashboard',
             'promo'       => 'prestamos.index',
             'collector'   => 'cobros.index',

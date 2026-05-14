@@ -151,12 +151,26 @@
     <nav class="sidebar-nav">
         @php
             $roles       = auth()->user()->getAllRoles();
+            $isOwner     = in_array('owner',      $roles);
             $isAdmin     = in_array('admin',      $roles);
             $isPromo     = in_array('promo',      $roles) || $isAdmin;
             $isCollector = in_array('collector',  $roles) || $isAdmin;
             $isDesembolso= in_array('desembolso', $roles) || $isAdmin;
             $uri         = request()->path();
         @endphp
+
+        {{-- ── Owner (super-usuario del servicio) ────────────── --}}
+        @if($isOwner)
+            <span class="nav-section">Sistema</span>
+            <a href="{{ route('owner.dashboard') }}"
+               class="nav-item {{ str_starts_with($uri,'owner') ? 'active' : '' }}">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                    <rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/>
+                    <rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/>
+                </svg>
+                Clientes del sistema
+            </a>
+        @endif
 
         {{-- ── General (solo admin) ─────────────────────────── --}}
         @if($isAdmin)

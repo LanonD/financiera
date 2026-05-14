@@ -17,6 +17,15 @@ Route::get('/login',  [AuthController::class, 'showLogin']);
 Route::post('/login', [AuthController::class, 'login'])->name('login.post');
 Route::post('/logout',[AuthController::class, 'logout'])->name('logout')->middleware('auth');
 
+// ── Owner (super-usuario del servicio) ──────────────────────────────
+Route::middleware(['auth', 'role:owner'])->prefix('owner')->name('owner.')->group(function () {
+    Route::get('/dashboard',           [\App\Http\Controllers\OwnerController::class, 'index'])  ->name('dashboard');
+    Route::get('/admins/crear',        [\App\Http\Controllers\OwnerController::class, 'create']) ->name('admins.create');
+    Route::post('/admins',             [\App\Http\Controllers\OwnerController::class, 'store'])  ->name('admins.store');
+    Route::post('/admins/{id}/toggle', [\App\Http\Controllers\OwnerController::class, 'toggle']) ->name('admins.toggle');
+    Route::delete('/admins/{id}',      [\App\Http\Controllers\OwnerController::class, 'destroy'])->name('admins.destroy');
+});
+
 // Admin
 Route::middleware(['auth', 'role:admin'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
