@@ -364,14 +364,20 @@ class PagoController extends Controller
         if ($monto > 0) {
             $proximaCuota = Pago::where('prestamo_id', $prestamo->id)
                 ->whereIn('estatus', ['Pendiente', 'Atrasado'])
-                ->whereIn('tipo_pago', ['plan', null])
+                ->where(fn($q) => $q->whereNull('tipo_pago')->orWhere('tipo_pago', 'plan'))
                 ->orderBy('numero_pago')
                 ->first();
 
             if ($proximaCuota && (float)$proximaCuota->interes > 0) {
                 $pagoInteres = min($monto, (float)$proximaCuota->interes);
                 $monto      -= $pagoInteres;
-                $nota .= ' | Interés: $' . number_format($pagoInteres, 2);
+                $nota       .= ' | Interés: $' . number_format($pagoInteres, 2);
+
+                // Reduce the pending cuota's interest and monto_cuota so that
+                // $interesRestante and the collector's view reflect the true balance
+                $proximaCuota->interes     = round((float)$proximaCuota->interes     - $pagoInteres, 2);
+                $proximaCuota->monto_cuota = round((float)$proximaCuota->monto_cuota - $pagoInteres, 2);
+                $proximaCuota->save();
             }
         }
 
