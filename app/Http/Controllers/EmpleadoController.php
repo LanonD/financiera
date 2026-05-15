@@ -118,7 +118,7 @@ class EmpleadoController extends Controller
         ]);
 
         Empleado::create([
-            'admin_id'         => auth()->id(),
+            'admin_id'         => auth()->user()->id,
             'usuario_id'       => $user->id,
             'nombre'           => $request->nombre,
             'celular'          => $request->celular,
