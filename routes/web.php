@@ -24,6 +24,7 @@ Route::middleware(['auth', 'role:owner'])->prefix('owner')->name('owner.')->grou
     Route::post('/admins',                     [\App\Http\Controllers\OwnerController::class, 'store'])          ->name('admins.store');
     Route::post('/admins/{id}/toggle',         [\App\Http\Controllers\OwnerController::class, 'toggle'])         ->name('admins.toggle');
     Route::post('/admins/{id}/reset-password', [\App\Http\Controllers\OwnerController::class, 'resetPassword'])  ->name('admins.resetPassword');
+    Route::put('/admins/{id}',                 [\App\Http\Controllers\OwnerController::class, 'update'])         ->name('admins.update');
     Route::delete('/admins/{id}',              [\App\Http\Controllers\OwnerController::class, 'destroy'])        ->name('admins.destroy');
     Route::post('/perfil/password',            [\App\Http\Controllers\OwnerController::class, 'changeOwnPassword'])->name('perfil.password');
 });

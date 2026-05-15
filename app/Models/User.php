@@ -20,6 +20,8 @@ class User extends Authenticatable
         'password',
         'puesto',
         'activo',
+        'celular',
+        'presupuesto',
     ];
 
     protected $hidden = [
@@ -28,8 +30,9 @@ class User extends Authenticatable
     ];
 
     protected $casts = [
-        'password' => 'hashed',
-        'activo'   => 'boolean',
+        'password'     => 'hashed',
+        'activo'       => 'boolean',
+        'presupuesto'  => 'decimal:2',
     ];
 
     public function empleado()

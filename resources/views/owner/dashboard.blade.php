@@ -127,6 +127,18 @@
             </div>
         </div>
 
+        {{-- Contacto y presupuesto --}}
+        <div style="padding:0 20px 12px;display:flex;gap:12px;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
+                <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:13px;height:13px;flex-shrink:0"><path d="M2 2l2 2-1 3 3-1 2 2 1-4-4-4z"/></svg>
+                {{ $admin->celular ?: '—' }}
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
+                <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:13px;height:13px;flex-shrink:0"><rect x="1" y="3" width="12" height="9" rx="1.5"/><path d="M1 6h12M5 9h4"/></svg>
+                Presupuesto: <strong style="color:var(--text)">${{ number_format($admin->presupuesto, 0, '.', ',') }}</strong>
+            </div>
+        </div>
+
         {{-- Stats del sistema --}}
         <div class="ow-card-body">
             <div class="ow-stat">
@@ -145,6 +157,14 @@
 
         {{-- Actions --}}
         <div class="ow-card-footer">
+            {{-- Editar info --}}
+            <button type="button" class="btn btn-sm"
+                style="background:#f3f4f6;color:var(--text)"
+                onclick="abrirEditarAdmin({{ $admin->id }}, '{{ addslashes($admin->usuario) }}', '{{ addslashes($admin->celular ?? '') }}', '{{ $admin->presupuesto }}')">
+                <svg viewBox="0 0 16 16" fill="currentColor" style="width:12px;height:12px"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>
+                Editar
+            </button>
+
             {{-- Reset password --}}
             <button type="button" class="btn btn-sm"
                 style="background:#eff6ff;color:#2563eb"
@@ -227,6 +247,40 @@
     </div>
 </div>
 
+{{-- ── Modal: Editar admin (celular + presupuesto) ─────────── --}}
+<div class="ow-modal-overlay" id="modalEditar">
+    <div class="ow-modal">
+        <div class="ow-modal-header">
+            <div>
+                <div class="ow-modal-title">Editar administrador</div>
+                <div style="font-size:12px;color:var(--text3);margin-top:2px">Usuario: <strong id="editAdminLabel">—</strong></div>
+            </div>
+            <button class="ow-modal-close" onclick="cerrarEditarAdmin()">&times;</button>
+        </div>
+        <form method="POST" id="formEditar" action="">
+            @csrf
+            @method('PUT')
+            <div class="ow-modal-body">
+                <div class="ow-field">
+                    <label>Teléfono / WhatsApp</label>
+                    <input type="tel" name="celular" id="edit_celular" placeholder="ej. 5512345678" autocomplete="off">
+                </div>
+                <div class="ow-field">
+                    <label>Presupuesto asignado ($)</label>
+                    <input type="number" name="presupuesto" id="edit_presupuesto" min="0" step="100" placeholder="0">
+                </div>
+                <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;font-size:12px;color:#1d4ed8">
+                    ℹ️ El presupuesto es el capital disponible que este administrador puede gestionar.
+                </div>
+            </div>
+            <div class="ow-modal-footer">
+                <button type="button" class="btn" style="background:#f3f4f6;color:var(--text)" onclick="cerrarEditarAdmin()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar cambios</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 {{-- ── Modal: Crear nuevo administrador ───────────────────── --}}
 <div class="ow-modal-overlay" id="modalCrear">
     <div class="ow-modal">
@@ -263,6 +317,14 @@
                     <label>Confirmar contraseña *</label>
                     <input type="password" name="password_confirmation" placeholder="Repite la contraseña" required>
                 </div>
+                <div class="ow-field">
+                    <label>Teléfono / WhatsApp</label>
+                    <input type="tel" name="celular" placeholder="ej. 5512345678">
+                </div>
+                <div class="ow-field">
+                    <label>Presupuesto asignado ($)</label>
+                    <input type="number" name="presupuesto" value="0" min="0" step="100">
+                </div>
                 <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;font-size:12px;color:#1d4ed8">
                     ℹ️ El nuevo usuario podrá iniciar sesión con estos datos y tendrá acceso completo como administrador.
                 </div>
@@ -287,6 +349,26 @@ document.getElementById('modalCrear').classList.add('open');
 
 document.getElementById('modalCrear').addEventListener('click', function(e) {
     if (e.target === this) this.classList.remove('open');
+});
+
+// ── Modal Editar Admin ───────────────────────────────────
+const EDIT_BASE = '{{ url("owner/admins") }}/';
+
+function abrirEditarAdmin(adminId, usuario, celular, presupuesto) {
+    document.getElementById('editAdminLabel').textContent = usuario;
+    document.getElementById('edit_celular').value    = celular || '';
+    document.getElementById('edit_presupuesto').value = presupuesto || 0;
+    document.getElementById('formEditar').action = EDIT_BASE + adminId;
+    document.getElementById('modalEditar').classList.add('open');
+    document.getElementById('edit_celular').focus();
+}
+
+function cerrarEditarAdmin() {
+    document.getElementById('modalEditar').classList.remove('open');
+}
+
+document.getElementById('modalEditar').addEventListener('click', function(e) {
+    if (e.target === this) cerrarEditarAdmin();
 });
 
 // ── Modal Reset Password ─────────────────────────────────────

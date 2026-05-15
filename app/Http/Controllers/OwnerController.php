@@ -55,19 +55,43 @@ class OwnerController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'usuario'  => 'required|string|max:60|unique:users,usuario',
-            'password' => 'required|string|min:6|confirmed',
+            'usuario'      => 'required|string|max:60|unique:users,usuario',
+            'password'     => 'required|string|min:6|confirmed',
+            'celular'      => 'nullable|string|max:20',
+            'presupuesto'  => 'nullable|numeric|min:0',
         ]);
 
         User::create([
-            'usuario'  => $data['usuario'],
-            'password' => Hash::make($data['password']),
-            'puesto'   => 'admin',
-            'activo'   => true,
+            'usuario'     => $data['usuario'],
+            'password'    => Hash::make($data['password']),
+            'puesto'      => 'admin',
+            'activo'      => true,
+            'celular'     => $data['celular'] ?? null,
+            'presupuesto' => $data['presupuesto'] ?? 0,
         ]);
 
         return redirect()->route('owner.dashboard')
             ->with('success', "Admin \"{$data['usuario']}\" creado correctamente.");
+    }
+
+    /**
+     * Actualizar datos del admin (celular, presupuesto).
+     */
+    public function update(Request $request, int $id)
+    {
+        $user = User::where('id', $id)->where('puesto', 'admin')->firstOrFail();
+
+        $request->validate([
+            'celular'     => 'nullable|string|max:20',
+            'presupuesto' => 'nullable|numeric|min:0',
+        ]);
+
+        $user->celular     = $request->celular;
+        $user->presupuesto = $request->presupuesto ?? 0;
+        $user->save();
+
+        return redirect()->route('owner.dashboard')
+            ->with('success', "Datos de \"{$user->usuario}\" actualizados.");
     }
 
     /**
