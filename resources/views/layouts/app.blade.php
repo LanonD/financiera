@@ -150,29 +150,26 @@
 
     <nav class="sidebar-nav">
         @php
-            $roles       = auth()->user()->getAllRoles();
-            $isOwner     = in_array('owner',      $roles);
-            $isAdmin     = in_array('admin',      $roles);
-            $isPromo     = in_array('promo',      $roles) || $isAdmin;
-            $isCollector = in_array('collector',  $roles) || $isAdmin;
-            $isDesembolso= in_array('desembolso', $roles) || $isAdmin;
-            $uri         = request()->path();
+            $roles        = auth()->user()->getAllRoles();
+            $isOwner      = in_array('owner',      $roles);
+            $isAdmin      = in_array('admin',      $roles);
+            // For nav visibility: admin inherits all roles
+            $isPromo      = in_array('promo',      $roles) || $isAdmin;
+            $isCollector  = in_array('collector',  $roles) || $isAdmin;
+            $isDesembolso = in_array('desembolso', $roles) || $isAdmin;
+            $uri          = request()->path();
         @endphp
 
-        {{-- ── Owner (super-usuario del servicio) ────────────── --}}
+        {{-- ══ OWNER ══════════════════════════════════════════ --}}
         @if($isOwner)
             <span class="nav-section">Sistema</span>
-            <a href="{{ route('owner.dashboard') }}"
-               class="nav-item {{ str_starts_with($uri,'owner') ? 'active' : '' }}">
-                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-                    <rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/>
-                    <rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/>
-                </svg>
+            <a href="{{ route('owner.dashboard') }}" class="nav-item {{ str_starts_with($uri,'owner') ? 'active' : '' }}">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>
                 Clientes del sistema
             </a>
         @endif
 
-        {{-- ── General (solo admin) ─────────────────────────── --}}
+        {{-- ══ ADMIN: vista general + reportes + empleados ═══ --}}
         @if($isAdmin)
             <span class="nav-section">General</span>
             <a href="{{ route('dashboard') }}" class="nav-item {{ $uri === 'dashboard' ? 'active' : '' }}">
@@ -183,59 +180,60 @@
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 10V8m3 2V6m3 4V4"/></svg>
                 Reportes
             </a>
+            <span class="nav-section">Equipo</span>
+            <a href="{{ route('empleados.index') }}" class="nav-item {{ str_starts_with($uri,'empleados') ? 'active' : '' }}">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3.314 2.686-6 6-6s6 2.686 6 6"/></svg>
+                Empleados
+            </a>
         @endif
 
-        {{-- ── Gestión (admin, promo o desembolso) ─────────── --}}
-        @if($isAdmin || $isPromo || $isDesembolso)
+        {{-- ══ PROMOTOR: clientes + préstamos + desembolsos + cobros ══ --}}
+        @if($isPromo)
             <span class="nav-section">Gestión</span>
-
-            @if($isAdmin)
-                <a href="{{ route('empleados.index') }}" class="nav-item {{ str_starts_with($uri,'empleados') ? 'active' : '' }}">
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3.314 2.686-6 6-6s6 2.686 6 6"/></svg>
-                    Empleados
-                </a>
-            @endif
-
-            @if($isPromo)
-                <a href="{{ route('clientes.index') }}" class="nav-item {{ str_starts_with($uri,'clientes') ? 'active' : '' }}">
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="6" cy="5" r="2.5"/><path d="M1 14c0-2.761 2.239-5 5-5"/><circle cx="11" cy="5" r="2.5"/><path d="M15 14c0-2.761-2.239-5-5-5"/></svg>
-                    Clientes
-                </a>
-                <a href="{{ route('prestamos.index') }}" class="nav-item {{ str_starts_with($uri,'prestamos') ? 'active' : '' }}">
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M5 7h6M5 10h4"/></svg>
-                    Préstamos
-                    <span class="offline-badge">0</span>
-                </a>
-            @endif
-
+            <a href="{{ route('clientes.index') }}" class="nav-item {{ str_starts_with($uri,'clientes') ? 'active' : '' }}">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="6" cy="5" r="2.5"/><path d="M1 14c0-2.761 2.239-5 5-5"/><circle cx="11" cy="5" r="2.5"/><path d="M15 14c0-2.761-2.239-5-5-5"/></svg>
+                Clientes
+            </a>
+            <a href="{{ route('prestamos.index') }}" class="nav-item {{ str_starts_with($uri,'prestamos') ? 'active' : '' }}">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M5 7h6M5 10h4"/></svg>
+                Préstamos
+                <span class="offline-badge">0</span>
+            </a>
             <a href="{{ route('desembolsos.index') }}" class="nav-item {{ str_starts_with($uri,'desembolsos') ? 'active' : '' }}">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 2v12M4 6l4-4 4 4"/></svg>
                 Desembolsos
             </a>
-        @endif
-
-        {{-- ── Cobros (admin, promo o collector) ───────────── --}}
-        @if($isAdmin || $isPromo || $isCollector)
             <span class="nav-section">Cobros</span>
-
-            @if($isPromo)
-                <a href="{{ route('cobros.asignar') }}" class="nav-item {{ str_starts_with($uri,'cobros/asignar') ? 'active' : '' }}">
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 8h12M9 4l4 4-4 4"/></svg>
-                    Asignar cobros
-                </a>
-            @endif
-
+            <a href="{{ route('cobros.asignar') }}" class="nav-item {{ str_starts_with($uri,'cobros/asignar') ? 'active' : '' }}">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 8h12M9 4l4 4-4 4"/></svg>
+                Asignar cobros
+            </a>
             <a href="{{ route('cobros.index') }}" class="nav-item {{ $uri === 'cobros' ? 'active' : '' }}">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 8l4 4 8-8"/></svg>
                 Cobros
             </a>
+            <a href="{{ route('busqueda.index') }}" class="nav-item {{ str_starts_with($uri,'busqueda') ? 'active' : '' }}">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="6.5" cy="6.5" r="4.5"/><path d="M11.5 11.5L15 15"/></svg>
+                Búsqueda
+            </a>
+        @endif
 
-            @if($isPromo)
-                <a href="{{ route('busqueda.index') }}" class="nav-item {{ str_starts_with($uri,'busqueda') ? 'active' : '' }}">
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="6.5" cy="6.5" r="4.5"/><path d="M11.5 11.5L15 15"/></svg>
-                    Búsqueda
-                </a>
-            @endif
+        {{-- ══ COBRADOR (sin promo): solo cobros ═════════════ --}}
+        @if($isCollector && !$isPromo)
+            <span class="nav-section">Cobros</span>
+            <a href="{{ route('cobros.index') }}" class="nav-item {{ $uri === 'cobros' ? 'active' : '' }}">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 8l4 4 8-8"/></svg>
+                Mis cobros
+            </a>
+        @endif
+
+        {{-- ══ DESEMBOLSADOR (sin promo): solo desembolsos ═══ --}}
+        @if($isDesembolso && !$isPromo)
+            <span class="nav-section">Desembolsos</span>
+            <a href="{{ route('desembolsos.index') }}" class="nav-item {{ str_starts_with($uri,'desembolsos') ? 'active' : '' }}">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 2v12M4 6l4-4 4 4"/></svg>
+                Desembolsos
+            </a>
         @endif
     </nav>
 
