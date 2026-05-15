@@ -46,10 +46,18 @@
     .ow-header .btn{width:100%;justify-content:center;}
     .ow-kpi-grid{grid-template-columns:1fr 1fr;}
     .ow-grid{grid-template-columns:1fr;}
+    .ow-modal{border-radius:14px!important;}
+    .ow-modal-body{padding:18px 18px!important;}
+    .ow-modal-header{padding:18px 18px!important;}
+    .ow-modal-footer{padding:14px 18px!important;flex-direction:column;}
+    .ow-modal-footer .btn{width:100%;justify-content:center;}
+    .ow-card-footer{flex-wrap:wrap;gap:6px;}
+    .ow-card-footer .btn{flex:1;justify-content:center;min-width:0;}
 }
 @media(max-width:480px){
     .ow-kpi-grid{grid-template-columns:1fr;}
     .ow-card-body{grid-template-columns:repeat(3,1fr);}
+    .ow-card-name{font-size:14px;}
 }
 </style>
 @endpush
@@ -133,9 +141,20 @@
 
         {{-- Contacto y presupuesto --}}
         <div style="padding:0 20px 12px;display:flex;gap:12px;flex-wrap:wrap">
-            <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
-                <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:13px;height:13px;flex-shrink:0"><path d="M2 2l2 2-1 3 3-1 2 2 1-4-4-4z"/></svg>
-                {{ $admin->celular ?: '—' }}
+            <div style="display:flex;align-items:center;gap:6px;font-size:12px;">
+                @if($admin->celular)
+                <a href="https://wa.me/52{{ preg_replace('/\D/','',$admin->celular) }}"
+                   target="_blank" onclick="event.stopPropagation()"
+                   style="display:inline-flex;align-items:center;gap:5px;color:#16a34a;text-decoration:none;font-weight:500">
+                    <svg viewBox="0 0 20 20" fill="currentColor" style="width:14px;height:14px;flex-shrink:0"><path d="M10 0C4.477 0 0 4.477 0 10c0 1.763.46 3.417 1.264 4.857L0 20l5.285-1.384A9.958 9.958 0 0010 20c5.523 0 10-4.477 10-10S15.523 0 10 0zm0 18.182a8.173 8.173 0 01-4.163-1.136l-.298-.178-3.136.822.837-3.056-.195-.314A8.182 8.182 0 1110 18.182zm4.504-6.13c-.247-.124-1.463-.722-1.69-.804-.227-.083-.392-.124-.557.124-.165.247-.638.804-.782.969-.144.165-.288.185-.535.062-.247-.124-1.043-.384-1.987-1.225-.734-.655-1.23-1.464-1.374-1.71-.144-.247-.015-.381.108-.504.111-.11.247-.288.37-.432.124-.144.165-.247.247-.412.083-.165.041-.309-.02-.432-.062-.124-.557-1.343-.763-1.838-.2-.483-.405-.418-.557-.426l-.474-.008c-.165 0-.432.062-.659.309-.227.247-.866.846-.866 2.063s.887 2.392 1.011 2.557c.124.165 1.746 2.665 4.231 3.737.591.255 1.052.407 1.411.521.593.188 1.132.162 1.559.098.475-.071 1.463-.598 1.669-1.176.206-.577.206-1.072.144-1.176-.062-.103-.227-.165-.474-.289z"/></svg>
+                    {{ $admin->celular }}
+                </a>
+                @else
+                <span style="color:var(--text3);display:flex;align-items:center;gap:5px">
+                    <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:13px;height:13px;flex-shrink:0"><path d="M2 2l2 2-1 3 3-1 2 2 1-4-4-4z"/></svg>
+                    Sin teléfono
+                </span>
+                @endif
             </div>
             <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
                 <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:13px;height:13px;flex-shrink:0"><rect x="1" y="3" width="12" height="9" rx="1.5"/><path d="M1 6h12M5 9h4"/></svg>
