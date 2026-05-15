@@ -72,6 +72,9 @@ $cobrosFuturos= $prestamos->filter(fn($p) => $p->proximo_pago === null || $p->pr
         <h2 style="font-size:20px;font-weight:700;margin-bottom:4px">Mis cobros</h2>
         <p style="color:var(--text2);font-size:13px">Cobros del día y próximos asignados</p>
     </div>
+    <button class="btn" onclick="abrirRutaCobrosHoy()" style="background:#dcfce7;color:#166534">
+        🗺️ Enrutar cobros de hoy
+    </button>
     <button class="btn btn-primary" id="btnEnviar" onclick="submitCobros()" disabled style="opacity:.5">
         <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7l3 3 7-7"/></svg>
         Enviar cobros
@@ -160,7 +163,9 @@ $cobrosFuturos= $prestamos->filter(fn($p) => $p->proximo_pago === null || $p->pr
             data-id="{{ $row->id }}"
             data-pago="{{ $row->cuota }}"
             data-mora="{{ number_format($mora, 2, '.', '') }}"
-            data-nombre="{{ $nombre }}">
+            data-nombre="{{ $nombre }}"
+            data-lat="{{ $row->cliente?->latitud }}"
+            data-lng="{{ $row->cliente?->longitud }}">
             <td>
                 <div style="display:flex;align-items:center;justify-content:center;gap:6px">
                     <button class="check-btn" onclick="toggleCheck(this)" title="Pago completo">
@@ -494,6 +499,153 @@ function filtrarFuturos() {
         if (show) v++;
     });
     document.getElementById('countFuturos').textContent = v + ' préstamos';
+}
+
+function distanciaKm(lat1, lng1, lat2, lng2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) *
+        Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLng / 2) *
+        Math.sin(dLng / 2);
+
+    return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+function ordenarRutaMasCercana(origenLat, origenLng, puntos) {
+    const pendientes = [...puntos];
+    const ordenados = [];
+
+    let actualLat = origenLat;
+    let actualLng = origenLng;
+
+    while (pendientes.length > 0) {
+        let mejorIndex = 0;
+        let mejorDistancia = distanciaKm(
+            actualLat,
+            actualLng,
+            pendientes[0].lat,
+            pendientes[0].lng
+        );
+
+        for (let i = 1; i < pendientes.length; i++) {
+            const d = distanciaKm(
+                actualLat,
+                actualLng,
+                pendientes[i].lat,
+                pendientes[i].lng
+            );
+
+            if (d < mejorDistancia) {
+                mejorDistancia = d;
+                mejorIndex = i;
+            }
+        }
+
+        const siguiente = pendientes.splice(mejorIndex, 1)[0];
+        ordenados.push(siguiente);
+
+        actualLat = siguiente.lat;
+        actualLng = siguiente.lng;
+    }
+
+    return ordenados;
+}
+
+function abrirRutaCobrosHoy() {
+    const puntos = [];
+
+    document.querySelectorAll('#tableBodyHoy tr[data-id]').forEach(row => {
+        const lat = parseFloat(row.dataset.lat);
+        const lng = parseFloat(row.dataset.lng);
+        const nombre = row.dataset.nombre || 'Cliente';
+
+        if (!isNaN(lat) && !isNaN(lng)) {
+            puntos.push({
+                lat,
+                lng,
+                nombre
+            });
+        }
+    });
+
+    if (puntos.length === 0) {
+        alert('No hay clientes con latitud y longitud en los cobros de hoy.');
+        return;
+    }
+
+    if (!navigator.geolocation) {
+        abrirRutaSinUbicacionActual(puntos);
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+        position => {
+            const origenLat = position.coords.latitude;
+            const origenLng = position.coords.longitude;
+
+            const rutaOrdenada = ordenarRutaMasCercana(origenLat, origenLng, puntos);
+
+            abrirGoogleMaps(origenLat, origenLng, rutaOrdenada);
+        },
+        () => {
+            abrirRutaSinUbicacionActual(puntos);
+        },
+        {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 60000
+        }
+    );
+}
+
+function abrirRutaSinUbicacionActual(puntos) {
+    alert('No se pudo obtener tu ubicación actual. Se abrirá la ruta usando sólo los clientes.');
+
+    const primero = puntos[0];
+    const rutaOrdenada = ordenarRutaMasCercana(primero.lat, primero.lng, puntos);
+
+    abrirGoogleMaps(null, null, rutaOrdenada);
+}
+
+function abrirGoogleMaps(origenLat, origenLng, puntos) {
+    if (puntos.length === 1) {
+        const destino = `${puntos[0].lat},${puntos[0].lng}`;
+
+        const url = origenLat && origenLng
+            ? `https://www.google.com/maps/dir/?api=1&origin=${origenLat},${origenLng}&destination=${destino}&travelmode=driving`
+            : `https://www.google.com/maps/dir/?api=1&destination=${destino}&travelmode=driving`;
+
+        window.open(url, '_blank');
+        return;
+    }
+
+    const destinoFinal = puntos[puntos.length - 1];
+    const intermedios = puntos.slice(0, -1);
+
+    let url = 'https://www.google.com/maps/dir/?api=1';
+
+    if (origenLat && origenLng) {
+        url += `&origin=${origenLat},${origenLng}`;
+    }
+
+    url += `&destination=${destinoFinal.lat},${destinoFinal.lng}`;
+
+    if (intermedios.length > 0) {
+        const waypoints = intermedios
+            .map(p => `${p.lat},${p.lng}`)
+            .join('|');
+
+        url += `&waypoints=${encodeURIComponent(waypoints)}`;
+    }
+
+    url += '&travelmode=driving';
+
+    window.open(url, '_blank');
 }
 </script>
 @endpush
