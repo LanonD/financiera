@@ -350,26 +350,31 @@ class PagoController extends Controller
             $nota .= ' | Mora: $' . number_format($pagoMora, 2);
         }
 
-        // ── 2. Interest of next pending cuota before touching capital ────────
+        // ── 2. Pay interest from pending cuotas BEFORE touching capital ─────
+        // Cascade through ALL pending cuotas with interest > 0 until money runs out
         $pagoInteres = 0;
-        if ($monto > 0) {
+        while ($monto > 0) {
             $proximaCuota = Pago::where('prestamo_id', $prestamo->id)
                 ->whereIn('estatus', ['Pendiente', 'Atrasado'])
                 ->where(fn($q) => $q->whereNull('tipo_pago')->orWhere('tipo_pago', 'plan'))
+                ->where('interes', '>', 0)          // skip cuotas whose interest is already cleared
                 ->orderBy('numero_pago')
                 ->first();
 
-            if ($proximaCuota && (float)$proximaCuota->interes > 0) {
-                $pagoInteres = min($monto, (float)$proximaCuota->interes);
-                $monto      -= $pagoInteres;
-                $nota       .= ' | Interés: $' . number_format($pagoInteres, 2);
+            if (!$proximaCuota) break;              // no more interest to pay → go to capital
 
-                // Reduce the pending cuota's interest and monto_cuota so that
-                // $interesRestante and the collector's view reflect the true balance
-                $proximaCuota->interes     = round((float)$proximaCuota->interes     - $pagoInteres, 2);
-                $proximaCuota->monto_cuota = round((float)$proximaCuota->monto_cuota - $pagoInteres, 2);
-                $proximaCuota->save();
-            }
+            $interesCuota  = (float)$proximaCuota->interes;
+            $abono         = min($monto, $interesCuota);
+            $monto        -= $abono;
+            $pagoInteres  += $abono;
+
+            // Update the cuota so $interesRestante reflects the real balance
+            $proximaCuota->interes     = round($interesCuota - $abono, 2);
+            $proximaCuota->monto_cuota = round((float)$proximaCuota->monto_cuota - $abono, 2);
+            $proximaCuota->save();
+        }
+        if ($pagoInteres > 0) {
+            $nota .= ' | Interés: $' . number_format($pagoInteres, 2);
         }
 
         // ── 3. Remainder reduces capital (saldo_actual) ──────────────────────
