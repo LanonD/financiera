@@ -29,6 +29,7 @@
 <form method="POST" action="{{ route('clientes.update', $cliente->id) }}" onsubmit="this.querySelector('[type=submit]').disabled=true">
     @csrf
     @method('PUT')
+
     <div class="frm-grid-2col" style="padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:16px">
 
         @php
@@ -43,39 +44,172 @@
 
         @foreach($fields as [$name, $label, $type, $required, $span])
         <div @if($span) style="grid-column:{{ $span }}" @endif>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);display:block;margin-bottom:5px">{{ $label }}</label>
-            <input type="{{ $type }}" name="{{ $name }}"
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);display:block;margin-bottom:5px">
+                {{ $label }}
+            </label>
+
+            <input type="{{ $type }}"
+                   name="{{ $name }}"
                    value="{{ old($name, $cliente->$name) }}"
                    @if($required) required @endif
                    style="width:100%;padding:9px 11px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-family:var(--font);font-size:13px;outline:none">
         </div>
         @endforeach
 
+        {{-- MAPA --}}
+        <div style="grid-column:1/-1">
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);display:block;margin-bottom:5px">
+                Ubicación en mapa
+            </label>
+
+            <div id="map"
+                 style="width:100%;height:320px;border-radius:8px;border:1px solid var(--border);overflow:hidden">
+            </div>
+
+            <input type="hidden" name="latitud" id="latitud" value="{{ old('latitud', $cliente->latitud) }}">
+            <input type="hidden" name="longitud" id="longitud" value="{{ old('longitud', $cliente->longitud) }}">
+
+            <p style="font-size:12px;color:var(--text2);margin-top:6px">
+                Escribe una dirección, selecciona una sugerencia, da clic en el mapa o mueve el marcador.
+            </p>
+        </div>
+
         <div>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);display:block;margin-bottom:5px">Ocupación</label>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);display:block;margin-bottom:5px">
+                Ocupación
+            </label>
+
             <select name="ocupacion" style="width:100%;padding:9px 11px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-family:var(--font);font-size:13px;outline:none">
                 @foreach(['Empleado','Negocio propio','Independiente','Otro'] as $op)
-                <option {{ ($cliente->ocupacion === $op) ? 'selected' : '' }}>{{ $op }}</option>
+                <option {{ old('ocupacion', $cliente->ocupacion) === $op ? 'selected' : '' }}>
+                    {{ $op }}
+                </option>
                 @endforeach
             </select>
         </div>
 
         <div>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);display:block;margin-bottom:5px">Promotor</label>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);display:block;margin-bottom:5px">
+                Promotor
+            </label>
+
             <select name="promotor_id" style="width:100%;padding:9px 11px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-family:var(--font);font-size:13px;outline:none">
                 <option value="">— Sin promotor —</option>
+
                 @foreach($promotores as $p)
-                <option value="{{ $p->id }}" {{ $cliente->promotor_id == $p->id ? 'selected' : '' }}>{{ $p->nombre }}</option>
+                <option value="{{ $p->id }}" {{ old('promotor_id', $cliente->promotor_id) == $p->id ? 'selected' : '' }}>
+                    {{ $p->nombre }}
+                </option>
                 @endforeach
             </select>
         </div>
 
     </div>
+
     <div class="frm-footer" style="padding:14px 20px;border-top:1px solid var(--border);background:#f9fafb;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
-        <a href="{{ route('clientes.show', $cliente->id) }}" class="btn" style="background:#f3f4f6;color:var(--text)">Cancelar</a>
-        <button type="submit" class="btn btn-primary">Guardar cambios</button>
+        <a href="{{ route('clientes.show', $cliente->id) }}" class="btn" style="background:#f3f4f6;color:var(--text)">
+            Cancelar
+        </a>
+
+        <button type="submit" class="btn btn-primary">
+            Guardar cambios
+        </button>
     </div>
 </form>
 </div>
 
 @endsection
+
+@push('scripts')
+<script>
+let map;
+let marker;
+let geocoder;
+let autocomplete;
+
+function initMap() {
+    const defaultLocation = {
+        lat: 19.4326,
+        lng: -99.1332
+    };
+
+    const latInput = document.getElementById('latitud');
+    const lngInput = document.getElementById('longitud');
+    const direccionInput = document.querySelector('input[name="direccion"]');
+
+    const hasSavedLocation = latInput.value && lngInput.value;
+
+    const initialLocation = hasSavedLocation
+        ? {
+            lat: parseFloat(latInput.value),
+            lng: parseFloat(lngInput.value)
+        }
+        : defaultLocation;
+
+    map = new google.maps.Map(document.getElementById('map'), {
+        center: initialLocation,
+        zoom: hasSavedLocation ? 17 : 13,
+    });
+
+    geocoder = new google.maps.Geocoder();
+
+    marker = new google.maps.Marker({
+        position: initialLocation,
+        map: map,
+        draggable: true,
+    });
+
+    autocomplete = new google.maps.places.Autocomplete(direccionInput, {
+        componentRestrictions: { country: 'mx' },
+        fields: ['formatted_address', 'geometry', 'name'],
+    });
+
+    autocomplete.addListener('place_changed', function() {
+        const place = autocomplete.getPlace();
+
+        if (!place.geometry || !place.geometry.location) {
+            return;
+        }
+
+        const location = place.geometry.location;
+
+        map.setCenter(location);
+        map.setZoom(17);
+
+        marker.setPosition(location);
+
+        latInput.value = location.lat();
+        lngInput.value = location.lng();
+
+        direccionInput.value = place.formatted_address || place.name;
+    });
+
+    map.addListener('click', function(event) {
+        setLocation(event.latLng);
+    });
+
+    marker.addListener('dragend', function(event) {
+        setLocation(event.latLng);
+    });
+
+    function setLocation(latLng) {
+        marker.setPosition(latLng);
+
+        latInput.value = latLng.lat();
+        lngInput.value = latLng.lng();
+
+        geocoder.geocode({
+            location: latLng
+        }, function(results, status) {
+            if (status === 'OK' && results[0]) {
+                direccionInput.value = results[0].formatted_address;
+            }
+        });
+    }
+}
+</script>
+
+<script async defer
+src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAfb3MRYco1aN4yaJyXmK8jperHTMJl07E&libraries=places&callback=initMap">
+</script>
+@endpush
