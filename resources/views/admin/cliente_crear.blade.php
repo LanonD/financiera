@@ -106,21 +106,19 @@
 @push('scripts')
 
 <script>
-
 let map;
 let marker;
 let geocoder;
+let autocomplete;
 
 function initMap() {
-
     const defaultLocation = {
-        lat: 19.4326,
-        lng: -99.1332
+        lat: 17.220609,
+        lng: -100.630392
     };
 
     const latInput = document.getElementById('latitud');
     const lngInput = document.getElementById('longitud');
-
     const direccionInput = document.querySelector('input[name="direccion"]');
 
     const initialLocation = (latInput.value && lngInput.value)
@@ -146,6 +144,31 @@ function initMap() {
     latInput.value = initialLocation.lat;
     lngInput.value = initialLocation.lng;
 
+    autocomplete = new google.maps.places.Autocomplete(direccionInput, {
+        componentRestrictions: { country: 'mx' },
+        fields: ['formatted_address', 'geometry', 'name'],
+    });
+
+    autocomplete.addListener('place_changed', function() {
+        const place = autocomplete.getPlace();
+
+        if (!place.geometry || !place.geometry.location) {
+            return;
+        }
+
+        const location = place.geometry.location;
+
+        map.setCenter(location);
+        map.setZoom(17);
+
+        marker.setPosition(location);
+
+        latInput.value = location.lat();
+        lngInput.value = location.lng();
+
+        direccionInput.value = place.formatted_address || place.name;
+    });
+
     map.addListener('click', function(event) {
         setLocation(event.latLng);
     });
@@ -155,7 +178,6 @@ function initMap() {
     });
 
     function setLocation(latLng) {
-
         marker.setPosition(latLng);
 
         latInput.value = latLng.lat();
@@ -164,40 +186,16 @@ function initMap() {
         geocoder.geocode({
             location: latLng
         }, function(results, status) {
-
             if (status === 'OK' && results[0]) {
                 direccionInput.value = results[0].formatted_address;
             }
-
         });
-    }
-
-    // Obtener ubicación actual
-    if (navigator.geolocation && !latInput.value && !lngInput.value) {
-
-        navigator.geolocation.getCurrentPosition(function(position) {
-
-            const userLocation = {
-                lat: position.coords.latitude,
-                lng: position.coords.longitude
-            };
-
-            map.setCenter(userLocation);
-
-            marker.setPosition(userLocation);
-
-            latInput.value = userLocation.lat;
-            lngInput.value = userLocation.lng;
-
-        });
-
     }
 }
-
 </script>
 
 <script async defer
-src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAfb3MRYco1aN4yaJyXmK8jperHTMJl07E&callback=initMap">
+src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAfb3MRYco1aN4yaJyXmK8jperHTMJl07E&libraries=places&callback=initMap">
 </script>
 
 @endpush
