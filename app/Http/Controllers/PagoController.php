@@ -316,7 +316,7 @@ class PagoController extends Controller
 
     /**
      * Admin / Promo: register an immediate extra payment outside the plan schedule.
-     * Applies to mora first, then reduces capital (saldo_actual).
+     * Priority: 1) mora, 2) interest of next pending cuota, 3) capital (saldo_actual).
      */
     public function registrarExtra(Request $request, $id)
     {
@@ -345,11 +345,11 @@ class PagoController extends Controller
             }
         }
 
-        $montoTotal   = (float)$request->monto;
-        $monto        = $montoTotal;
-        $nota         = $request->nota ?? 'Cobro inmediato';
+        $montoTotal = (float)$request->monto;
+        $monto      = $montoTotal;
+        $nota       = $request->nota ?? 'Cobro inmediato';
 
-        // Apply to mora first
+        // ── 1. Mora first ────────────────────────────────────────────────────
         $moraPendiente = (float)$prestamo->interes_acumulado;
         $pagoMora      = 0;
         if ($moraPendiente > 0 && $monto > 0) {
@@ -359,7 +359,23 @@ class PagoController extends Controller
             $nota .= ' | Mora: $' . number_format($pagoMora, 2);
         }
 
-        // Remainder reduces capital
+        // ── 2. Interest of next pending cuota before touching capital ────────
+        $pagoInteres = 0;
+        if ($monto > 0) {
+            $proximaCuota = Pago::where('prestamo_id', $prestamo->id)
+                ->whereIn('estatus', ['Pendiente', 'Atrasado'])
+                ->whereIn('tipo_pago', ['plan', null])
+                ->orderBy('numero_pago')
+                ->first();
+
+            if ($proximaCuota && (float)$proximaCuota->interes > 0) {
+                $pagoInteres = min($monto, (float)$proximaCuota->interes);
+                $monto      -= $pagoInteres;
+                $nota .= ' | Interés: $' . number_format($pagoInteres, 2);
+            }
+        }
+
+        // ── 3. Remainder reduces capital (saldo_actual) ──────────────────────
         $capitalPagado = 0;
         if ($monto > 0) {
             $capitalPagado          = $monto;
@@ -410,7 +426,7 @@ class PagoController extends Controller
             'cobrador_id'      => $empleado?->id,
             'numero_pago'      => $maxNumero + 1,
             'monto_cuota'      => $montoTotal,
-            'interes'          => round($pagoMora, 2),
+            'interes'          => round($pagoMora + $pagoInteres, 2),
             'capital'          => round($capitalPagado, 2),
             'saldo_restante'   => $prestamo->saldo_actual,
             'monto_cobrado'    => $montoTotal,
