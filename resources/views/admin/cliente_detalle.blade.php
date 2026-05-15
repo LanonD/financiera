@@ -219,14 +219,37 @@ $onTimePct = $totalPagados > 0 ? round($enTiempo / $totalPagados * 100) : 0;
         'Finalizado' => 'badge-gray',
         default      => 'badge-yellow',
     };
+
+    // Payment progress percentage (can exceed 100% if overpayment due to mora)
+    $pctPagado   = $loan->monto > 0 ? round($totalPagadoMonto / $loan->monto * 100, 1) : 0;
+    $sobrepago   = $pctPagado > 100;
+    $pctBar      = min($pctPagado, 100); // cap bar at 100% visually
+    $pctColor    = $sobrepago   ? '#16a34a'
+                 : ($pctPagado >= 80 ? '#2563eb'
+                 : ($pctPagado >= 40 ? '#ca8a04' : '#9ca3af'));
 @endphp
 <div class="loan-block">
     <div class="loan-block-header" onclick="toggleLoan({{ $loan->id }})">
-        <div style="display:flex;flex-direction:column;gap:3px;flex:1">
-            <div class="loan-title">
-                Préstamo #{{ $loan->id }} — ${{ number_format($loan->monto,0,'.',',') }}
-                <span class="badge {{ $badgeClass }}" style="margin-left:8px;font-size:11px">{{ $loan->estatus }}</span>
+        <div style="display:flex;flex-direction:column;gap:4px;flex:1">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <span class="loan-title">Préstamo #{{ $loan->id }} — ${{ number_format($loan->monto,0,'.',',') }}</span>
+                <span class="badge {{ $badgeClass }}" style="font-size:11px">{{ $loan->estatus }}</span>
+                @if($sobrepago)
+                <span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;background:#dcfce7;color:#15803d;border:1px solid #86efac">
+                    ✓ {{ $pctPagado }}% pagado
+                </span>
+                @elseif($pctPagado > 0)
+                <span style="font-size:11px;font-weight:600;color:{{ $pctColor }}">{{ $pctPagado }}%</span>
+                @endif
             </div>
+
+            {{-- Progress bar --}}
+            @if($pctPagado > 0)
+            <div style="height:4px;background:#f1f5f9;border-radius:2px;overflow:hidden;max-width:320px">
+                <div style="height:100%;width:{{ $pctBar }}%;background:{{ $pctColor }};border-radius:2px;transition:width .3s"></div>
+            </div>
+            @endif
+
             <div class="loan-meta">
                 <span>Cuota ${{ number_format($loan->cuota,2,'.',',') }} · {{ $loan->frecuencia }}</span>
                 <span>Saldo ${{ number_format($loan->saldo_actual,2,'.',',') }}</span>
@@ -235,7 +258,18 @@ $onTimePct = $totalPagados > 0 ? round($enTiempo / $totalPagados * 100) : 0;
                 <span>Solicitud: {{ $loan->created_at?->format('d/m/Y') ?? '—' }}</span>
             </div>
         </div>
-        <svg class="loan-chevron {{ $idx === 0 ? 'open' : '' }}" id="chev-{{ $loan->id }}" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6l4 4 4-4"/></svg>
+
+        <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+            {{-- Link to full loan detail --}}
+            <a href="{{ route('prestamos.show', $loan->id) }}"
+               onclick="event.stopPropagation()"
+               class="btn btn-sm"
+               style="background:#eff6ff;color:#2563eb;font-size:11px;white-space:nowrap">
+                Ver detalle
+                <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:10px;height:10px"><path d="M2 6h8M6 2l4 4-4 4"/></svg>
+            </a>
+            <svg class="loan-chevron {{ $idx === 0 ? 'open' : '' }}" id="chev-{{ $loan->id }}" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6l4 4 4-4"/></svg>
+        </div>
     </div>
     <div class="loan-body {{ $idx === 0 ? 'open' : '' }}" id="body-{{ $loan->id }}">
         @if($loan->pagos->isEmpty())
