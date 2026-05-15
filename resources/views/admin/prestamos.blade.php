@@ -181,7 +181,7 @@ $listaCobradoresP = $prestamos->pluck('cobrador.nombre')->filter()->unique()->so
         <thead>
             <tr>
                 <th>Monto</th><th>Cuota</th><th>Última cuota</th>
-                <th>Frecuencia</th><th>Saldo pendiente</th><th>Acción</th>
+                <th>Frecuencia</th><th>Saldo pendiente</th><th>Estatus</th><th>Acción</th>
             </tr>
         </thead>
         <tbody id="tableBody">
@@ -211,11 +211,31 @@ $listaCobradoresP = $prestamos->pluck('cobrador.nombre')->filter()->unique()->so
                 @endif
             </td>
             <td>
+                @php
+                    $badgeStyle = match($row->estatus) {
+                        'Activo'     => 'background:#dcfce7;color:#16a34a',
+                        'Atrasado'   => 'background:#fee2e2;color:#dc2626',
+                        'Pendiente'  => 'background:#fef9c3;color:#ca8a04',
+                        'Finalizado' => 'background:#f3f4f6;color:#6b7280',
+                        'Cancelado'  => 'background:#f3f4f6;color:#9ca3af',
+                        'Retirado'   => 'background:#f3f4f6;color:#9ca3af',
+                        default      => 'background:#f3f4f6;color:#6b7280',
+                    };
+                @endphp
+                <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;{{ $badgeStyle }}">
+                    @if($row->estatus === 'Activo')    <span style="width:6px;height:6px;border-radius:50%;background:#16a34a;display:inline-block"></span>
+                    @elseif($row->estatus === 'Atrasado')  <span style="width:6px;height:6px;border-radius:50%;background:#dc2626;display:inline-block"></span>
+                    @elseif($row->estatus === 'Pendiente') <span style="width:6px;height:6px;border-radius:50%;background:#ca8a04;display:inline-block"></span>
+                    @endif
+                    {{ $row->estatus }}
+                </span>
+            </td>
+            <td>
                 <a class="btn btn-sm" style="background:#f3f4f6;color:var(--text)" href="{{ route('prestamos.show', $row->id) }}">Ver</a>
             </td>
         </tr>
         @empty
-        <tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text3)">No hay préstamos con los filtros seleccionados</td></tr>
+        <tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text3)">No hay préstamos con los filtros seleccionados</td></tr>
         @endforelse
         </tbody>
     </table>
