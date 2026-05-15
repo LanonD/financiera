@@ -63,7 +63,7 @@ class ClienteController extends Controller
             'latitud'     => 'nullable|numeric',
             'longitud'    => 'nullable|numeric',
             'ocupacion'   => 'nullable|in:Empleado,Negocio propio,Independiente,Otro',
-            'promotor_id' => $isAdmin ? 'required|exists:empleados,id' : 'nullable|exists:empleados,id',
+            'promotor_id' => 'nullable|exists:empleados,id',
         ], [
             'curp.unique' => 'Este CURP ya está registrado en el sistema. El cliente ya existe.',
         ]);
