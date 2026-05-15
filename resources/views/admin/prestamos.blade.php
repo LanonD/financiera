@@ -180,7 +180,7 @@ $listaCobradoresP = $prestamos->pluck('cobrador.nombre')->filter()->unique()->so
     <table>
         <thead>
             <tr>
-                <th>Monto</th><th>Cuota</th><th>Última cuota</th>
+                <th>Cliente</th><th>Monto</th><th>Cuota</th><th>Última cuota</th>
                 <th>Frecuencia</th><th>Saldo pendiente</th><th>Estatus</th><th>Acción</th>
             </tr>
         </thead>
@@ -198,6 +198,10 @@ $listaCobradoresP = $prestamos->pluck('cobrador.nombre')->filter()->unique()->so
             data-promotor="{{ $promotorNom }}"
             data-cobrador="{{ $cobradorNom }}"
             data-busqueda="{{ $busqueda }}">
+            <td>
+                <div style="font-size:13px;font-weight:600;color:var(--text)">{{ $nombre }}</div>
+                <div style="font-size:11px;color:var(--text3)">#{{ $row->id }}</div>
+            </td>
             <td style="font-family:monospace;font-size:13px;font-weight:600">${{ number_format($row->monto, 0, '.', ',') }}</td>
             <td style="font-family:monospace;font-size:13px">${{ number_format($row->cuota, 0, '.', ',') }}</td>
             <td style="font-family:monospace;font-size:12px;color:var(--text2)">
@@ -235,7 +239,7 @@ $listaCobradoresP = $prestamos->pluck('cobrador.nombre')->filter()->unique()->so
             </td>
         </tr>
         @empty
-        <tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text3)">No hay préstamos con los filtros seleccionados</td></tr>
+        <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text3)">No hay préstamos con los filtros seleccionados</td></tr>
         @endforelse
         </tbody>
     </table>
