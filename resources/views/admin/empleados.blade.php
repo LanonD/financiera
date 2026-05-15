@@ -336,6 +336,12 @@
                                 <div class="user-avatar-circle">{{ strtoupper(substr($e->nombre, 0, 1)) }}</div>
                                 <div>
                                     <div style="font-weight: 600; font-size: 14px;">{{ $e->nombre }}</div>
+                                    @if($e->usuario)
+                                    <div style="font-size: 11px; color: var(--text3); margin-top: 1px;">
+                                        <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:10px;height:10px;vertical-align:middle;margin-right:2px"><circle cx="7" cy="5" r="2.5"/><path d="M2 12c0-2.761 2.239-5 5-5s5 2.239 5 5"/></svg>
+                                        {{ $e->usuario->usuario }}
+                                    </div>
+                                    @endif
                                     <div style="font-size: 10px; margin-top: 2px;">
                                         @foreach($roles as $r)
                                             <span class="role-tag role-{{ $r }}">{{ $r }}</span>
@@ -454,6 +460,17 @@
                         <label>Nombre Completo</label>
                         <input type="text" name="nombre" id="edit_nombre" required class="filter-input">
                     </div>
+
+                    {{-- Usuario y contraseña --}}
+                    <div class="filter-group">
+                        <label>Usuario (login)</label>
+                        <input type="text" name="usuario" id="edit_usuario" class="filter-input" autocomplete="off">
+                    </div>
+                    <div class="filter-group">
+                        <label>Nueva contraseña <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3)">(dejar vacío para no cambiar)</span></label>
+                        <input type="password" name="password" id="edit_password" class="filter-input" placeholder="••••••••" autocomplete="new-password">
+                    </div>
+
                     <div class="filter-group">
                         <label>WhatsApp / Celular</label>
                         <input type="tel" name="celular" id="edit_celular" class="filter-input">
@@ -523,12 +540,14 @@
     }
 
     function openEditModal(e) {
-        document.getElementById('edit_nombre').value = e.nombre;
-        document.getElementById('edit_celular').value = e.celular;
-        document.getElementById('edit_email').value = e.email;
-        document.getElementById('edit_rango').value = e.rango;
-        document.getElementById('edit_capacidad').value = e.capacidad;
-        
+        document.getElementById('edit_nombre').value   = e.nombre;
+        document.getElementById('edit_usuario').value  = e.usuario || '';
+        document.getElementById('edit_password').value = '';          // siempre vacío al abrir
+        document.getElementById('edit_celular').value  = e.celular || '';
+        document.getElementById('edit_email').value    = e.email   || '';
+        document.getElementById('edit_rango').value    = e.rango   || 'Bronce';
+        document.getElementById('edit_capacidad').value = e.capacidad || 0;
+
         // Reset and check roles
         const checkGroup = document.getElementById('edit_role_checks');
         checkGroup.querySelectorAll('input').forEach(chk => {

@@ -143,6 +143,7 @@ class EmpleadoController extends Controller
             'roles.*'   => 'in:admin,promo,collector,desembolso',
             'rango'     => 'required|string',
             'capacidad' => 'nullable|numeric|min:0',
+            'password'  => 'nullable|string|min:4',
         ]);
 
         $roles       = $request->roles;
@@ -159,6 +160,10 @@ class EmpleadoController extends Controller
                     return redirect()->back()->with('error', 'Ese nombre de usuario ya está en uso.');
                 }
                 $updateUser['usuario'] = $request->usuario;
+            }
+            // Update password only if provided
+            if ($request->filled('password')) {
+                $updateUser['password'] = Hash::make($request->password);
             }
             $empleado->usuario->update($updateUser);
         }
