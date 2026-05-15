@@ -7,6 +7,7 @@ use App\Models\Empleado;
 use App\Models\Prestamo;
 use App\Models\Cliente;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 
@@ -83,6 +84,42 @@ class OwnerController extends Controller
 
         return redirect()->route('owner.dashboard')
             ->with('success', "Usuario \"{$user->usuario}\" {$estado}.");
+    }
+
+    /**
+     * El owner cambia su propia contraseña.
+     */
+    public function changeOwnPassword(Request $request)
+    {
+        $user = Auth::user();
+
+        $validator = Validator::make($request->all(), [
+            'current_password'  => 'required',
+            'password'          => 'required|string|min:6|confirmed',
+        ], [
+            'current_password.required' => 'Ingresa tu contraseña actual.',
+            'password.required'         => 'Ingresa la nueva contraseña.',
+            'password.min'              => 'La nueva contraseña debe tener al menos 6 caracteres.',
+            'password.confirmed'        => 'Las contraseñas nuevas no coinciden.',
+        ]);
+
+        if ($validator->fails()) {
+            return redirect()->route('owner.dashboard')
+                ->withErrors($validator, 'own_password')
+                ->with('show_own_password_modal', true);
+        }
+
+        if (!Hash::check($request->current_password, $user->password)) {
+            return redirect()->route('owner.dashboard')
+                ->withErrors(['current_password' => 'La contraseña actual es incorrecta.'], 'own_password')
+                ->with('show_own_password_modal', true);
+        }
+
+        $user->password = Hash::make($request->password);
+        $user->save();
+
+        return redirect()->route('owner.dashboard')
+            ->with('success', '✓ Tu contraseña fue actualizada correctamente.');
     }
 
     /**

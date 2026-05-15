@@ -247,6 +247,13 @@
                 <div class="user-role">{{ implode(' · ', auth()->user()->getAllRoles()) }}</div>
             </div>
         </div>
+        @if(in_array('owner', auth()->user()->getAllRoles()))
+        <button type="button" onclick="document.getElementById('modalOwnPassword').classList.add('open')"
+            style="width:100%;padding:7px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.2);border-radius:6px;color:rgba(147,197,253,0.9);font-size:12px;font-family:var(--font);cursor:pointer;transition:background .15s,color .15s;display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:7px">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:13px;height:13px"><rect x="3" y="7" width="10" height="8" rx="1.5"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/><circle cx="8" cy="11" r="1" fill="currentColor" stroke="none"/></svg>
+            Mi contraseña
+        </button>
+        @endif
         <form method="POST" action="{{ route('logout') }}">
             @csrf
             <button type="submit" class="btn-logout">Cerrar sesión</button>
@@ -305,6 +312,86 @@
         @yield('content')
     </div>
 </main>
+
+{{-- ── Modal: Owner cambia su propia contraseña ───────────── --}}
+@if(in_array('owner', auth()->user()->getAllRoles()))
+<style>
+.own-pwd-overlay{display:none;position:fixed;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(6px);z-index:2000;align-items:center;justify-content:center}
+.own-pwd-overlay.open{display:flex}
+.own-pwd-modal{background:#fff;border-radius:18px;width:420px;max-width:calc(100vw - 24px);box-shadow:0 20px 60px rgba(0,0,0,.2);overflow:hidden}
+.own-pwd-header{padding:22px 28px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between}
+.own-pwd-title{font-size:17px;font-weight:700;color:#111827}
+.own-pwd-close{background:#f1f5f9;border:none;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:18px;color:#6b7280;display:flex;align-items:center;justify-content:center;line-height:1}
+.own-pwd-body{padding:24px 28px;display:grid;gap:15px}
+.own-pwd-field label{display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;margin-bottom:5px}
+.own-pwd-field input{width:100%;padding:10px 13px;background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:8px;font-size:14px;font-family:var(--font);outline:none;transition:border-color .15s,box-shadow .15s}
+.own-pwd-field input:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.1);background:#fff}
+.own-pwd-field input.is-error{border-color:#ef4444}
+.own-pwd-footer{padding:16px 28px;background:#f8fafc;border-top:1px solid #e5e7eb;display:flex;gap:10px;justify-content:flex-end}
+</style>
+
+<div class="own-pwd-overlay" id="modalOwnPassword">
+    <div class="own-pwd-modal">
+        <div class="own-pwd-header">
+            <div>
+                <div class="own-pwd-title">Cambiar mi contraseña</div>
+                <div style="font-size:12px;color:#6b7280;margin-top:2px">Solo tú (Derian) puedes hacer esto</div>
+            </div>
+            <button class="own-pwd-close" onclick="document.getElementById('modalOwnPassword').classList.remove('open')">&times;</button>
+        </div>
+
+        <form method="POST" action="{{ route('owner.perfil.password') }}">
+            @csrf
+            <div class="own-pwd-body">
+
+                @if($errors->hasBag('own_password'))
+                <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:10px 14px;font-size:12px;color:#991b1b">
+                    {{ $errors->getBag('own_password')->first() }}
+                </div>
+                @endif
+
+                <div class="own-pwd-field">
+                    <label>Contraseña actual *</label>
+                    <input type="password" name="current_password" placeholder="Tu contraseña actual" required autocomplete="current-password"
+                        class="{{ $errors->getBag('own_password')->has('current_password') ? 'is-error' : '' }}">
+                </div>
+                <div style="height:1px;background:#f1f5f9;margin:0 -2px"></div>
+                <div class="own-pwd-field">
+                    <label>Nueva contraseña *</label>
+                    <input type="password" name="password" placeholder="Mínimo 6 caracteres" required autocomplete="new-password"
+                        class="{{ $errors->getBag('own_password')->has('password') ? 'is-error' : '' }}">
+                </div>
+                <div class="own-pwd-field">
+                    <label>Confirmar nueva contraseña *</label>
+                    <input type="password" name="password_confirmation" placeholder="Repite la nueva contraseña" required autocomplete="new-password">
+                </div>
+            </div>
+            <div class="own-pwd-footer">
+                <button type="button" class="btn" style="background:#f3f4f6;color:#374151"
+                    onclick="document.getElementById('modalOwnPassword').classList.remove('open')">
+                    Cancelar
+                </button>
+                <button type="submit" class="btn btn-primary">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:13px;height:13px"><path d="M2 8l4 4 8-8"/></svg>
+                    Guardar cambio
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+// Re-abrir si hubo error de validación
+@if(session('show_own_password_modal'))
+document.getElementById('modalOwnPassword').classList.add('open');
+@endif
+
+// Cerrar al click en overlay
+document.getElementById('modalOwnPassword').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('open');
+});
+</script>
+@endif
 
 <script src="{{ asset('js/offline-sync.js') }}"></script>
 <script>
