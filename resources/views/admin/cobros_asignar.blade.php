@@ -471,7 +471,7 @@
         </div>
         <div style="display: flex; gap: 12px;">
             <button type="button" class="btn" style="border-radius: 100px; padding: 10px 24px;" onclick="resetTodo()">Deshacer</button>
-            <button type="submit" class="btn btn-primary" id="btnGuardar" disabled style="border-radius: 100px; padding: 10px 32px; opacity: 0.5;">
+            <button type="submit" class="btn btn-primary" id="btnGuardar" style="border-radius: 100px; padding: 10px 32px;">
                 Guardar Asignaciones
             </button>
         </div>

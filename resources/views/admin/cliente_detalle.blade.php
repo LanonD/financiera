@@ -105,17 +105,49 @@ $onTimePct = $totalPagados > 0 ? round($enTiempo / $totalPagados * 100) : 0;
 </div>
 
 <div class="info-grid">
-    <div class="info-card">
-        <div class="info-card-label">Dirección</div>
+    <div class="info-card" style="grid-column:1/-1">
+        <div class="info-card-label">
+            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:11px;height:11px;vertical-align:middle;margin-right:3px"><path d="M7 1C4.79 1 3 2.79 3 5c0 3.25 4 8 4 8s4-4.75 4-8c0-2.21-1.79-4-4-4z"/><circle cx="7" cy="5" r="1.5"/></svg>
+            Dirección
+        </div>
         <div class="info-card-value" style="font-size:13px">{{ $cliente->direccion ?? '—' }}</div>
     </div>
     <div class="info-card">
-        <div class="info-card-label">CURP</div>
+        <div class="info-card-label">
+            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:11px;height:11px;vertical-align:middle;margin-right:3px"><rect x="2" y="3" width="10" height="8" rx="1"/><path d="M5 3V2M9 3V2"/></svg>
+            CURP
+        </div>
         <div class="info-card-value" style="font-size:12px;font-family:monospace">{{ $cliente->curp ?? '—' }}</div>
     </div>
     <div class="info-card">
-        <div class="info-card-label">Correo</div>
-        <div class="info-card-value" style="font-size:12px">{{ $cliente->email ?? '—' }}</div>
+        <div class="info-card-label">
+            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:11px;height:11px;vertical-align:middle;margin-right:3px"><path d="M2 4l5 4 5-4"/><rect x="1" y="3" width="12" height="8" rx="1"/></svg>
+            Correo
+        </div>
+        <div class="info-card-value" style="font-size:12px">
+            @if($cliente->email)
+                <a href="mailto:{{ $cliente->email }}" style="color:var(--accent)">{{ $cliente->email }}</a>
+            @else
+                —
+            @endif
+        </div>
+    </div>
+    <div class="info-card">
+        <div class="info-card-label">
+            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:11px;height:11px;vertical-align:middle;margin-right:3px"><path d="M2 2l2 2-1 3 3-1 2 2 1-4-4-4z"/></svg>
+            Celular
+        </div>
+        <div class="info-card-value" style="font-size:13px">
+            @if($cliente->celular)
+                <a href="https://wa.me/52{{ preg_replace('/\D/','',$cliente->celular) }}" target="_blank"
+                   style="color:#16a34a;display:inline-flex;align-items:center;gap:4px">
+                    <svg viewBox="0 0 20 20" fill="currentColor" style="width:13px;height:13px"><path d="M10 0C4.477 0 0 4.477 0 10c0 1.763.46 3.417 1.264 4.857L0 20l5.285-1.384A9.958 9.958 0 0010 20c5.523 0 10-4.477 10-10S15.523 0 10 0zm0 18.182a8.173 8.173 0 01-4.163-1.136l-.298-.178-3.136.822.837-3.056-.195-.314A8.182 8.182 0 1110 18.182zm4.504-6.13c-.247-.124-1.463-.722-1.69-.804-.227-.083-.392-.124-.557.124-.165.247-.638.804-.782.969-.144.165-.288.185-.535.062-.247-.124-1.043-.384-1.987-1.225-.734-.655-1.23-1.464-1.374-1.71-.144-.247-.015-.381.108-.504.111-.11.247-.288.37-.432.124-.144.165-.247.247-.412.083-.165.041-.309-.02-.432-.062-.124-.557-1.343-.763-1.838-.2-.483-.405-.418-.557-.426l-.474-.008c-.165 0-.432.062-.659.309-.227.247-.866.846-.866 2.063s.887 2.392 1.011 2.557c.124.165 1.746 2.665 4.231 3.737.591.255 1.052.407 1.411.521.593.188 1.132.162 1.559.098.475-.071 1.463-.598 1.669-1.176.206-.577.206-1.072.144-1.176-.062-.103-.227-.165-.474-.289z"/></svg>
+                    {{ $cliente->celular }}
+                </a>
+            @else
+                —
+            @endif
+        </div>
     </div>
     <div class="info-card">
         <div class="info-card-label">Promotor</div>
@@ -126,6 +158,23 @@ $onTimePct = $totalPagados > 0 ? round($enTiempo / $totalPagados * 100) : 0;
         <div class="info-card-value">{{ $prestamos->count() }}</div>
     </div>
 </div>
+
+{{-- Mapa de ubicación --}}
+@if($cliente->latitud && $cliente->longitud)
+<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:24px">
+    <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px">
+            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:14px;height:14px;color:var(--accent)"><path d="M7 1C4.79 1 3 2.79 3 5c0 3.25 4 8 4 8s4-4.75 4-8c0-2.21-1.79-4-4-4z"/><circle cx="7" cy="5" r="1.5"/></svg>
+            Ubicación del cliente
+        </div>
+        <a href="https://www.google.com/maps?q={{ $cliente->latitud }},{{ $cliente->longitud }}"
+           target="_blank" class="btn btn-sm" style="background:#eff6ff;color:#2563eb;font-size:11px">
+            Abrir en Maps
+        </a>
+    </div>
+    <div id="mapDetalle" style="width:100%;height:260px"></div>
+</div>
+@endif
 
 {{-- Score card --}}
 <div class="score-card">
@@ -295,6 +344,33 @@ function toggleLoan(id) {
     document.getElementById('chev-'  + id).classList.toggle('open');
 }
 </script>
+
+@if($cliente->latitud && $cliente->longitud)
+<script>
+function initMapDetalle() {
+    try {
+        const lat = {{ $cliente->latitud }};
+        const lng = {{ $cliente->longitud }};
+        const pos = { lat, lng };
+        const map = new google.maps.Map(document.getElementById('mapDetalle'), {
+            center: pos, zoom: 16,
+            mapTypeControl: false, streetViewControl: false,
+        });
+        new google.maps.Marker({
+            position: pos, map,
+            title: '{{ addslashes($cliente->nombre) }}',
+        });
+    } catch(e) {
+        document.getElementById('mapDetalle').innerHTML =
+            '<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:12px;color:#9ca3af">Mapa no disponible</div>';
+    }
+}
+</script>
+<script async defer
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAfb3MRYco1aN4yaJyXmK8jperHTMJl07E&callback=initMapDetalle"
+    onerror="document.getElementById('mapDetalle').innerHTML='<div style=\'display:flex;align-items:center;justify-content:center;height:100%;font-size:12px;color:#9ca3af\'>Mapa no disponible</div>'">
+</script>
+@endif
 @endpush
 
 @endsection

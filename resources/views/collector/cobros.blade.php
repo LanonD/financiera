@@ -189,7 +189,7 @@ $cobrosFuturos= $prestamos->filter(fn($p) => $p->proximo_pago === null || $p->pr
             <td style="font-weight:600;color:{{ $fechaColor }};font-size:12px">{{ $fechaTxt }}</td>
             <td><span class="badge {{ $badgeClass }}">{{ $row->estatus }}</span></td>
             <td>
-                <a href="{{ route('clientes.show', $row->cliente_id) }}" class="btn btn-sm" style="background:#f3f4f6;color:var(--text);font-size:11px">Ver cliente</a>
+                <a href="{{ route('clientes.showCobrador', $row->cliente_id) }}" class="btn btn-sm" style="background:#f3f4f6;color:var(--text);font-size:11px">Ver cliente</a>
             </td>
         </tr>
         @endforeach
@@ -268,7 +268,7 @@ $cobrosFuturos= $prestamos->filter(fn($p) => $p->proximo_pago === null || $p->pr
             </td>
             <td><span class="badge {{ $badgeClass }}">{{ $row->estatus }}</span></td>
             <td>
-                <a href="{{ route('clientes.show', $row->cliente_id) }}" class="btn btn-sm" style="background:#f3f4f6;color:var(--text);font-size:11px">Ver cliente</a>
+                <a href="{{ route('clientes.showCobrador', $row->cliente_id) }}" class="btn btn-sm" style="background:#f3f4f6;color:var(--text);font-size:11px">Ver cliente</a>
             </td>
         </tr>
         @endforeach
