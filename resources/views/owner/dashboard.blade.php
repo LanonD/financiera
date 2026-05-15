@@ -114,7 +114,10 @@
         <div class="ow-card-top">
             <div class="ow-avatar" style="background:{{ $color }}">{{ $initial }}</div>
             <div style="flex:1;min-width:0">
-                <div class="ow-card-name">{{ $admin->usuario }}</div>
+                <div class="ow-card-name">{{ $admin->nombre ?: $admin->usuario }}</div>
+                @if($admin->nombre)
+                <div style="font-size:11px;color:var(--text3);margin-top:1px">@{{ $admin->usuario }}</div>
+                @endif
                 <div class="ow-card-meta">
                     Alta: {{ $fechaAlta }}
                     &nbsp;·&nbsp;
@@ -160,7 +163,7 @@
             {{-- Editar info --}}
             <button type="button" class="btn btn-sm"
                 style="background:#f3f4f6;color:var(--text)"
-                onclick="abrirEditarAdmin({{ $admin->id }}, '{{ addslashes($admin->usuario) }}', '{{ addslashes($admin->celular ?? '') }}', '{{ $admin->presupuesto }}')">
+                onclick="abrirEditarAdmin({{ $admin->id }}, '{{ addslashes($admin->usuario) }}', '{{ addslashes($admin->nombre ?? '') }}', '{{ addslashes($admin->celular ?? '') }}', '{{ $admin->presupuesto }}')">
                 <svg viewBox="0 0 16 16" fill="currentColor" style="width:12px;height:12px"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>
                 Editar
             </button>
@@ -262,15 +265,20 @@
             @method('PUT')
             <div class="ow-modal-body">
                 <div class="ow-field">
+                    <label>Nombre completo</label>
+                    <input type="text" name="nombre" id="edit_nombre_admin" placeholder="ej. Juan Pérez" autocomplete="off">
+                </div>
+                <div class="ow-field">
+                    <label>Usuario (login)</label>
+                    <input type="text" name="usuario" id="edit_usuario_admin" placeholder="nombre de usuario" autocomplete="off">
+                </div>
+                <div class="ow-field">
                     <label>Teléfono / WhatsApp</label>
                     <input type="tel" name="celular" id="edit_celular" placeholder="ej. 5512345678" autocomplete="off">
                 </div>
                 <div class="ow-field">
                     <label>Presupuesto asignado ($)</label>
                     <input type="number" name="presupuesto" id="edit_presupuesto" min="0" step="100" placeholder="0">
-                </div>
-                <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;font-size:12px;color:#1d4ed8">
-                    ℹ️ El presupuesto es el capital disponible que este administrador puede gestionar.
                 </div>
             </div>
             <div class="ow-modal-footer">
@@ -302,6 +310,11 @@
                 </div>
                 @endif
 
+                <div class="ow-field">
+                    <label>Nombre completo</label>
+                    <input type="text" name="nombre" value="{{ old('nombre') }}"
+                           placeholder="ej. Juan Pérez" autocomplete="off">
+                </div>
                 <div class="ow-field">
                     <label>Nombre de usuario *</label>
                     <input type="text" name="usuario" value="{{ old('usuario') }}"
@@ -354,13 +367,15 @@ document.getElementById('modalCrear').addEventListener('click', function(e) {
 // ── Modal Editar Admin ───────────────────────────────────
 const EDIT_BASE = '{{ url("owner/admins") }}/';
 
-function abrirEditarAdmin(adminId, usuario, celular, presupuesto) {
-    document.getElementById('editAdminLabel').textContent = usuario;
-    document.getElementById('edit_celular').value    = celular || '';
-    document.getElementById('edit_presupuesto').value = presupuesto || 0;
+function abrirEditarAdmin(adminId, usuario, nombre, celular, presupuesto) {
+    document.getElementById('editAdminLabel').textContent      = usuario;
+    document.getElementById('edit_nombre_admin').value        = nombre || '';
+    document.getElementById('edit_usuario_admin').value       = usuario || '';
+    document.getElementById('edit_celular').value             = celular || '';
+    document.getElementById('edit_presupuesto').value         = presupuesto || 0;
     document.getElementById('formEditar').action = EDIT_BASE + adminId;
     document.getElementById('modalEditar').classList.add('open');
-    document.getElementById('edit_celular').focus();
+    document.getElementById('edit_nombre_admin').focus();
 }
 
 function cerrarEditarAdmin() {
