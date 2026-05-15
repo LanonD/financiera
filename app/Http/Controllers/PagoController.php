@@ -350,31 +350,19 @@ class PagoController extends Controller
             $nota .= ' | Mora: $' . number_format($pagoMora, 2);
         }
 
-        // ── 2. Pay interest from pending cuotas BEFORE touching capital ─────
-        // Cascade through ALL pending cuotas with interest > 0 until money runs out
+        // ── 2. Pay remaining agreed interest BEFORE touching capital ────────
+        // Never modify plan cuotas — track via total agreed interest vs already paid
+        $interesAcordado  = max(0, (float)$prestamo->monto - (float)$prestamo->monto_entregado);
+        $interesYaPagado  = Pago::where('prestamo_id', $prestamo->id)
+            ->whereIn('estatus', ['Pagado', 'Parcial'])
+            ->sum('interes');
+        $interesRestanteDP = max(0, round($interesAcordado - $interesYaPagado, 2));
+
         $pagoInteres = 0;
-        while ($monto > 0) {
-            $proximaCuota = Pago::where('prestamo_id', $prestamo->id)
-                ->whereIn('estatus', ['Pendiente', 'Atrasado'])
-                ->where(fn($q) => $q->whereNull('tipo_pago')->orWhere('tipo_pago', 'plan'))
-                ->where('interes', '>', 0)          // skip cuotas whose interest is already cleared
-                ->orderBy('numero_pago')
-                ->first();
-
-            if (!$proximaCuota) break;              // no more interest to pay → go to capital
-
-            $interesCuota  = (float)$proximaCuota->interes;
-            $abono         = min($monto, $interesCuota);
-            $monto        -= $abono;
-            $pagoInteres  += $abono;
-
-            // Update the cuota so $interesRestante reflects the real balance
-            $proximaCuota->interes     = round($interesCuota - $abono, 2);
-            $proximaCuota->monto_cuota = round((float)$proximaCuota->monto_cuota - $abono, 2);
-            $proximaCuota->save();
-        }
-        if ($pagoInteres > 0) {
-            $nota .= ' | Interés: $' . number_format($pagoInteres, 2);
+        if ($monto > 0 && $interesRestanteDP > 0) {
+            $pagoInteres  = min($monto, $interesRestanteDP);
+            $monto       -= $pagoInteres;
+            $nota        .= ' | Interés: $' . number_format($pagoInteres, 2);
         }
 
         // ── 3. Remainder reduces capital (saldo_actual) ──────────────────────

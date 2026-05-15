@@ -24,10 +24,11 @@ $totalAdeudadoKpi = (float)$prestamo->saldo_actual + $interesPendiente;
 $capitalCobrado = $cobrosEfectivos->sum('capital');
 $interesCobrado = $cobrosEfectivos->sum('interes');
 
-// Remaining interest still owed from pending plan pagos
-$interesRestante = $pendientes
-    ->filter(fn($p) => ($p->tipo_pago ?? 'plan') === 'plan')
-    ->sum('interes');
+// Remaining interest = total agreed interest minus all interest already collected
+// (never derived from plan cuota fields so the plan stays unmodified)
+$interesAcordadoTotal = max(0, (float)$prestamo->monto - (float)$prestamo->monto_entregado);
+$interesTotalCobrado  = $cobrosEfectivos->sum('interes');
+$interesRestante      = max(0, round($interesAcordadoTotal - $interesTotalCobrado, 2));
 
 // Progress: collected vs total agreed (monto = total to return)
 $montoTotal = max((float)$prestamo->monto, $totalCobrado);
