@@ -419,7 +419,6 @@
                     <div class="filter-group" style="grid-column: span 2">
                         <label>Roles / Funciones (Selecciona uno o varios)</label>
                         <div class="role-checkbox-group">
-                            <label class="role-checkbox"><input type="checkbox" name="roles[]" value="admin"> Administrador</label>
                             <label class="role-checkbox"><input type="checkbox" name="roles[]" value="promo" checked> Promotor</label>
                             <label class="role-checkbox"><input type="checkbox" name="roles[]" value="collector"> Cobrador</label>
                             <label class="role-checkbox"><input type="checkbox" name="roles[]" value="desembolso"> Desembolso</label>
@@ -482,7 +481,6 @@
                     <div class="filter-group" style="grid-column: span 2">
                         <label>Roles / Funciones (Selecciona uno o varios)</label>
                         <div class="role-checkbox-group" id="edit_role_checks">
-                            <label class="role-checkbox"><input type="checkbox" name="roles[]" value="admin"> Administrador</label>
                             <label class="role-checkbox"><input type="checkbox" name="roles[]" value="promo"> Promotor</label>
                             <label class="role-checkbox"><input type="checkbox" name="roles[]" value="collector"> Cobrador</label>
                             <label class="role-checkbox"><input type="checkbox" name="roles[]" value="desembolso"> Desembolso</label>

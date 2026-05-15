@@ -102,7 +102,7 @@ class EmpleadoController extends Controller
             'password'  => 'required|string|min:4',
             'nombre'    => 'required|string|max:120',
             'roles'     => 'required|array|min:1',
-            'roles.*'   => 'in:admin,promo,collector,desembolso',
+            'roles.*'   => 'in:promo,collector,desembolso',
             'rango'     => 'required|string',
             'capacidad' => 'nullable|numeric|min:0',
         ]);
@@ -140,7 +140,7 @@ class EmpleadoController extends Controller
         $request->validate([
             'nombre'    => 'required|string|max:120',
             'roles'     => 'required|array|min:1',
-            'roles.*'   => 'in:admin,promo,collector,desembolso',
+            'roles.*'   => 'in:promo,collector,desembolso',
             'rango'     => 'required|string',
             'capacidad' => 'nullable|numeric|min:0',
             'password'  => 'nullable|string|min:4',
