@@ -351,7 +351,7 @@ $onTimePct = $totalPagados > 0 ? round($enTiempo / $totalPagados * 100) : 0;
                     ['Foto vivienda', $loan->doc_foto_domicilio, '#9a3412', '#ffedd5', '#fdba74'],
                 ] as [$docLabel, $docPath, $color, $bg, $border])
                 @if($docPath)
-                <a href="{{ asset('storage/'.$docPath) }}" target="_blank"
+                <a href="{{ asset('public/'.$docPath) }}" target="_blank"
                    style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:{{ $bg }};border:1px solid {{ $border }};border-radius:6px;font-size:12px;color:{{ $color }};text-decoration:none;font-weight:500">
                     @php $ext = strtolower(pathinfo($docPath, PATHINFO_EXTENSION)); @endphp
                     @if(in_array($ext, ['jpg','jpeg','png','webp']))
