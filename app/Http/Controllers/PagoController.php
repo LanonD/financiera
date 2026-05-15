@@ -34,15 +34,10 @@ class PagoController extends Controller
                 ->first();
 
             if ($primerVencido) {
-                $changed = false;
-                if ($p->estatus === 'Activo') { $p->estatus = 'Atrasado'; $changed = true; }
-                if ((float)$p->interes_diario == 0) { $p->interes_diario = 10.00; $changed = true; }
-                if (!$p->interes_mora_activo) { $p->interes_mora_activo = true; $changed = true; }
-                if (!$p->fecha_ultimo_interes) {
-                    $p->fecha_ultimo_interes = $primerVencido->fecha_programada->toDateString();
-                    $changed = true;
+                if ($p->estatus === 'Activo') {
+                    $p->estatus = 'Atrasado';
+                    $p->save();
                 }
-                if ($changed) $p->save();
             }
 
             if (!((float)$p->interes_diario > 0 && ($p->interes_mora_activo || $p->estatus === 'Atrasado'))) return;
@@ -213,10 +208,6 @@ class PagoController extends Controller
                     ->first();
                 if ($primerVencido) {
                     if ($prestamo->estatus === 'Activo') $prestamo->estatus = 'Atrasado';
-                    if ((float)$prestamo->interes_diario == 0) $prestamo->interes_diario = 10.00;
-                    if (!$prestamo->interes_mora_activo) $prestamo->interes_mora_activo = true;
-                    if (!$prestamo->fecha_ultimo_interes)
-                        $prestamo->fecha_ultimo_interes = $primerVencido->fecha_programada->toDateString();
                 }
             }
 

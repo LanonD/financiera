@@ -209,7 +209,8 @@ class PrestamoController extends Controller
             $prestamo->save();
         }
 
-        // Auto-activate mora ($10/day default) when there are overdue payments
+        // Auto-change status to Atrasado when there are overdue payments
+        // NOTE: mora interest (interes_diario) is NOT auto-set — admin activates it manually
         if (in_array($prestamo->estatus, ['Activo', 'Atrasado'])) {
             $primerVencido = Pago::where('prestamo_id', $id)
                 ->whereIn('estatus', ['Pendiente', 'Atrasado'])
@@ -217,25 +218,9 @@ class PrestamoController extends Controller
                 ->orderBy('fecha_programada')
                 ->first();
 
-            if ($primerVencido) {
-                $changed = false;
-                if ($prestamo->estatus === 'Activo') {
-                    $prestamo->estatus = 'Atrasado';
-                    $changed = true;
-                }
-                if ((float)$prestamo->interes_diario == 0) {
-                    $prestamo->interes_diario = 10.00;
-                    $changed = true;
-                }
-                if (!$prestamo->interes_mora_activo) {
-                    $prestamo->interes_mora_activo = true;
-                    $changed = true;
-                }
-                if (!$prestamo->fecha_ultimo_interes) {
-                    $prestamo->fecha_ultimo_interes = $primerVencido->fecha_programada->toDateString();
-                    $changed = true;
-                }
-                if ($changed) $prestamo->save();
+            if ($primerVencido && $prestamo->estatus === 'Activo') {
+                $prestamo->estatus = 'Atrasado';
+                $prestamo->save();
             }
         }
 
