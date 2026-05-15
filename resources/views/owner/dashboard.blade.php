@@ -110,7 +110,8 @@
         $color    = $colors[crc32($admin->usuario) % count($colors)];
         $fechaAlta = $admin->created_at?->format('d/m/Y') ?? '—';
     @endphp
-    <div class="ow-card" style="{{ !$admin->activo ? 'opacity:.65' : '' }}">
+    <div class="ow-card" style="{{ !$admin->activo ? 'opacity:.65' : '' }};cursor:pointer"
+         onclick="abrirEditarAdmin({{ $admin->id }}, '{{ addslashes($admin->usuario) }}', '{{ addslashes($admin->nombre ?? '') }}', '{{ addslashes($admin->celular ?? '') }}', '{{ $admin->presupuesto }}')">
         <div class="ow-card-top">
             <div class="ow-avatar" style="background:{{ $color }}">{{ $initial }}</div>
             <div style="flex:1;min-width:0">
@@ -159,14 +160,12 @@
         </div>
 
         {{-- Actions --}}
-        <div class="ow-card-footer">
-            {{-- Editar info --}}
-            <button type="button" class="btn btn-sm"
-                style="background:#f3f4f6;color:var(--text)"
-                onclick="abrirEditarAdmin({{ $admin->id }}, '{{ addslashes($admin->usuario) }}', '{{ addslashes($admin->nombre ?? '') }}', '{{ addslashes($admin->celular ?? '') }}', '{{ $admin->presupuesto }}')">
-                <svg viewBox="0 0 16 16" fill="currentColor" style="width:12px;height:12px"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>
-                Editar
-            </button>
+        <div class="ow-card-footer" onclick="event.stopPropagation()">
+            {{-- Hint: click en la tarjeta para editar --}}
+            <span style="font-size:11px;color:var(--text3);margin-right:auto">
+                <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:11px;height:11px;vertical-align:middle"><path d="M7 1l1.5 3 3.5.5-2.5 2.5.5 3.5L7 9l-3 1.5.5-3.5L2 4.5 5.5 4z"/></svg>
+                Clic en la tarjeta para editar
+            </span>
 
             {{-- Reset password --}}
             <button type="button" class="btn btn-sm"
