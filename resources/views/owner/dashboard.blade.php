@@ -48,6 +48,21 @@
 .ow-field input.error{border-color:#ef4444}
 .ow-modal-footer{padding:16px 28px;background:#f8fafc;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end}
 
+/* Notas modal */
+.ow-notas-modal{width:520px}
+.ow-notas-feed{max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:20px 28px}
+.ow-nota-item{background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:12px 14px;position:relative}
+.ow-nota-text{font-size:13px;color:var(--text);line-height:1.55;white-space:pre-wrap;word-break:break-word}
+.ow-nota-meta{display:flex;align-items:center;justify-content:space-between;margin-top:8px}
+.ow-nota-date{font-size:11px;color:var(--text3)}
+.ow-nota-del{background:none;border:none;cursor:pointer;color:#d1d5db;padding:2px 4px;border-radius:4px;font-size:12px;transition:color .15s}
+.ow-nota-del:hover{color:#ef4444}
+.ow-notas-empty{padding:32px 28px;text-align:center;color:var(--text3);font-size:13px}
+.ow-notas-form{padding:0 28px 20px;display:grid;gap:10px}
+.ow-notas-textarea{width:100%;padding:10px 13px;background:#f9fafb;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--font);color:var(--text);resize:vertical;min-height:80px;outline:none;transition:border-color .15s,box-shadow .15s}
+.ow-notas-textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(59,130,246,.1);background:#fff}
+.ow-nota-badge{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 4px;border-radius:999px;font-size:10px;font-weight:700;background:#3b82f6;color:#fff;margin-left:4px;line-height:1}
+
 /* Responsive */
 @media(max-width:768px){
     .ow-header{flex-direction:column;align-items:flex-start;}
@@ -208,6 +223,17 @@
 
         {{-- Acciones --}}
         <div class="ow-row-actions">
+            {{-- Notas --}}
+            <button type="button" class="btn btn-sm"
+                style="background:#faf5ff;color:#7c3aed"
+                title="Notas"
+                onclick="abrirNotas({{ $admin->id }}, '{{ addslashes($admin->nombre ?: $admin->usuario) }}')">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:13px;height:13px"><path d="M13 2H3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h4l2 2 2-2h2a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1z"/><path d="M5 6h6M5 9h4"/></svg>
+                @if($admin->notas->count() > 0)
+                <span class="ow-nota-badge">{{ $admin->notas->count() }}</span>
+                @endif
+            </button>
+
             {{-- Editar --}}
             <button type="button" class="btn btn-sm"
                 style="background:#f1f5f9;color:var(--text2)"
@@ -258,6 +284,54 @@
     </div>
 </div>
 @endif
+
+{{-- ── Contenedores de notas (ocultos, usados por el modal) ── --}}
+@foreach($admins as $admin)
+<div id="notas-data-{{ $admin->id }}" style="display:none" data-admin="{{ $admin->id }}">
+    @forelse($admin->notas as $nota)
+    <div class="ow-nota-tpl"
+         data-id="{{ $nota->id }}"
+         data-fecha="{{ $nota->created_at->format('d/m/Y H:i') }}"
+         data-texto="{{ addslashes($nota->contenido) }}"
+         data-del="{{ route('owner.admins.notas.destroy', [$admin->id, $nota->id]) }}">
+    </div>
+    @empty
+    <div class="ow-nota-empty"></div>
+    @endforelse
+</div>
+@endforeach
+
+{{-- ── Modal: Notas de administrador ─────────────────────── --}}
+<div class="ow-modal-overlay" id="modalNotas">
+    <div class="ow-modal ow-notas-modal">
+        <div class="ow-modal-header">
+            <div>
+                <div class="ow-modal-title">Notas</div>
+                <div style="font-size:12px;color:var(--text3);margin-top:2px">Administrador: <strong id="notasAdminLabel">—</strong></div>
+            </div>
+            <button class="ow-modal-close" onclick="cerrarNotas()">&times;</button>
+        </div>
+
+        {{-- Feed de notas --}}
+        <div class="ow-notas-feed" id="notasFeed"></div>
+
+        {{-- Divisor --}}
+        <div style="height:1px;background:var(--border);margin:0 28px"></div>
+
+        {{-- Formulario nueva nota --}}
+        <form method="POST" id="notasForm" action="" onsubmit="return submitOnce(this)">
+            @csrf
+            <div class="ow-notas-form">
+                <textarea name="contenido" class="ow-notas-textarea"
+                    placeholder="Escribe una nota…" required maxlength="2000"></textarea>
+                <button type="submit" class="btn btn-primary" style="justify-self:end">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:13px;height:13px"><path d="M2 8l4 4 8-8"/></svg>
+                    Guardar nota
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
 
 {{-- ── Modal: Reset contraseña ─────────────────────────────── --}}
 <div class="ow-modal-overlay" id="modalReset">
@@ -429,6 +503,73 @@
         if (noRes) noRes.style.display = visible === 0 ? '' : 'none';
     });
 })();
+
+// ── Modal Notas ──────────────────────────────────────────────
+const NOTAS_BASE = '{{ url("owner/admins") }}/';
+
+function abrirNotas(adminId, nombre) {
+    document.getElementById('notasAdminLabel').textContent = nombre;
+    document.getElementById('notasForm').action = NOTAS_BASE + adminId + '/notas';
+
+    const feed = document.getElementById('notasFeed');
+    feed.innerHTML = '';
+
+    const container = document.getElementById('notas-data-' + adminId);
+    const tpls      = container ? container.querySelectorAll('.ow-nota-tpl') : [];
+    const isEmpty   = container ? container.querySelector('.ow-nota-empty') : true;
+
+    if (tpls.length === 0) {
+        feed.innerHTML = '<div class="ow-notas-empty"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto 10px;display:block;opacity:.3"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Sin notas aún.</div>';
+    } else {
+        tpls.forEach(function(tpl) {
+            var texto  = tpl.dataset.texto.replace(/\\n/g, '\n');
+            var fecha  = tpl.dataset.fecha;
+            var delUrl = tpl.dataset.del;
+            var notaId = tpl.dataset.id;
+
+            var item = document.createElement('div');
+            item.className = 'ow-nota-item';
+            item.innerHTML =
+                '<p class="ow-nota-text">' + escHtml(texto) + '</p>' +
+                '<div class="ow-nota-meta">' +
+                    '<span class="ow-nota-date">' + fecha + '</span>' +
+                    '<form method="POST" action="' + delUrl + '" style="margin:0" onsubmit="return confirm(\'¿Eliminar esta nota?\')">' +
+                        '<input type="hidden" name="_token" value="{{ csrf_token() }}">' +
+                        '<input type="hidden" name="_method" value="DELETE">' +
+                        '<button type="submit" class="ow-nota-del" title="Eliminar">' +
+                            '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:13px;height:13px"><polyline points="3 4 13 4"/><path d="M5 4V3h6v1M6 7v5M10 7v5"/><rect x="3" y="4" width="10" height="10" rx="1.5"/></svg>' +
+                        '</button>' +
+                    '</form>' +
+                '</div>';
+            feed.appendChild(item);
+        });
+    }
+
+    // Clear textarea
+    document.querySelector('#notasForm textarea').value = '';
+    document.getElementById('modalNotas').classList.add('open');
+    setTimeout(function(){ document.querySelector('#notasForm textarea').focus(); }, 80);
+}
+
+function cerrarNotas() {
+    document.getElementById('modalNotas').classList.remove('open');
+}
+
+document.getElementById('modalNotas').addEventListener('click', function(e) {
+    if (e.target === this) cerrarNotas();
+});
+
+function escHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Re-abrir notas si se acaba de guardar/eliminar una
+@if(session('open_notas_admin'))
+(function(){
+    var btn = document.querySelector('[onclick^="abrirNotas({{ session(\'open_notas_admin\') }},"]');
+    if (btn) btn.click();
+})();
+@endif
 
 // ── Modal Crear ─────────────────────────────────────────────
 @if($errors->any() && !session('reset_admin_id'))

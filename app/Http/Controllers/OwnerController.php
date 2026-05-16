@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\Empleado;
 use App\Models\Prestamo;
 use App\Models\Cliente;
+use App\Models\AdminNota;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -23,12 +24,12 @@ class OwnerController extends Controller
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function (User $u) {
-                // Estadísticas scoped a este admin (multi-tenancy)
                 $u->stats = [
                     'empleados' => Empleado::where('admin_id', $u->id)->where('activo', true)->count(),
                     'clientes'  => Cliente::where('admin_id', $u->id)->where('activo', true)->count(),
                     'prestamos' => Prestamo::where('admin_id', $u->id)->whereIn('estatus', ['Activo', 'Atrasado'])->count(),
                 ];
+                $u->notas = AdminNota::where('admin_id', $u->id)->orderBy('created_at', 'desc')->get();
                 return $u;
             });
 
@@ -192,5 +193,39 @@ class OwnerController extends Controller
 
         return redirect()->route('owner.dashboard')
             ->with('success', "Usuario \"{$nombre}\" eliminado.");
+    }
+
+    /**
+     * Guardar una nota sobre un admin.
+     */
+    public function storeNota(Request $request, int $id)
+    {
+        User::where('id', $id)->where('puesto', 'admin')->firstOrFail();
+
+        $request->validate([
+            'contenido' => 'required|string|max:2000',
+        ]);
+
+        AdminNota::create([
+            'admin_id'  => $id,
+            'contenido' => trim($request->contenido),
+        ]);
+
+        return redirect()->route('owner.dashboard')
+            ->with('success', 'Nota guardada.')
+            ->with('open_notas_admin', $id);
+    }
+
+    /**
+     * Eliminar una nota.
+     */
+    public function destroyNota(int $id, AdminNota $nota)
+    {
+        abort_if($nota->admin_id !== $id, 404);
+        $nota->delete();
+
+        return redirect()->route('owner.dashboard')
+            ->with('success', 'Nota eliminada.')
+            ->with('open_notas_admin', $id);
     }
 }
