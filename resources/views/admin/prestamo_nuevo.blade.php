@@ -5,6 +5,7 @@
 @push('styles')
 <style>
 .np-grid{display:grid;grid-template-columns:380px 1fr;gap:20px;align-items:start}
+.np-grid>*{min-width:0}
 .np-panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:visible;position:sticky;top:80px}
 .np-panel-header{border-radius:var(--radius) var(--radius) 0 0;overflow:hidden}
 .np-panel-header{padding:14px 20px;border-bottom:1px solid var(--border)}
@@ -48,9 +49,12 @@
 .schedule-table thead{background:#f9fafb}
 @media(max-width:900px){
     .np-grid{grid-template-columns:1fr!important;}
-    .np-preview{display:none!important;}
-    /* On medium screens, unstick the panel */
+    #previewZone{min-width:0;max-width:100%;overflow:hidden}
     .np-panel{position:static!important;}
+}
+@media(max-width:600px){
+    /* Ocultar preview en pantallas pequeñas — el form es lo único necesario */
+    #previewZone{display:none!important;}
 }
 @media(max-width:900px){
     /* Remove overflow so date picker icon is never clipped */
