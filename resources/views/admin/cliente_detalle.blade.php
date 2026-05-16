@@ -86,6 +86,14 @@ elseif ($score >= 70)    { $scoreLabel = 'Bueno';         $scoreColor = '#2563eb
 elseif ($score >= 50)    { $scoreLabel = 'Regular';       $scoreColor = '#ca8a04'; }
 else                     { $scoreLabel = 'Riesgo';        $scoreColor = '#dc2626'; }
 $onTimePct = $totalPagados > 0 ? round($enTiempo / $totalPagados * 100) : 0;
+
+// Totales históricos
+$totalCapitalEnviado = $prestamos->sum('monto_entregado');
+$totalAcordado       = $prestamos->sum('monto');
+$totalCobrado        = $prestamos->sum(fn($l) => $l->pagos->whereIn('estatus',['Pagado','Parcial'])->sum('monto_cobrado'));
+$gananciaBruta       = $totalCobrado - $totalCapitalEnviado;
+$numPrestamos        = $prestamos->count();
+$numFinalizados      = $prestamos->where('estatus','Finalizado')->count();
 @endphp
 
 <a class="btn btn-sm" style="background:#f3f4f6;color:var(--text);margin-bottom:16px;display:inline-flex" href="{{ $backUrl }}">
@@ -203,6 +211,45 @@ $onTimePct = $totalPagados > 0 ? round($enTiempo / $totalPagados * 100) : 0;
         </div>
     </div>
 </div>
+
+{{-- Totales históricos --}}
+@if($numPrestamos > 0)
+<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px 22px;margin-bottom:24px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:14px;display:flex;align-items:center;gap:6px">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:13px;height:13px"><rect x="1" y="3" width="14" height="10" rx="1.5"/><path d="M1 6h14M5 10h2"/></svg>
+        Historial financiero total
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px">
+
+        <div style="display:flex;flex-direction:column;gap:3px">
+            <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Capital enviado</span>
+            <span style="font-size:22px;font-weight:800;letter-spacing:-.02em;color:var(--text)">${{ number_format($totalCapitalEnviado,0,'.',',') }}</span>
+            <span style="font-size:11px;color:var(--text3)">en {{ $numPrestamos }} préstamo{{ $numPrestamos !== 1 ? 's' : '' }}</span>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:3px">
+            <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Total cobrado</span>
+            <span style="font-size:22px;font-weight:800;letter-spacing:-.02em;color:#2563eb">${{ number_format($totalCobrado,0,'.',',') }}</span>
+            <span style="font-size:11px;color:var(--text3)">de ${{ number_format($totalAcordado,0,'.',',') }} acordado</span>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:3px">
+            <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Ganancia generada</span>
+            <span style="font-size:22px;font-weight:800;letter-spacing:-.02em;color:{{ $gananciaBruta >= 0 ? '#16a34a' : '#dc2626' }}">${{ number_format(abs($gananciaBruta),0,'.',',') }}</span>
+            <span style="font-size:11px;color:var(--text3)">{{ $gananciaBruta >= 0 ? 'sobre el capital enviado' : 'pendiente de recuperar' }}</span>
+        </div>
+
+        @if($numFinalizados > 0)
+        <div style="display:flex;flex-direction:column;gap:3px">
+            <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Finalizados</span>
+            <span style="font-size:22px;font-weight:800;letter-spacing:-.02em;color:#16a34a">{{ $numFinalizados }}</span>
+            <span style="font-size:11px;color:var(--text3)">de {{ $numPrestamos }} completados</span>
+        </div>
+        @endif
+
+    </div>
+</div>
+@endif
 
 @if($prestamos->isEmpty())
 <div class="card" style="text-align:center;padding:40px;color:var(--text3)">Este cliente no tiene préstamos registrados</div>
