@@ -1,0 +1,19 @@
+{
+    "name": "PrestaCRM",
+    "short_name": "PrestaCRM",
+    "description": "Sistema de gestión de préstamos y cobros",
+    "start_url": "/financiera_laravel/public/dashboard",
+    "scope": "/financiera_laravel/public/",
+    "display": "standalone",
+    "orientation": "portrait",
+    "theme_color": "#0f1623",
+    "background_color": "#f0f2f5",
+    "icons": [
+        {
+            "src": "/financiera_laravel/public/icons/icon.svg",
+            "type": "image/svg+xml",
+            "sizes": "any",
+            "purpose": "any maskable"
+        }
+    ]
+}
