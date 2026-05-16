@@ -2,6 +2,18 @@
 
 @section('title', 'Vista general')
 
+@push('styles')
+<style>
+@media(max-width:640px){
+    .dash-col-promotor,.dash-col-saldo,.dash-col-fecha{display:none}
+    .kpi-grid{grid-template-columns:repeat(2,1fr)!important}
+}
+@media(max-width:380px){
+    .kpi-grid{grid-template-columns:1fr!important}
+}
+</style>
+@endpush
+
 @section('content')
 
 <div class="kpi-grid">
@@ -43,11 +55,11 @@
                 <tr>
                     <th>#</th>
                     <th>Cliente</th>
-                    <th>Promotor</th>
+                    <th class="dash-col-promotor">Promotor</th>
                     <th>Monto</th>
-                    <th>Saldo</th>
+                    <th class="dash-col-saldo">Saldo</th>
                     <th>Estatus</th>
-                    <th>Fecha inicio</th>
+                    <th class="dash-col-fecha">Fecha inicio</th>
                 </tr>
             </thead>
             <tbody>
@@ -55,9 +67,9 @@
                 <tr>
                     <td>{{ $p->id }}</td>
                     <td>{{ $p->cliente->nombre ?? '—' }}</td>
-                    <td>{{ $p->promotor->nombre ?? '—' }}</td>
+                    <td class="dash-col-promotor">{{ $p->promotor->nombre ?? '—' }}</td>
                     <td>${{ number_format($p->monto, 0) }}</td>
-                    <td>${{ number_format($p->saldo_actual, 0) }}</td>
+                    <td class="dash-col-saldo">${{ number_format($p->saldo_actual, 0) }}</td>
                     <td>
                         @php
                             $badge = match($p->estatus) {
@@ -70,7 +82,7 @@
                         @endphp
                         <span class="badge {{ $badge }}">{{ $p->estatus }}</span>
                     </td>
-                    <td>{{ $p->fecha_inicio->format('d/m/Y') }}</td>
+                    <td class="dash-col-fecha">{{ $p->fecha_inicio->format('d/m/Y') }}</td>
                 </tr>
                 @empty
                 <tr>

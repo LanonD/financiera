@@ -46,14 +46,22 @@
     .cl-header>a.btn{grid-column:1/-1;justify-content:center;width:100%;}
     .cl-name{font-size:18px;}
     .score-card{flex-direction:column;align-items:flex-start;gap:14px;}
+    .score-stats{gap:12px!important;flex-wrap:wrap!important;}
     .loan-meta{font-size:11px;gap:8px;}
     .info-grid{grid-template-columns:repeat(2,1fr)!important;}
+    /* Historial financiero: 2 columnas */
+    .cl-totales-grid{grid-template-columns:repeat(2,1fr)!important}
 }
 @media(max-width:480px){
-    .cl-header{grid-template-columns:1fr!important;}
+    .cl-header{grid-template-columns:auto 1fr!important;}
     .cl-avatar{width:44px!important;height:44px!important;font-size:16px!important;}
     .info-grid{grid-template-columns:1fr!important;}
-    .score-stats{gap:14px;}
+    .score-stats{gap:10px!important;}
+    .score-stat-val{font-size:16px!important;}
+    /* Historial financiero: 1 columna */
+    .cl-totales-grid{grid-template-columns:1fr!important}
+    /* Tabla pagos por préstamo: ocultar columnas secundarias */
+    .lh-col-capital,.lh-col-interes,.lh-col-saldo,.lh-col-nota{display:none}
 }
 </style>
 @endpush
@@ -219,7 +227,7 @@ $numFinalizados      = $prestamos->where('estatus','Finalizado')->count();
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:13px;height:13px"><rect x="1" y="3" width="14" height="10" rx="1.5"/><path d="M1 6h14M5 10h2"/></svg>
         Historial financiero total
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px">
+    <div class="cl-totales-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px">
 
         <div style="display:flex;flex-direction:column;gap:3px">
             <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Capital enviado</span>
@@ -332,11 +340,11 @@ $numFinalizados      = $prestamos->where('estatus','Finalizado')->count();
                     <th>Puntualidad</th>
                     <th style="text-align:right">Cuota</th>
                     <th style="text-align:right">Cobrado</th>
-                    <th style="text-align:right">Capital</th>
-                    <th style="text-align:right">Interés</th>
-                    <th style="text-align:right">Saldo tras pago</th>
+                    <th class="lh-col-capital" style="text-align:right">Capital</th>
+                    <th class="lh-col-interes" style="text-align:right">Interés</th>
+                    <th class="lh-col-saldo" style="text-align:right">Saldo tras pago</th>
                     <th>Estatus</th>
-                    <th>Nota cobro</th>
+                    <th class="lh-col-nota">Nota cobro</th>
                 </tr>
             </thead>
             <tbody>
@@ -368,11 +376,11 @@ $numFinalizados      = $prestamos->where('estatus','Finalizado')->count();
                 <td><span class="diff-badge" style="color:{{ $diffClr }}">{{ $diffTxt }}</span></td>
                 <td style="text-align:right;font-family:monospace;font-size:12px">${{ number_format($p->monto_cuota,2,'.',',') }}</td>
                 <td style="text-align:right;font-family:monospace;font-size:12px">{{ $p->monto_cobrado ? '$'.number_format($p->monto_cobrado,2,'.',',') : '—' }}</td>
-                <td style="text-align:right;font-family:monospace;font-size:12px">${{ number_format($p->capital,2,'.',',') }}</td>
-                <td style="text-align:right;font-family:monospace;font-size:12px">${{ number_format($p->interes,2,'.',',') }}</td>
-                <td style="text-align:right;font-family:monospace;font-size:12px">${{ number_format($p->saldo_restante,2,'.',',') }}</td>
+                <td class="lh-col-capital" style="text-align:right;font-family:monospace;font-size:12px">${{ number_format($p->capital,2,'.',',') }}</td>
+                <td class="lh-col-interes" style="text-align:right;font-family:monospace;font-size:12px">${{ number_format($p->interes,2,'.',',') }}</td>
+                <td class="lh-col-saldo" style="text-align:right;font-family:monospace;font-size:12px">${{ number_format($p->saldo_restante,2,'.',',') }}</td>
                 <td><span class="pill-pago" style="background:{{ $statusStyles[0] }};color:{{ $statusStyles[1] }}">{{ $p->estatus }}</span></td>
-                <td style="font-size:12px;color:var(--text2);max-width:180px">{{ $p->nota_cobro ?? '—' }}</td>
+                <td class="lh-col-nota" style="font-size:12px;color:var(--text2);max-width:180px">{{ $p->nota_cobro ?? '—' }}</td>
             </tr>
             @endforeach
             </tbody>

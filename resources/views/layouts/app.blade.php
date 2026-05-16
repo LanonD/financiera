@@ -11,7 +11,8 @@
     <style>
     :root{--bg:#f0f2f5;--sidebar:#0f1623;--sidebar-hover:rgba(255,255,255,0.06);--sidebar-active:rgba(59,130,246,0.15);--accent:#3b82f6;--accent-hover:#2563eb;--card:#fff;--border:rgba(0,0,0,0.07);--text:#111827;--text2:#6b7280;--text3:#9ca3af;--font:'DM Sans',sans-serif;--radius:10px}
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:var(--font);background:var(--bg);color:var(--text);display:flex;min-height:100vh}
+    html{overflow-x:hidden}
+    body{font-family:var(--font);background:var(--bg);color:var(--text);display:flex;min-height:100vh;overflow-x:hidden;max-width:100vw}
     /* Sidebar */
     .sidebar{width:220px;background:var(--sidebar);display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:100;overflow-y:auto}
     .sidebar-logo{padding:20px 18px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,0.06)}
@@ -32,11 +33,11 @@
     .btn-logout{width:100%;padding:7px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:6px;color:rgba(200,210,225,0.6);font-size:12px;font-family:var(--font);cursor:pointer;transition:background .15s,color .15s}
     .btn-logout:hover{background:rgba(239,68,68,0.15);color:#ef4444;border-color:rgba(239,68,68,0.3)}
     /* Main */
-    .main{margin-left:220px;flex:1;display:flex;flex-direction:column;min-height:100vh}
+    .main{margin-left:220px;flex:1;display:flex;flex-direction:column;min-height:100vh;min-width:0;overflow-x:hidden}
     .topbar{background:var(--card);border-bottom:1px solid var(--border);padding:0 28px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
     .topbar-title{font-size:15px;font-weight:600;color:var(--text)}
     .topbar-right{display:flex;align-items:center;gap:12px}
-    .content{padding:28px;flex:1}
+    .content{padding:28px;flex:1;min-width:0;max-width:100%}
     /* Cards */
     .card{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:20px}
     .card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}

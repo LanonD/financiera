@@ -2,6 +2,21 @@
 
 @section('title', $puesto === 'promo' ? 'Mis clientes' : 'Todos los clientes')
 
+@push('styles')
+<style>
+.cl-filter-wrap{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.cl-filter-field{flex:1;min-width:150px}
+.cl-filter-input{padding:7px 10px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:var(--font);outline:none;width:100%}
+.cl-divider{width:1px;height:32px;background:var(--border);align-self:flex-end;flex-shrink:0}
+@media(max-width:640px){
+    .cl-filter-wrap{flex-direction:column;gap:10px}
+    .cl-divider{display:none}
+    /* Ocultar columna Contacto y Credit Score en mobile (las menos críticas) */
+    .cl-col-contacto,.cl-col-score{display:none}
+}
+</style>
+@endpush
+
 @section('content')
 
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
@@ -22,16 +37,15 @@
 @endif
 
 {{-- Filtros JS --}}
-<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
-    <div>
+<div class="cl-filter-wrap">
+    <div class="cl-filter-field">
         <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:4px">Buscar</label>
-        <input style="padding:7px 10px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:var(--font);outline:none;min-width:220px"
-               type="text" id="cSearch" placeholder="Nombre, celular, CURP…" oninput="filtrarClientes()">
+        <input class="cl-filter-input" type="text" id="cSearch" placeholder="Nombre, celular, CURP…" oninput="filtrarClientes()">
     </div>
 
-    <div style="width:1px;height:32px;background:var(--border);align-self:flex-end"></div>
+    <div class="cl-divider"></div>
 
-    <div>
+    <div class="cl-filter-field">
         <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:4px">Estatus</label>
         <div style="display:flex;gap:4px;flex-wrap:wrap">
             <span style="padding:5px 12px;border-radius:20px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:12px;font-weight:500;cursor:pointer" data-cl="todos" onclick="setPillCl(this)">Todos</span>
@@ -41,11 +55,10 @@
     </div>
 
     @if($puesto === 'admin' && $promotores->isNotEmpty())
-    <div style="width:1px;height:32px;background:var(--border);align-self:flex-end"></div>
-    <div>
+    <div class="cl-divider"></div>
+    <div class="cl-filter-field">
         <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:4px">Promotor</label>
-        <select style="padding:7px 10px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:var(--font);outline:none;min-width:150px"
-                id="cPromotor" onchange="filtrarClientes()">
+        <select class="cl-filter-input" id="cPromotor" onchange="filtrarClientes()">
             <option value="">Todos</option>
             @foreach($promotores as $p)
             <option value="{{ $p->nombre }}">{{ $p->nombre }}</option>
@@ -55,7 +68,7 @@
     @endif
 
     <div style="align-self:flex-end">
-        <button style="padding:7px 14px;background:#f3f4f6;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:var(--font);cursor:pointer;color:var(--text2)" onclick="resetFiltrosClientes()">Limpiar</button>
+        <button style="padding:7px 14px;background:#f3f4f6;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:var(--font);cursor:pointer;color:var(--text2);white-space:nowrap" onclick="resetFiltrosClientes()">Limpiar</button>
     </div>
 </div>
 
@@ -71,10 +84,10 @@
         <thead>
             <tr>
                 <th>Cliente</th>
-                <th>Contacto</th>
+                <th class="cl-col-contacto">Contacto</th>
                 <th>Estatus</th>
                 <th>Préstamos</th>
-                <th>Credit Score</th>
+                <th class="cl-col-score">Credit Score</th>
                 <th></th>
             </tr>
         </thead>
@@ -147,7 +160,7 @@
             </td>
 
             {{-- Contacto --}}
-            <td>
+            <td class="cl-col-contacto">
                 <div style="display:flex;flex-direction:column;gap:3px">
                     @if($c->email)
                     <div style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text2)">
@@ -192,7 +205,7 @@
             </td>
 
             {{-- Credit Score --}}
-            <td style="min-width:130px">
+            <td class="cl-col-score" style="min-width:130px">
                 <div style="display:flex;align-items:center;gap:8px">
                     <span style="font-size:13px;font-weight:700;color:{{ $scoreColor }};font-family:monospace;min-width:30px">
                         {{ $score }}

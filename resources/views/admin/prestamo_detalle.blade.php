@@ -94,8 +94,23 @@ $puesto = auth()->user()->puesto;
     </div>
 </div>
 
+@push('styles')
+<style>
+.rd-grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px}
+/* Ocultar columnas secundarias de la tabla de pagos en mobile */
+@media(max-width:768px){
+    .rd-grid-3{grid-template-columns:1fr 1fr!important}
+    .pd-col-capital,.pd-col-interes,.pd-col-saldo,.pd-col-nota{display:none}
+}
+@media(max-width:480px){
+    .rd-grid-3{grid-template-columns:1fr!important}
+    .pd-col-puntualidad{display:none}
+}
+</style>
+@endpush
+
 {{-- KPI cards --}}
-<div class="rd-grid-3" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px">
+<div class="rd-grid-3">
     <div class="card" style="padding:16px 18px">
         <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:8px">Estatus</div>
         <span style="display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:999px;font-size:14px;font-weight:700;background:{{ $estatusBg }};color:{{ $estatusTx }}">
@@ -426,11 +441,11 @@ $puesto = auth()->user()->puesto;
                 <th>Fecha de pago</th>
                 <th style="text-align:right">Cuota</th>
                 <th style="text-align:right">Cobrado</th>
-                <th style="text-align:right">Capital</th>
-                <th style="text-align:right">Interés / Mora</th>
-                <th style="text-align:right">Saldo</th>
+                <th class="pd-col-capital" style="text-align:right">Capital</th>
+                <th class="pd-col-interes" style="text-align:right">Interés / Mora</th>
+                <th class="pd-col-saldo" style="text-align:right">Saldo</th>
                 <th>Estatus</th>
-                <th>Nota</th>
+                <th class="pd-col-nota">Nota</th>
                 @if(in_array($puesto, ['admin','promo']) && in_array($prestamo->estatus, ['Activo','Atrasado']))
                 <th></th>
                 @endif
@@ -505,11 +520,11 @@ $puesto = auth()->user()->puesto;
                 {{ $p->monto_cobrado !== null ? '$'.number_format($p->monto_cobrado,2,'.',',') : '—' }}
                 @endif
             </td>
-            <td style="text-align:right;font-family:monospace;font-size:12px">${{ number_format($p->capital,2,'.',',') }}</td>
-            <td style="text-align:right;font-family:monospace;font-size:12px">${{ number_format($p->interes,2,'.',',') }}</td>
-            <td style="text-align:right;font-family:monospace;font-size:12px">${{ number_format($p->saldo_restante,2,'.',',') }}</td>
+            <td class="pd-col-capital" style="text-align:right;font-family:monospace;font-size:12px">${{ number_format($p->capital,2,'.',',') }}</td>
+            <td class="pd-col-interes" style="text-align:right;font-family:monospace;font-size:12px">${{ number_format($p->interes,2,'.',',') }}</td>
+            <td class="pd-col-saldo" style="text-align:right;font-family:monospace;font-size:12px">${{ number_format($p->saldo_restante,2,'.',',') }}</td>
             <td><span style="display:inline-flex;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600;background:{{ $statusColors[0] }};color:{{ $statusColors[1] }}">{{ $estatusLabel }}</span></td>
-            <td style="font-size:12px;color:var(--text2);max-width:160px">{{ $notaDisplay }}</td>
+            <td class="pd-col-nota" style="font-size:12px;color:var(--text2);max-width:160px">{{ $notaDisplay }}</td>
             @if(in_array($puesto, ['admin','promo']) && in_array($prestamo->estatus, ['Activo','Atrasado']))
             <td>
                 @if(!$esDimmed && in_array($p->estatus, ['Pendiente','Atrasado']))
