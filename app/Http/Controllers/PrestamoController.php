@@ -7,6 +7,7 @@ use App\Models\Prestamo;
 use App\Models\Pago;
 use App\Models\Cliente;
 use App\Models\Empleado;
+use App\Models\PrestamoActividad;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
 
@@ -196,6 +197,12 @@ class PrestamoController extends Controller
             ]);
         }
 
+        PrestamoActividad::log($prestamo->id, 'creado',
+            'Préstamo creado por ' . Auth::user()->usuario .
+            ' — $' . number_format($monto_entregado, 2) . ' entregados, $' . number_format($monto_retornar, 2) . ' a retornar en ' . $num_pagos . ' pagos ' . strtolower($frecuencia) . 's.',
+            ['monto_entregado' => $monto_entregado, 'monto_retornar' => $monto_retornar, 'num_pagos' => $num_pagos, 'frecuencia' => $frecuencia]
+        );
+
         return redirect()->route('prestamos.show', $prestamo->id)->with('success', 'Préstamo creado correctamente.');
     }
 
@@ -244,10 +251,14 @@ class PrestamoController extends Controller
             }
         }
 
-        $pagos = Pago::where('prestamo_id', $id)->orderBy('fecha_programada')->orderBy('numero_pago')->get();
+        $pagos       = Pago::where('prestamo_id', $id)->orderBy('fecha_programada')->orderBy('numero_pago')->get();
         $interesInfo = ($prestamo->interes_activo || $prestamo->interes_mora_activo || (float)$prestamo->interes_acumulado > 0) ? true : null;
+        $actividad   = \App\Models\PrestamoActividad::where('prestamo_id', $id)
+                           ->with('user')
+                           ->orderByDesc('created_at')
+                           ->get();
 
-        return view('admin.prestamo_detalle', compact('prestamo', 'pagos', 'interesInfo'));
+        return view('admin.prestamo_detalle', compact('prestamo', 'pagos', 'interesInfo', 'actividad'));
     }
 
     public function edit($id)
@@ -287,7 +298,28 @@ class PrestamoController extends Controller
         if ($data['estatus'] === 'Pendiente') {
             $update['fecha_entrega'] = null;
         }
+        $estatusAnterior   = $prestamo->estatus;
+        $cobradorAnterior  = $prestamo->cobrador_id;
         $prestamo->update($update);
+
+        // Log cambio de estatus
+        if ($estatusAnterior !== $data['estatus']) {
+            PrestamoActividad::log($id, 'estatus',
+                "Estatus cambiado de {$estatusAnterior} a {$data['estatus']}.",
+                ['de' => $estatusAnterior, 'a' => $data['estatus']]
+            );
+        }
+        // Log cambio de cobrador
+        $nuevoCobradorId = $data['cobrador_id'] ?? null;
+        if ($cobradorAnterior !== $nuevoCobradorId) {
+            $cobrador = $nuevoCobradorId ? Empleado::find($nuevoCobradorId) : null;
+            PrestamoActividad::log($id, 'cobrador',
+                $cobrador
+                    ? "Cobrador asignado: {$cobrador->nombre}."
+                    : 'Cobrador removido.',
+                ['cobrador_id' => $nuevoCobradorId, 'nombre' => $cobrador?->nombre]
+            );
+        }
 
         return redirect()->route('prestamos.show', $id)->with('success', 'Préstamo actualizado correctamente.');
     }

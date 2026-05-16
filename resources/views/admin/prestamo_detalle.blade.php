@@ -768,4 +768,51 @@ function abrirModalCuota(pagoId, numeroPago, montoCuota) {
 
 @endif
 
+{{-- ── Actividad / línea de tiempo ────────────────────────────────── --}}
+<div class="card" style="padding:0;overflow:hidden;margin-top:20px">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:14px;height:14px;color:var(--accent)"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 2"/></svg>
+        <span style="font-size:13px;font-weight:600">Actividad</span>
+        <span style="font-size:11px;color:var(--text3);margin-left:4px">{{ $actividad->count() }} eventos</span>
+    </div>
+
+    @if($actividad->isEmpty())
+    <div style="padding:32px;text-align:center;color:var(--text3);font-size:13px">Sin actividad registrada aún.</div>
+    @else
+    <div style="padding:18px 20px;display:flex;flex-direction:column;gap:0">
+        @foreach($actividad as $i => $ev)
+        @php
+            $estilos = \App\Models\PrestamoActividad::$estilos;
+            $est     = $estilos[$ev->tipo] ?? ['color'=>'#6b7280','icon'=>'·','label'=>$ev->tipo];
+            $esUltimo= $i === $actividad->count() - 1;
+        @endphp
+        <div style="display:flex;gap:14px;{{ !$esUltimo ? 'padding-bottom:18px' : '' }}">
+            {{-- Línea + icono --}}
+            <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0">
+                <div style="width:30px;height:30px;border-radius:50%;background:{{ $est['color'] }}18;border:2px solid {{ $est['color'] }};display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;line-height:1">
+                    {{ $est['icon'] }}
+                </div>
+                @if(!$esUltimo)
+                <div style="width:2px;flex:1;background:var(--border);margin-top:4px;min-height:16px"></div>
+                @endif
+            </div>
+            {{-- Contenido --}}
+            <div style="flex:1;min-width:0;padding-top:4px">
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:{{ $est['color'] }};margin-bottom:3px">
+                    {{ $est['label'] }}
+                </div>
+                <div style="font-size:13px;color:var(--text);line-height:1.5">{{ $ev->descripcion }}</div>
+                <div style="font-size:11px;color:var(--text3);margin-top:4px;display:flex;gap:10px;flex-wrap:wrap">
+                    <span>{{ $ev->created_at->format('d/m/Y H:i') }}</span>
+                    @if($ev->user)
+                    <span style="color:var(--text2)">· {{ $ev->user->nombre ?? $ev->user->usuario }}</span>
+                    @endif
+                </div>
+            </div>
+        </div>
+        @endforeach
+    </div>
+    @endif
+</div>
+
 @endsection

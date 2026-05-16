@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\Pago;
 use App\Models\Prestamo;
 use App\Models\Empleado;
+use App\Models\PrestamoActividad;
 use Illuminate\Support\Facades\Auth;
 
 class PagoController extends Controller
@@ -96,6 +97,62 @@ class PagoController extends Controller
         }
 
         return view('collector.cobros', compact('prestamos', 'cobrador', 'puesto'));
+    }
+
+    /**
+     * Admin: monitor cobros grouped by cobrador for today
+     */
+    public function monitor(Request $request)
+    {
+        $adminId     = auth()->user()->adminId();
+        $hoy         = now()->toDateString();
+        $cobradorSel = (int) $request->query('cobrador', 0);
+
+        // All active collectors scoped to this admin
+        $cobradores = Empleado::where('admin_id', $adminId)
+            ->where('activo', true)
+            ->get()
+            ->filter(fn($e) => $e->hasRole('collector'))
+            ->values();
+
+        // Loans with a payment due today OR overdue, per cobrador
+        $prestamosPorCobrador = collect();
+        foreach ($cobradores as $cob) {
+            $loans = Prestamo::with(['cliente', 'pagos'])
+                ->where('admin_id', $adminId)
+                ->where('cobrador_id', $cob->id)
+                ->whereIn('estatus', ['Activo', 'Atrasado'])
+                ->get()
+                ->map(function ($p) use ($hoy) {
+                    $next = $p->pagos
+                        ->whereIn('estatus', ['Pendiente', 'Atrasado'])
+                        ->sortBy('fecha_programada')
+                        ->first();
+                    $p->proximo_pago  = $next?->fecha_programada?->toDateString();
+                    $p->cuota_hoy     = $next?->monto_cuota ?? 0;
+                    $p->pago_id_hoy   = $next?->id;
+                    $p->mora          = (float)($p->interes_acumulado ?? 0);
+                    $p->es_hoy        = $p->proximo_pago !== null && $p->proximo_pago <= $hoy;
+                    $p->pagado_hoy    = $p->pagos
+                        ->whereIn('estatus', ['Pagado', 'Parcial'])
+                        ->where(fn($pg) => $pg->fecha_pago?->toDateString() === $hoy)
+                        ->isNotEmpty();
+                    return $p;
+                });
+
+            $cob->loans_hoy   = $loans->filter(fn($l) => $l->es_hoy)->sortByDesc('mora')->values();
+            $cob->loans_otros = $loans->filter(fn($l) => !$l->es_hoy)->values();
+            $cob->total_hoy   = $cob->loans_hoy->count();
+            $cob->cobrados    = $cob->loans_hoy->filter(fn($l) => $l->pagado_hoy)->count();
+            $cob->pendientes  = $cob->total_hoy - $cob->cobrados;
+            $prestamosPorCobrador[$cob->id] = $cob;
+        }
+
+        $cobradorSelObj = $cobradorSel ? $prestamosPorCobrador->get($cobradorSel) : $prestamosPorCobrador->first();
+
+        return view('admin.cobros_monitor', compact(
+            'cobradores', 'prestamosPorCobrador', 'cobradorSel', 'cobradorSelObj', 'hoy'
+        ));
     }
 
     /**
@@ -301,6 +358,24 @@ class PagoController extends Controller
             }
 
             $prestamo->save();
+
+            // Log actividad
+            $quien = $user->empleado?->nombre ?? $user->usuario;
+            $desc  = "Pago #{$pago->numero_pago} registrado por {$quien} — $" . number_format($montoRecibido + $pagoMora, 2) . " ({$tipo}).";
+            if ($pagoMora > 0) {
+                $desc .= " Mora cobrada: $" . number_format($pagoMora, 2) . '.';
+            }
+            if ($prestamo->estatus === 'Finalizado') {
+                $desc .= ' ✓ Préstamo finalizado.';
+            }
+            PrestamoActividad::log($prestamo->id, 'pago', $desc, [
+                'pago_id'    => $pago->id,
+                'monto'      => $montoRecibido + $pagoMora,
+                'tipo'       => $tipo,
+                'mora'       => $pagoMora,
+                'cobrador_id'=> $empleado?->id,
+            ]);
+
             $registrados++;
         }
 

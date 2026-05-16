@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Prestamo;
+use App\Models\PrestamoActividad;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 
@@ -162,6 +163,12 @@ class DesembolsoController extends Controller
                 'doc_comprobante'    => $pathComprobante,
                 'doc_foto_domicilio' => $pathFoto,
             ]);
+
+            $quien = Auth::user()->empleado?->nombre ?? Auth::user()->usuario;
+            PrestamoActividad::log($prestamo->id, 'desembolso',
+                "Desembolso confirmado por {$quien} — $" . number_format($monto, 2) . " vía {$forma}.",
+                ['monto' => $monto, 'forma' => $forma, 'desembolso_id' => $empleado?->id]
+            );
 
             return response()->json([
                 'ok' => true
