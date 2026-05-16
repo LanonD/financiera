@@ -5,7 +5,8 @@
 @push('styles')
 <style>
 .np-grid{display:grid;grid-template-columns:380px 1fr;gap:20px;align-items:start}
-.np-panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;position:sticky;top:80px}
+.np-panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:visible;position:sticky;top:80px}
+.np-panel-header{border-radius:var(--radius) var(--radius) 0 0;overflow:hidden}
 .np-panel-header{padding:14px 20px;border-bottom:1px solid var(--border)}
 .np-panel-title{font-size:14px;font-weight:600}
 .np-panel-sub{font-size:11px;color:var(--text3);margin-top:2px}
@@ -51,6 +52,10 @@
     /* On medium screens, unstick the panel */
     .np-panel{position:static!important;}
 }
+@media(max-width:900px){
+    /* Remove overflow so date picker icon is never clipped */
+    .np-panel{overflow:visible!important;}
+}
 @media(max-width:768px){
     /* Page header back button row stacks */
     .np-page-header{flex-wrap:wrap!important;gap:8px!important;}
@@ -60,6 +65,10 @@
     .np-form > div:last-child button{flex:none!important;width:100%!important;justify-content:center!important;}
     /* Inputs: ensure no fixed widths */
     .np-input,.np-select,.cs-input{width:100%!important;box-sizing:border-box!important;}
+    /* Date inputs: shrink font so calendar icon has room */
+    .np-input[type="date"]{font-size:13px!important;font-family:var(--font)!important;padding-right:8px!important;}
+    /* Two-col grid under 600px stays 1 col */
+    .np-2col{grid-template-columns:1fr!important;}
 }
 @media(max-width:640px){
     .kpi-grid-2{grid-template-columns:1fr!important;}
@@ -214,7 +223,7 @@ $activoMap = $clientesConPrestamo->toArray();
                 <input type="date" name="fecha_inicio" id="inFechaInicio"
                        class="np-input" value="{{ date('Y-m-d') }}"
                        min="{{ date('Y-m-d') }}"
-                       style="font-family:var(--font)" oninput="onFechaInicioChange()" required>
+                       style="font-family:var(--font);max-width:100%" oninput="onFechaInicioChange()" required>
                 <div class="np-hint">Hoy o fecha futura — día en que se entrega el dinero al cliente</div>
             </div>
 
@@ -224,7 +233,7 @@ $activoMap = $clientesConPrestamo->toArray();
                 <input type="date" name="fecha_primer_cobro" id="inFechaPrimerCobro"
                        class="np-input" value="{{ date('Y-m-d', strtotime('+30 days')) }}"
                        min="{{ date('Y-m-d') }}"
-                       style="font-family:var(--font)" oninput="calcPreview()" required>
+                       style="font-family:var(--font);max-width:100%" oninput="calcPreview()" required>
                 <div class="np-hint" id="hintPrimerCobro">Se calcula automáticamente según la frecuencia — puedes ajustarlo</div>
             </div>
 
