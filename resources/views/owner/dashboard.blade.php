@@ -564,9 +564,10 @@ function escHtml(str) {
 }
 
 // Re-abrir notas si se acaba de guardar/eliminar una
-@if(session('open_notas_admin'))
+@php $openNotasAdmin = session('open_notas_admin'); @endphp
+@if($openNotasAdmin)
 (function(){
-    var btn = document.querySelector('[onclick^="abrirNotas({{ session(\'open_notas_admin\') }},"]');
+    var btn = document.querySelector('[onclick^="abrirNotas({{ $openNotasAdmin }},"]');
     if (btn) btn.click();
 })();
 @endif
