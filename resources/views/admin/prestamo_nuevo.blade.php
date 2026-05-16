@@ -53,8 +53,25 @@
     .np-panel{position:static!important;}
 }
 @media(max-width:600px){
-    /* Ocultar preview en pantallas pequeñas — el form es lo único necesario */
-    #previewZone{display:none!important;}
+    /* Preview visible pero compacto */
+    #previewZone{display:block!important;min-width:0;max-width:100%;overflow:hidden}
+    /* Ocultar columnas Capital y Costo — solo # Fecha Cuota */
+    .schedule-table th:nth-child(4),
+    .schedule-table td:nth-child(4),
+    .schedule-table th:nth-child(5),
+    .schedule-table td:nth-child(5),
+    .schedule-table th:nth-child(6),
+    .schedule-table td:nth-child(6){display:none!important}
+    /* Tabla ocupa todo el ancho disponible sin scroll */
+    .schedule-table{font-size:13px!important}
+    .schedule-table th,.schedule-table td{padding:8px 10px!important}
+    /* KPI 2x2 compacto */
+    .kpi-grid-2{grid-template-columns:1fr 1fr!important}
+    .kpi-val{font-size:16px!important}
+    /* Cards del plan sin padding excesivo */
+    .preview-card{margin-bottom:10px!important}
+    .pay-row{padding:10px 14px!important}
+    .pay-amount{font-size:13px!important}
 }
 @media(max-width:900px){
     /* Remove overflow so date picker icon is never clipped */
