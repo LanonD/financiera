@@ -313,16 +313,8 @@ class PagoController extends Controller
                 $nota     = $nota ? $nota . ' | ' . $notaMora : $notaMora;
             }
 
-            // ── 4. Apply remainder to cuota (interest first, then capital) ──────
+            // ── 4. Apply remainder to cuota ─────────────────────────────────────
             if ($montoRecibido > 0) {
-                $interesDelPago  = (float)$pago->interes;
-                $capitalDelPago  = (float)$pago->capital;
-
-                // Interest is always collected before principal
-                $interesACobrar  = min($montoRecibido, $interesDelPago);
-                $restanteTrasInt = $montoRecibido - $interesACobrar;
-                $capitalACobrar  = min($restanteTrasInt, $capitalDelPago);
-
                 $tipo = $montoRecibido >= $pago->monto_cuota ? 'Pagado' : 'Parcial';
 
                 $pago->monto_cobrado = $montoRecibido;
@@ -333,10 +325,8 @@ class PagoController extends Controller
                 $pago->cobrador_id   = $empleado?->id;
                 $pago->save();
 
-                // Reduce saldo by capital actually collected (even on partial)
-                if ($capitalACobrar > 0) {
-                    $prestamo->saldo_actual = max(0, round((float)$prestamo->saldo_actual - $capitalACobrar, 2));
-                }
+                // Saldo = deuda total pendiente → baja por TODO lo cobrado en la cuota
+                $prestamo->saldo_actual = max(0, round((float)$prestamo->saldo_actual - $montoRecibido, 2));
 
                 if ($tipo === 'Pagado') {
                     $remaining = Pago::where('prestamo_id', $prestamoId)
@@ -447,11 +437,13 @@ class PagoController extends Controller
             $nota        .= ' | Interés: $' . number_format($pagoInteres, 2);
         }
 
-        // ── 3. Remainder reduces capital (saldo_actual) ──────────────────────
-        $capitalPagado = 0;
-        if ($monto > 0) {
-            $capitalPagado          = $monto;
-            $prestamo->saldo_actual = max(0, round((float)$prestamo->saldo_actual - $capitalPagado, 2));
+        // ── 3. Remainder va a capital ────────────────────────────────────────
+        $capitalPagado = round($monto, 2); // lo que queda tras mora e interés acordado
+
+        // Saldo = deuda total pendiente → baja por interés + capital (todo excepto mora)
+        $reduccionPlan = round($pagoInteres + $capitalPagado, 2);
+        if ($reduccionPlan > 0) {
+            $prestamo->saldo_actual = max(0, round((float)$prestamo->saldo_actual - $reduccionPlan, 2));
         }
 
         // Auto-finalize: if both capital and mora reach 0, the loan is fully paid
@@ -742,10 +734,6 @@ class PagoController extends Controller
 
         // ── Apply remainder to the chosen cuota ─────────────────────────────
         if ($montoRecibido > 0) {
-            $interesACobrar = min($montoRecibido, (float)$pago->interes);
-            $restante       = $montoRecibido - $interesACobrar;
-            $capitalACobrar = min($restante, (float)$pago->capital);
-
             $tipo = $montoRecibido >= (float)$pago->monto_cuota ? 'Pagado' : 'Parcial';
 
             $pago->monto_cobrado = $montoRecibido;
@@ -756,9 +744,8 @@ class PagoController extends Controller
             $pago->cobrador_id   = $empleado?->id;
             $pago->save();
 
-            if ($capitalACobrar > 0) {
-                $prestamo->saldo_actual = max(0, round((float)$prestamo->saldo_actual - $capitalACobrar, 2));
-            }
+            // Saldo = deuda total pendiente → baja por TODO lo cobrado en la cuota
+            $prestamo->saldo_actual = max(0, round((float)$prestamo->saldo_actual - $montoRecibido, 2));
 
             // Check if all payments are now done
             if ($tipo === 'Pagado') {

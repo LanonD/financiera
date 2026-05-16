@@ -10,6 +10,24 @@ $pagados    = $pagos->where('estatus', 'Pagado')->filter(fn($p) => !in_array($p-
 $pendientes = $pagos->whereIn('estatus', ['Pendiente','Atrasado']);
 $parciales  = $pagos->where('estatus', 'Parcial');
 
+// Calcular saldo real corriendo por cada pago (para la columna Saldo de la tabla)
+// Ordena primero por pagos ya cobrados (fecha_pago ASC), luego pendientes (numero_pago ASC)
+$pagosOrdenados = $pagos->sortBy(function($p) {
+    if ($p->fecha_pago) return $p->fecha_pago->toDateString() . sprintf('%05d', $p->numero_pago);
+    return '9999-99-99' . sprintf('%05d', $p->numero_pago);
+});
+$saldoCorr = (float)$prestamo->monto; // Deuda total inicial = monto a retornar
+$saldoDisplay = [];
+foreach ($pagosOrdenados as $pag) {
+    $cobrado = (float)($pag->monto_cobrado ?? 0);
+    $tipoPag = $pag->tipo_pago ?? 'plan';
+    if ($cobrado > 0 && !in_array($tipoPag, ['congelado'])) {
+        $saldoCorr = max(0, $saldoCorr - $cobrado);
+    }
+    $saldoDisplay[$pag->id] = $saldoCorr;
+}
+@endphp
+
 $cobrosEfectivos = $pagos->whereIn('estatus', ['Pagado','Parcial'])
     ->filter(fn($p) => !in_array($p->tipo_pago ?? 'plan', ['congelado','liquidado']));
 $totalCobrado    = $cobrosEfectivos->sum('monto_cobrado');
@@ -443,7 +461,7 @@ $puesto = auth()->user()->puesto;
                 <th style="text-align:right">Cobrado</th>
                 <th class="pd-col-capital" style="text-align:right">Capital</th>
                 <th class="pd-col-interes" style="text-align:right">Interés / Mora</th>
-                <th class="pd-col-saldo" style="text-align:right">Saldo</th>
+                <th class="pd-col-saldo" style="text-align:right" title="Deuda restante después de cada cobro">Saldo restante</th>
                 <th>Estatus</th>
                 <th class="pd-col-nota">Nota</th>
                 @if(in_array($puesto, ['admin','promo']) && in_array($prestamo->estatus, ['Activo','Atrasado']))
@@ -522,7 +540,7 @@ $puesto = auth()->user()->puesto;
             </td>
             <td class="pd-col-capital" style="text-align:right;font-family:monospace;font-size:12px">${{ number_format($p->capital,2,'.',',') }}</td>
             <td class="pd-col-interes" style="text-align:right;font-family:monospace;font-size:12px">${{ number_format($p->interes,2,'.',',') }}</td>
-            <td class="pd-col-saldo" style="text-align:right;font-family:monospace;font-size:12px">${{ number_format($p->saldo_restante,2,'.',',') }}</td>
+            <td class="pd-col-saldo" style="text-align:right;font-family:monospace;font-size:12px">${{ number_format($saldoDisplay[$p->id] ?? $p->saldo_restante, 2, '.', ',') }}</td>
             <td><span style="display:inline-flex;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600;background:{{ $statusColors[0] }};color:{{ $statusColors[1] }}">{{ $estatusLabel }}</span></td>
             <td class="pd-col-nota" style="font-size:12px;color:var(--text2);max-width:160px">{{ $notaDisplay }}</td>
             @if(in_array($puesto, ['admin','promo']) && in_array($prestamo->estatus, ['Activo','Atrasado']))

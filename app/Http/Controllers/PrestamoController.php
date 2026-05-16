@@ -155,7 +155,7 @@ class PrestamoController extends Controller
             'num_pagos'           => $num_pagos,
             'frecuencia'          => $frecuencia,
             'cuota'               => $cuota_base,
-            'saldo_actual'        => $monto_entregado,
+            'saldo_actual'        => $monto_retornar,
             'interes_acumulado'   => 0,
             'interes_activo'      => false,
             'interes_diario'      => 0,
