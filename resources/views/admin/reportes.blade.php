@@ -74,7 +74,11 @@ $atajos = [
 .rpt-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:16px}
 .rpt-card-header{padding:12px 18px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:space-between}
 .rpt-card-body{padding:16px 18px}
-.rpt-kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px}
+.rpt-kpi-scroll{overflow-x:auto;margin-bottom:16px;padding-bottom:4px;-webkit-overflow-scrolling:touch}
+.rpt-kpi-scroll::-webkit-scrollbar{height:4px}
+.rpt-kpi-scroll::-webkit-scrollbar-track{background:transparent}
+.rpt-kpi-scroll::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:2px}
+.rpt-kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(160px,1fr));gap:14px;min-width:0}
 .rpt-kpi{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px}
 .rpt-kpi-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:6px}
 .rpt-kpi-value{font-size:24px;font-weight:700;font-family:monospace;letter-spacing:-.02em;line-height:1}
@@ -100,7 +104,6 @@ $atajos = [
 
 /* ── Responsive ─────────────────────────────── */
 @media(max-width:768px){
-    .rpt-kpi-grid{grid-template-columns:repeat(2,1fr)!important;gap:10px!important;}
     .rpt-grid-3{grid-template-columns:1fr!important;}
     .rpt-grid-2{grid-template-columns:1fr!important;}
     .rpt-card-header{flex-direction:column!important;align-items:flex-start!important;gap:8px!important;}
@@ -110,7 +113,6 @@ $atajos = [
     }
 }
 @media(max-width:480px){
-    .rpt-kpi-grid{grid-template-columns:repeat(2,1fr)!important;}
     .rpt-kpi-value{font-size:20px!important;}
     .rpt-card-body{padding:12px 14px!important;}
 }
@@ -153,7 +155,8 @@ $atajos = [
 </div>
 
 {{-- KPIs --}}
-<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:16px">
+<div class="rpt-kpi-scroll">
+<div class="rpt-kpi-grid" style="grid-template-columns:repeat(5,minmax(160px,1fr))">
     <div class="rpt-kpi">
         <div class="rpt-kpi-label">Enviado en período</div>
         <div class="rpt-kpi-value" style="color:#dc2626">{{ fmtM($totalEnviado) }}</div>
@@ -179,6 +182,7 @@ $atajos = [
         <div class="rpt-kpi-value" style="color:#f59e0b">{{ fmtM($cartera->interes_total ?? 0) }}</div>
         <div class="rpt-kpi-sub">Deuda total: {{ fmtM($cartera->deuda_total ?? 0) }}</div>
     </div>
+</div>
 </div>
 
 {{-- Flujo de capital del período --}}
