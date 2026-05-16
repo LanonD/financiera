@@ -26,7 +26,6 @@ foreach ($pagosOrdenados as $pag) {
     }
     $saldoDisplay[$pag->id] = $saldoCorr;
 }
-@endphp
 
 $cobrosEfectivos = $pagos->whereIn('estatus', ['Pagado','Parcial'])
     ->filter(fn($p) => !in_array($p->tipo_pago ?? 'plan', ['congelado','liquidado']));
