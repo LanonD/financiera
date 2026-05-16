@@ -87,7 +87,11 @@ class ClienteController extends Controller
 
     public function show($id)
     {
-        $cliente = Cliente::with('promotor')->findOrFail($id);
+        $adminId = auth()->user()->adminId();
+        $cliente = Cliente::with('promotor')
+            ->where('id', $id)
+            ->where('admin_id', $adminId)
+            ->firstOrFail();
 
         $prestamos = Prestamo::with(['pagos', 'promotor'])
             ->where('cliente_id', $id)
@@ -115,15 +119,20 @@ class ClienteController extends Controller
 
     public function edit($id)
     {
-        $cliente    = Cliente::findOrFail($id);
-        $promotores = Empleado::whereJsonContains('roles', 'promo')->where('activo', true)->get();
+        $adminId    = auth()->user()->adminId();
+        $cliente    = Cliente::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
+        $promotores = Empleado::whereJsonContains('roles', 'promo')
+            ->where('admin_id', $adminId)
+            ->where('activo', true)
+            ->get();
 
         return view('admin.cliente_editar', compact('cliente', 'promotores'));
     }
 
     public function update(Request $request, $id)
     {
-        $cliente = Cliente::findOrFail($id);
+        $adminId = auth()->user()->adminId();
+        $cliente = Cliente::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
 
         $data = $request->validate([
             'nombre'      => 'required|string|max:255',

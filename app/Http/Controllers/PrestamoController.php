@@ -141,7 +141,7 @@ class PrestamoController extends Controller
         $cuota_base  = $num_pagos > 1 ? ceil($monto_retornar / $num_pagos / 10) * 10 : $monto_retornar;
         $ultimo_pago = max(0, round(($monto_retornar - $cuota_base * ($num_pagos - 1)) * 100) / 100);
 
-        $cliente     = Cliente::findOrFail($data['cliente_id']);
+        $cliente     = Cliente::where('id', $data['cliente_id'])->where('admin_id', auth()->user()->adminId())->firstOrFail();
         $promotor_id = $empleado?->id ?? $cliente->promotor_id;
 
         $prestamo = Prestamo::create([
@@ -201,7 +201,11 @@ class PrestamoController extends Controller
 
     public function show($id)
     {
-        $prestamo = Prestamo::with(['cliente', 'promotor', 'cobrador'])->findOrFail($id);
+        $adminId  = auth()->user()->adminId();
+        $prestamo = Prestamo::with(['cliente', 'promotor', 'cobrador'])
+            ->where('id', $id)
+            ->where('admin_id', $adminId)
+            ->firstOrFail();
 
         // Auto-retire pending loans with no disbursement after 5 days
         if ($prestamo->estatus === 'Pendiente' && $prestamo->created_at->diffInDays(now()) >= 5) {
@@ -248,15 +252,23 @@ class PrestamoController extends Controller
 
     public function edit($id)
     {
-        $prestamo   = Prestamo::with(['cliente', 'promotor'])->findOrFail($id);
-        // Include multi-role employees that have 'collector' among their roles
-        $cobradores = Empleado::where('activo', true)->get()->filter(fn($e) => $e->hasRole('collector'))->values();
+        $adminId    = auth()->user()->adminId();
+        $prestamo   = Prestamo::with(['cliente', 'promotor'])
+            ->where('id', $id)
+            ->where('admin_id', $adminId)
+            ->firstOrFail();
+        $cobradores = Empleado::where('admin_id', $adminId)
+            ->where('activo', true)
+            ->get()
+            ->filter(fn($e) => $e->hasRole('collector'))
+            ->values();
         return view('admin.prestamo_editar', compact('prestamo', 'cobradores'));
     }
 
     public function update(Request $request, $id)
     {
-        $prestamo = Prestamo::findOrFail($id);
+        $adminId  = auth()->user()->adminId();
+        $prestamo = Prestamo::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
 
         $data = $request->validate([
             'estatus'         => 'required|in:Pendiente,Activo,Atrasado,Finalizado,Retirado',
@@ -285,7 +297,8 @@ class PrestamoController extends Controller
      */
     public function setMora(Request $request, $id)
     {
-        $prestamo = Prestamo::findOrFail($id);
+        $adminId  = auth()->user()->adminId();
+        $prestamo = Prestamo::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
 
         $data = $request->validate([
             'interes_diario' => 'required|numeric|min:0',
@@ -307,7 +320,8 @@ class PrestamoController extends Controller
      */
     public function updateCampos(Request $request, $id)
     {
-        $prestamo = Prestamo::findOrFail($id);
+        $adminId  = auth()->user()->adminId();
+        $prestamo = Prestamo::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
 
         $data = $request->validate([
             'monto_entregado'   => 'required|numeric|min:0',
@@ -330,7 +344,8 @@ class PrestamoController extends Controller
 
     public function toggleInteres($id)
     {
-        $prestamo = Prestamo::findOrFail($id);
+        $adminId  = auth()->user()->adminId();
+        $prestamo = Prestamo::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
         $prestamo->interes_activo = !$prestamo->interes_activo;
         $prestamo->save();
 
@@ -339,7 +354,8 @@ class PrestamoController extends Controller
 
     public function toggleMora($id)
     {
-        $prestamo = Prestamo::findOrFail($id);
+        $adminId  = auth()->user()->adminId();
+        $prestamo = Prestamo::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
         $prestamo->interes_mora_activo = !$prestamo->interes_mora_activo;
 
         // When activating, record today as the start date for daily accumulation
@@ -362,7 +378,8 @@ class PrestamoController extends Controller
             'fecha_nuevo_inicio' => 'required|date',
         ]);
 
-        $prestamo = Prestamo::findOrFail($id);
+        $adminId  = auth()->user()->adminId();
+        $prestamo = Prestamo::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
 
         $pagosPendientes = Pago::where('prestamo_id', $id)
             ->whereIn('estatus', ['Pendiente', 'Atrasado'])

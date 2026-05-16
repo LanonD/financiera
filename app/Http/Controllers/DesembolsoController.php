@@ -68,7 +68,8 @@ class DesembolsoController extends Controller
             $forma      = $request->input('forma', 'efectivo');
             $nota       = $request->input('nota');
 
-            $prestamo = Prestamo::find($prestamoId);
+            $adminId  = Auth::user()->adminId();
+            $prestamo = Prestamo::where('id', $prestamoId)->where('admin_id', $adminId)->first();
 
             if (!$prestamo) {
                 return response()->json([

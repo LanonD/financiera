@@ -29,7 +29,8 @@ class EmpleadoController extends Controller
 
     public function show($id)
     {
-        $empleado = Empleado::findOrFail($id);
+        $adminId  = auth()->user()->adminId();
+        $empleado = Empleado::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
         $roles    = $empleado->roles ?? [$empleado->puesto];
 
         // Aggregate data for all roles this employee has
@@ -135,7 +136,8 @@ class EmpleadoController extends Controller
 
     public function update(Request $request, $id)
     {
-        $empleado = Empleado::findOrFail($id);
+        $adminId  = auth()->user()->adminId();
+        $empleado = Empleado::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
 
         $request->validate([
             'nombre'    => 'required|string|max:120',
@@ -183,7 +185,8 @@ class EmpleadoController extends Controller
 
     public function destroy($id)
     {
-        $empleado = Empleado::findOrFail($id);
+        $adminId  = auth()->user()->adminId();
+        $empleado = Empleado::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
         $empleado->update(['activo' => false]);
 
         if ($empleado->usuario) {

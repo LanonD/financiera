@@ -161,11 +161,14 @@ class PagoController extends Controller
      */
     public function guardarAsignacion(Request $request)
     {
+        $adminId      = auth()->user()->adminId();
         $asignaciones = $request->input('asignacion', []);
-        $guardados = 0;
+        $guardados    = 0;
 
         foreach ($asignaciones as $prestamoId => $cobradorId) {
-            $prestamo = Prestamo::find($prestamoId);
+            $prestamo = Prestamo::where('id', $prestamoId)
+                ->where('admin_id', $adminId)
+                ->first();
             if (!$prestamo) continue;
             $prestamo->cobrador_id = $cobradorId > 0 ? $cobradorId : null;
             $prestamo->save();
@@ -190,13 +193,16 @@ class PagoController extends Controller
         $user     = Auth::user();
         $empleado = $user->empleado;
 
-        $cobros = $request->json()->all(); // { prestamoId: {tipo, monto, nota} }
+        $adminId = $user->adminId();
+        $cobros  = $request->json()->all(); // { prestamoId: {tipo, monto, nota} }
 
         $registrados = 0;
         $errors      = [];
 
         foreach ($cobros as $prestamoId => $cobro) {
-            $prestamo = Prestamo::find($prestamoId);
+            $prestamo = Prestamo::where('id', $prestamoId)
+                ->where('admin_id', $adminId)
+                ->first();
             if (!$prestamo) { $errors[] = "Préstamo #{$prestamoId} no encontrado"; continue; }
 
             // ── 1. Auto-activate mora and bring interest up to date ─────────────
@@ -318,7 +324,8 @@ class PagoController extends Controller
 
         $user     = Auth::user();
         $empleado = $user->empleado;
-        $prestamo = Prestamo::findOrFail($id);
+        $adminId  = $user->adminId();
+        $prestamo = Prestamo::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
 
         if (!in_array($prestamo->estatus, ['Activo', 'Atrasado'])) {
             return redirect()->back()->with('error', 'Solo se puede registrar un cobro extra en préstamos activos.');
@@ -444,7 +451,8 @@ class PagoController extends Controller
             'nota'  => 'nullable|string|max:255',
         ]);
 
-        $prestamo = Prestamo::findOrFail($id);
+        $adminId  = auth()->user()->adminId();
+        $prestamo = Prestamo::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
 
         if (!in_array($prestamo->estatus, ['Activo', 'Atrasado'])) {
             return redirect()->back()->with('error', 'Solo se puede agendar un cobro en préstamos activos.');
@@ -481,7 +489,8 @@ class PagoController extends Controller
      */
     public function togglePaymentHold(Request $request, $id)
     {
-        $prestamo = Prestamo::findOrFail($id);
+        $adminId  = auth()->user()->adminId();
+        $prestamo = Prestamo::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
 
         if (!in_array($prestamo->estatus, ['Activo', 'Atrasado'])) {
             return redirect()->back()->with('error', 'El préstamo no está activo.');
@@ -582,7 +591,8 @@ class PagoController extends Controller
             return redirect()->back()->with('error', 'Tu cuenta no tiene un perfil de empleado asociado.');
         }
 
-        $prestamo = Prestamo::findOrFail($id);
+        $adminId  = $user->adminId();
+        $prestamo = Prestamo::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
 
         // Promo solo puede asignarse a sus propios préstamos
         if ($user->puesto === 'promo' && $prestamo->promotor_id !== $empleado->id) {
@@ -614,7 +624,8 @@ class PagoController extends Controller
 
         $user     = Auth::user();
         $empleado = $user->empleado;
-        $prestamo = Prestamo::findOrFail($prestamoId);
+        $adminId  = $user->adminId();
+        $prestamo = Prestamo::where('id', $prestamoId)->where('admin_id', $adminId)->firstOrFail();
 
         // Verify the pago belongs to this prestamo and is payable
         $pago = Pago::where('id', $request->pago_id)
