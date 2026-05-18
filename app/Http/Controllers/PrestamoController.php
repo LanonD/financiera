@@ -145,6 +145,12 @@ class PrestamoController extends Controller
         $cliente     = Cliente::where('id', $data['cliente_id'])->where('admin_id', auth()->user()->adminId())->firstOrFail();
         $promotor_id = $empleado?->id ?? $cliente->promotor_id;
 
+        // ── Disbursement (optional) ───────────────────────────────────────
+        $desembolsar   = $request->boolean('desembolsar');
+        $forma_entrega = $desembolsar ? $request->input('forma_entrega') : null;
+        $fecha_entrega = $desembolsar ? $request->input('fecha_entrega') : null;
+        $nota_entrega  = $desembolsar ? $request->input('nota_entrega')  : null;
+
         $prestamo = Prestamo::create([
             'admin_id'            => auth()->user()->adminId(),
             'cliente_id'          => $data['cliente_id'],
@@ -162,10 +168,11 @@ class PrestamoController extends Controller
             'interes_mora_activo' => false,
             'fecha_inicio'        => $fecha_inicio,
             'fecha_fin'           => Carbon::parse($fecha_primer_cobro)->addDays($dias * ($num_pagos - 1))->toDateString(),
-            'estatus'             => 'Pendiente',
+            'estatus'             => $desembolsar ? 'Activo' : 'Pendiente',
             'monto_entregado'     => $monto_entregado,
-            'forma_entrega'       => null,
-            'fecha_entrega'       => null,
+            'forma_entrega'       => $forma_entrega,
+            'fecha_entrega'       => $fecha_entrega,
+            'nota_entrega'        => $nota_entrega,
         ]);
 
         // Create payment schedule — interest-first: all interest collected before principal
@@ -203,7 +210,15 @@ class PrestamoController extends Controller
             ['monto_entregado' => $monto_entregado, 'monto_retornar' => $monto_retornar, 'num_pagos' => $num_pagos, 'frecuencia' => $frecuencia]
         );
 
-        return redirect()->route('prestamos.show', $prestamo->id)->with('success', 'Préstamo creado correctamente.');
+        if ($desembolsar) {
+            PrestamoActividad::log($prestamo->id, 'desembolso',
+                'Desembolsado al momento de la creación. Forma: ' . ($forma_entrega ?? 'no especificada'),
+                ['forma_entrega' => $forma_entrega, 'fecha_entrega' => $fecha_entrega]
+            );
+        }
+
+        $msg = $desembolsar ? 'Préstamo creado y desembolsado correctamente.' : 'Préstamo creado correctamente.';
+        return redirect()->route('prestamos.show', $prestamo->id)->with('success', $msg);
     }
 
     public function show($id)
