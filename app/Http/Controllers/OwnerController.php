@@ -24,26 +24,52 @@ class OwnerController extends Controller
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function (User $u) {
+
+                $empleados = Empleado::where('admin_id', $u->id)
+                    ->where('activo', true)
+                    ->orderBy('nombre')
+                    ->get();
+
+                $clientes = Cliente::where('admin_id', $u->id)
+                    ->where('activo', true)
+                    ->orderBy('nombre')
+                    ->get();
+
+                $prestamos = Prestamo::where('admin_id', $u->id)
+                    ->whereIn('estatus', ['Activo', 'Atrasado'])
+                    ->orderBy('created_at', 'desc')
+                    ->get();
+
                 $u->stats = [
-                    'empleados' => Empleado::where('admin_id', $u->id)->where('activo', true)->count(),
-                    'clientes'  => Cliente::where('admin_id', $u->id)->where('activo', true)->count(),
-                    'prestamos' => Prestamo::where('admin_id', $u->id)->whereIn('estatus', ['Activo', 'Atrasado'])->count(),
+                    'empleados' => $empleados->count(),
+                    'clientes'  => $clientes->count(),
+                    'prestamos' => $prestamos->count(),
                 ];
-                $u->notas = AdminNota::where('admin_id', $u->id)->orderBy('created_at', 'desc')->get();
+
+                $u->detalle = [
+                    'empleados' => $empleados,
+                    'clientes'  => $clientes,
+                    'prestamos' => $prestamos,
+                ];
+
+                $u->notas = AdminNota::where('admin_id', $u->id)
+                    ->orderBy('created_at', 'desc')
+                    ->get();
+
                 return $u;
             });
 
         $totales = [
-            'total'    => $admins->count(),
-            'activos'  => $admins->where('activo', true)->count(),
-            'inactivos'=> $admins->where('activo', false)->count(),
+            'total'     => $admins->count(),
+            'activos'   => $admins->where('activo', true)->count(),
+            'inactivos' => $admins->where('activo', false)->count(),
         ];
 
         return view('owner.dashboard', compact('admins', 'totales'));
     }
 
     /**
-     * Formulario para crear un nuevo admin (vista inline en dashboard).
+     * Mostrar el formulario para crear un nuevo admin.
      */
     public function create()
     {
@@ -56,12 +82,12 @@ class OwnerController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'usuario'      => 'required|string|max:60|unique:users,usuario',
-            'nombre'       => 'nullable|string|max:120',
-            'alias'        => 'nullable|string|max:80',
-            'password'     => 'required|string|min:6|confirmed',
-            'celular'      => 'nullable|string|max:20',
-            'presupuesto'  => 'nullable|numeric|min:0',
+            'usuario'     => 'required|string|max:60|unique:users,usuario',
+            'nombre'      => 'nullable|string|max:120',
+            'alias'       => 'nullable|string|max:80',
+            'password'    => 'required|string|min:6|confirmed',
+            'celular'     => 'nullable|string|max:20',
+            'presupuesto' => 'nullable|numeric|min:0',
         ]);
 
         User::create([
@@ -94,8 +120,14 @@ class OwnerController extends Controller
             'presupuesto' => 'nullable|numeric|min:0',
         ]);
 
-        if ($request->filled('nombre'))   $user->nombre      = $request->nombre;
-        if ($request->filled('usuario'))  $user->usuario     = $request->usuario;
+        if ($request->filled('nombre')) {
+            $user->nombre = $request->nombre;
+        }
+
+        if ($request->filled('usuario')) {
+            $user->usuario = $request->usuario;
+        }
+
         $user->alias       = $request->alias ?? null;
         $user->celular     = $request->celular;
         $user->presupuesto = $request->presupuesto ?? 0;
@@ -129,8 +161,8 @@ class OwnerController extends Controller
         $user = Auth::user();
 
         $validator = Validator::make($request->all(), [
-            'current_password'  => 'required',
-            'password'          => 'required|string|min:6|confirmed',
+            'current_password' => 'required',
+            'password'         => 'required|string|min:6|confirmed',
         ], [
             'current_password.required' => 'Ingresa tu contraseña actual.',
             'password.required'         => 'Ingresa la nueva contraseña.',
@@ -192,6 +224,7 @@ class OwnerController extends Controller
     public function destroy(int $id)
     {
         $user = User::where('id', $id)->where('puesto', 'admin')->firstOrFail();
+
         $nombre = $user->usuario;
         $user->delete();
 
@@ -226,6 +259,7 @@ class OwnerController extends Controller
     public function destroyNota(int $id, AdminNota $nota)
     {
         abort_if($nota->admin_id !== $id, 404);
+
         $nota->delete();
 
         return redirect()->route('owner.dashboard')

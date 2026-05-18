@@ -37,7 +37,7 @@
 /* Modal */
 .ow-modal-overlay{display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);backdrop-filter:blur(6px);z-index:1000;align-items:center;justify-content:center}
 .ow-modal-overlay.open{display:flex}
-.ow-modal{background:#fff;border-radius:18px;width:440px;max-width:calc(100vw - 24px);box-shadow:0 20px 60px rgba(0,0,0,.18);overflow:hidden}
+.ow-modal{background:#fff;border-radius:18px;width:440px;max-width:calc(100vw - 24px);box-shadow:0 20px 60px rgba(0,0,0,.18);overflow:hidden; max-height:90vh; overflow-y:auto;}
 .ow-modal-header{padding:22px 28px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
 .ow-modal-title{font-size:17px;font-weight:700}
 .ow-modal-close{background:#f1f5f9;border:none;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:18px;color:var(--text3);display:flex;align-items:center;justify-content:center}
@@ -164,6 +164,8 @@
         $fechaAlta = $admin->created_at?->format('d/m/Y') ?? '—';
     @endphp
     <div class="ow-list-row {{ !$admin->activo ? 'ow-inactive' : '' }}"
+     onclick="abrirDetalleAdmin({{ $admin->id }})"
+     style="cursor:pointer"
          data-search="{{ strtolower($admin->usuario . ' ' . ($admin->nombre ?? '') . ' ' . ($admin->alias ?? '') . ' ' . ($admin->celular ?? '')) }}">
 
         {{-- Nombre / usuario --}}
@@ -241,7 +243,7 @@
         </div>
 
         {{-- Acciones --}}
-        <div class="ow-row-actions">
+        <div class="ow-row-actions" onclick="event.stopPropagation()">
             {{-- Notas --}}
             <button type="button" class="btn btn-sm"
                 style="background:#faf5ff;color:#7c3aed"
@@ -315,6 +317,31 @@
     <div class="ow-nota-empty"></div>
     @endforelse
 </div>
+@endforeach
+
+{{-- ── Contenedores de detalle de admin (ocultos, usados por el modal) ── --}}
+@foreach($admins as $admin)
+<script type="application/json" id="detalle-admin-{{ $admin->id }}">
+{!! json_encode([
+    'nombre' => $admin->alias ?: ($admin->nombre ?: $admin->celular),
+
+    'empleados' => collect($admin->detalle['empleados'] ?? [])->map(fn($e) => [
+        'nombre' => $e->nombre ?? 'Sin nombre',
+        'celular' => $e->celular ?? '—',
+    ])->values(),
+
+    'clientes' => collect($admin->detalle['clientes'] ?? [])->map(fn($c) => [
+        'nombre' => $c->nombre ?? 'Sin nombre',
+        'celular' => $c->celular ?? '—',
+    ])->values(),
+
+    'prestamos' => collect($admin->detalle['prestamos'] ?? [])->map(fn($p) => [
+        'monto' => '$' . number_format($p->monto ?? 0, 2),
+        'estatus' => $p->estatus ?? '—',
+    ])->values(),
+
+], JSON_UNESCAPED_UNICODE) !!}
+</script>
 @endforeach
 
 {{-- ── Modal: Notas de administrador ─────────────────────── --}}
@@ -508,6 +535,22 @@
     </div>
 </div>
 
+<div class="ow-modal-overlay" id="modalDetalleAdmin">
+    <div class="ow-modal" style="width:720px">
+        <div class="ow-modal-header">
+            <div>
+                <div class="ow-modal-title">Detalle del administrador</div>
+                <div style="font-size:12px;color:var(--text3);margin-top:2px">
+                    Admin: <strong id="detalleAdminNombre">—</strong>
+                </div>
+            </div>
+            <button class="ow-modal-close" onclick="cerrarDetalleAdmin()">&times;</button>
+        </div>
+
+        <div class="ow-modal-body" id="detalleAdminBody"></div>
+    </div>
+</div>
+
 @push('scripts')
 <script>
 // ── Buscador en tiempo real ──────────────────────────────────
@@ -661,6 +704,59 @@ function submitOnce(form) {
     if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
     return true;
 }
+
+function abrirDetalleAdmin(adminId) {
+    const script = document.getElementById('detalle-admin-' + adminId);
+    if (!script) return;
+
+    const data = JSON.parse(script.textContent);
+
+    document.getElementById('detalleAdminNombre').textContent = data.nombre;
+
+    const body = document.getElementById('detalleAdminBody');
+
+    body.innerHTML = `
+        ${renderSeccion('Empleados', data.empleados, ['nombre', 'celular'])}
+        ${renderSeccion('Clientes', data.clientes, ['nombre', 'celular'])}
+        ${renderSeccion('Préstamos', data.prestamos, ['monto', 'estatus'])}
+    `;
+
+    document.getElementById('modalDetalleAdmin').classList.add('open');
+}
+
+function cerrarDetalleAdmin() {
+    document.getElementById('modalDetalleAdmin').classList.remove('open');
+}
+
+function renderSeccion(titulo, items, campos) {
+    if (!items || items.length === 0) {
+        return `
+            <div style="border:1px solid var(--border);border-radius:12px;padding:14px">
+                <strong>${titulo}</strong>
+                <p style="font-size:13px;color:var(--text3);margin-top:8px">Sin registros.</p>
+            </div>
+        `;
+    }
+
+    let rows = items.map(item => `
+        <tr>
+            ${campos.map(c => `<td style="padding:8px;border-bottom:1px solid var(--border);font-size:13px">${escHtml(String(item[c] ?? '—'))}</td>`).join('')}
+        </tr>
+    `).join('');
+
+    return `
+        <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">
+            <div style="padding:12px 14px;background:#f9fafb;font-weight:700">${titulo}</div>
+            <table style="width:100%;border-collapse:collapse">
+                <tbody>${rows}</tbody>
+            </table>
+        </div>
+    `;
+}
+
+document.getElementById('modalDetalleAdmin').addEventListener('click', function(e) {
+    if (e.target === this) cerrarDetalleAdmin();
+});
 </script>
 @endpush
 

@@ -79,4 +79,20 @@ class User extends Authenticatable
             default       => 'dashboard',
         };
     }
+    // Obtener datos para el dashboard administrador
+    
+    public function empleados()
+    {
+        return $this->hasMany(User::class, 'admin_id');
+    }
+
+    public function clientes()
+    {
+        return $this->hasMany(Cliente::class, 'admin_id');
+    }
+
+    public function prestamos()
+    {
+        return $this->hasMany(Prestamo::class, 'admin_id');
+    }
 }
