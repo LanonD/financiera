@@ -122,7 +122,7 @@
 $activoMap = $clientesConPrestamo->toArray();
 @endphp
 
-<form method="POST" action="{{ route('prestamos.store') }}" id="formNuevo" onsubmit="return manejarSubmit(event)">
+<form method="POST" action="{{ route('prestamos.store') }}" id="formNuevo" enctype="multipart/form-data" onsubmit="return manejarSubmit(event)">
 @csrf
 
 @if($errors->has('cliente_id'))
@@ -275,7 +275,7 @@ $activoMap = $clientesConPrestamo->toArray();
                 </div>
 
                 {{-- Disbursement fields (hidden by default) --}}
-                <div id="desembolsoFields" style="display:none;margin-top:14px;display:none;flex-direction:column;gap:12px">
+                <div id="desembolsoFields" style="display:none;margin-top:14px;flex-direction:column;gap:12px">
                     <div>
                         <label class="np-label">Forma de entrega</label>
                         <select name="forma_entrega" class="np-select">
@@ -296,6 +296,45 @@ $activoMap = $clientesConPrestamo->toArray();
                         <textarea name="nota_entrega" rows="2"
                                   style="width:100%;padding:9px 12px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-family:var(--font);font-size:13px;outline:none;resize:vertical;box-sizing:border-box"
                                   placeholder="Observaciones…"></textarea>
+                    </div>
+
+                    {{-- Documentos --}}
+                    <div style="border-top:1px solid var(--border);padding-top:12px;display:flex;flex-direction:column;gap:10px">
+                        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Documentos del desembolso</div>
+
+                        @php $docStyle = 'width:100%;padding:7px 10px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-family:var(--font);font-size:12px;color:var(--text);cursor:pointer;box-sizing:border-box'; @endphp
+
+                        <div>
+                            <label class="np-label">INE / Identificación <span style="color:#ef4444">*</span></label>
+                            <input type="file" name="doc_ine" id="docIne" accept=".jpg,.jpeg,.png,.pdf"
+                                   style="{{ $docStyle }}" onchange="previewDoc(this,'prevIne')">
+                            <div id="prevIne" style="display:none;margin-top:6px"></div>
+                            <div class="np-hint">JPG, PNG o PDF — máx. 10 MB</div>
+                        </div>
+
+                        <div>
+                            <label class="np-label">Pagaré <span style="color:#ef4444">*</span></label>
+                            <input type="file" name="doc_pagare" id="docPagare" accept=".jpg,.jpeg,.png,.pdf"
+                                   style="{{ $docStyle }}" onchange="previewDoc(this,'prevPagare')">
+                            <div id="prevPagare" style="display:none;margin-top:6px"></div>
+                            <div class="np-hint">JPG, PNG o PDF — máx. 10 MB</div>
+                        </div>
+
+                        <div>
+                            <label class="np-label">Comprobante de domicilio <span style="color:#ef4444">*</span></label>
+                            <input type="file" name="doc_comprobante" id="docComprobante" accept=".jpg,.jpeg,.png,.pdf"
+                                   style="{{ $docStyle }}" onchange="previewDoc(this,'prevComprobante')">
+                            <div id="prevComprobante" style="display:none;margin-top:6px"></div>
+                            <div class="np-hint">JPG, PNG o PDF — máx. 10 MB</div>
+                        </div>
+
+                        <div>
+                            <label class="np-label">Foto de domicilio <span style="color:var(--text3);font-weight:400">(opcional)</span></label>
+                            <input type="file" name="doc_foto_domicilio" id="docFoto" accept=".jpg,.jpeg,.png"
+                                   style="{{ $docStyle }}" onchange="previewDoc(this,'prevFoto')">
+                            <div id="prevFoto" style="display:none;margin-top:6px"></div>
+                            <div class="np-hint">Solo imágenes — máx. 10 MB</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -540,6 +579,27 @@ function calcPreview() {
     }
     document.getElementById('pvTablaBody').innerHTML = rows;
     checkCanSubmit();
+}
+
+function previewDoc(input, previewId) {
+    const container = document.getElementById(previewId);
+    const file = input.files[0];
+    if (!file) { container.style.display = 'none'; container.innerHTML = ''; return; }
+    const isPdf = file.name.toLowerCase().endsWith('.pdf');
+    const sizeMb = (file.size / 1024 / 1024).toFixed(1);
+    if (isPdf) {
+        container.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:12px;color:#15803d">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="1" width="12" height="14" rx="1.5"/><path d="M5 5h6M5 8h6M5 11h4"/></svg>
+            ${file.name} <span style="color:var(--text3)">(${sizeMb} MB)</span></div>`;
+    } else {
+        const reader = new FileReader();
+        reader.onload = e => {
+            container.innerHTML = `<img src="${e.target.result}" style="max-width:100%;max-height:120px;border-radius:6px;border:1px solid var(--border);object-fit:cover">
+                <div style="font-size:11px;color:var(--text3);margin-top:3px">${file.name} · ${sizeMb} MB</div>`;
+        };
+        reader.readAsDataURL(file);
+    }
+    container.style.display = '';
 }
 
 function toggleDesembolso() {

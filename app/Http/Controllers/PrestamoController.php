@@ -98,7 +98,9 @@ class PrestamoController extends Controller
 
     public function store(Request $request)
     {
-        $data = $request->validate([
+        $desembolsar = $request->boolean('desembolsar');
+
+        $rules = [
             'cliente_id'          => 'required|exists:clientes,id',
             'monto_entregado'     => 'required|numeric|min:1',
             'monto_retornar'      => 'required|numeric|min:1',
@@ -107,7 +109,18 @@ class PrestamoController extends Controller
             // Allow up to 7 days in the past to support offline sync
             'fecha_inicio'        => 'required|date|after_or_equal:' . now()->subDays(7)->toDateString(),
             'fecha_primer_cobro'  => 'required|date|after_or_equal:' . now()->subDays(7)->toDateString(),
-        ]);
+        ];
+
+        if ($desembolsar) {
+            $rules += [
+                'doc_ine'           => 'required|file|mimes:jpg,jpeg,png,pdf|max:10240',
+                'doc_pagare'        => 'required|file|mimes:jpg,jpeg,png,pdf|max:10240',
+                'doc_comprobante'   => 'required|file|mimes:jpg,jpeg,png,pdf|max:10240',
+                'doc_foto_domicilio'=> 'nullable|file|mimes:jpg,jpeg,png|max:10240',
+            ];
+        }
+
+        $data = $request->validate($rules);
 
         $user     = Auth::user();
         $empleado = $user->empleado;
@@ -146,10 +159,18 @@ class PrestamoController extends Controller
         $promotor_id = $empleado?->id ?? $cliente->promotor_id;
 
         // ── Disbursement (optional) ───────────────────────────────────────
-        $desembolsar   = $request->boolean('desembolsar');
-        $forma_entrega = $desembolsar ? $request->input('forma_entrega') : null;
-        $fecha_entrega = $desembolsar ? $request->input('fecha_entrega') : null;
-        $nota_entrega  = $desembolsar ? $request->input('nota_entrega')  : null;
+        $forma_entrega   = $desembolsar ? $request->input('forma_entrega') : null;
+        $fecha_entrega   = $desembolsar ? $request->input('fecha_entrega') : null;
+        $nota_entrega    = $desembolsar ? $request->input('nota_entrega')  : null;
+        $doc_ine         = null;
+        $doc_pagare      = null;
+        $doc_comprobante = null;
+        $doc_foto        = null;
+
+        if ($desembolsar) {
+            $prestamoIdTemp = 'tmp_' . time(); // placeholder; real ID used after create
+            // We store docs after creating the prestamo to have its real ID
+        }
 
         $prestamo = Prestamo::create([
             'admin_id'            => auth()->user()->adminId(),
@@ -174,6 +195,27 @@ class PrestamoController extends Controller
             'fecha_entrega'       => $fecha_entrega,
             'nota_entrega'        => $nota_entrega,
         ]);
+
+        // ── Save uploaded documents now that we have the real prestamo ID ─────
+        if ($desembolsar && $request->hasFile('doc_ine')) {
+            $carpeta = public_path('documentos/prestamo_' . $prestamo->id);
+            if (!file_exists($carpeta)) mkdir($carpeta, 0775, true);
+
+            $guardar = function (string $campo, string $prefijo) use ($request, $carpeta, $prestamo): ?string {
+                if (!$request->hasFile($campo)) return null;
+                $file = $request->file($campo);
+                if (!$file->isValid()) return null;
+                $nombre = $prefijo . '_' . time() . '_' . uniqid() . '.' . strtolower($file->getClientOriginalExtension());
+                $file->move($carpeta, $nombre);
+                return 'documentos/prestamo_' . $prestamo->id . '/' . $nombre;
+            };
+
+            $prestamo->doc_ine            = $guardar('doc_ine', 'ine');
+            $prestamo->doc_pagare         = $guardar('doc_pagare', 'pagare');
+            $prestamo->doc_comprobante    = $guardar('doc_comprobante', 'comprobante');
+            $prestamo->doc_foto_domicilio = $guardar('doc_foto_domicilio', 'foto_domicilio');
+            $prestamo->save();
+        }
 
         // Create payment schedule — interest-first: all interest collected before principal
         $interes_restante = round($monto_retornar - $monto_entregado, 2);
