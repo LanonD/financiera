@@ -24,10 +24,16 @@
         <h2 style="font-size:20px;font-weight:700;margin-bottom:4px">{{ $puesto === 'promo' ? 'Mis clientes' : 'Todos los clientes' }}</h2>
         <p style="color:var(--text2);font-size:13px">Gestión de clientes del sistema</p>
     </div>
-    <a href="{{ route('clientes.create') }}" class="btn btn-primary">
-        <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:13px;height:13px"><path d="M7 2v10M2 7h10"/></svg>
-        Nuevo cliente
-    </a>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a href="{{ route('clientes.create') }}" class="btn" style="background:#f3f4f6;color:var(--text)">
+            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:13px;height:13px"><path d="M7 2v10M2 7h10"/></svg>
+            Solo cliente
+        </a>
+        <a href="{{ route('clientes.create_with_prestamo') }}" class="btn btn-primary">
+            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:13px;height:13px"><path d="M7 2v10M2 7h10"/></svg>
+            Cliente + préstamo
+        </a>
+    </div>
 </div>
 
 @if(session('success'))

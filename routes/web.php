@@ -47,12 +47,14 @@ Route::middleware(['auth', 'role:admin'])->group(function () {
 // ── Admin + Promo: clientes, préstamos, cobros asignar, búsqueda ─────
 Route::middleware(['auth', 'role:admin,promo'])->group(function () {
     // Clientes
-    Route::get('/clientes',               [ClienteController::class, 'index'])->name('clientes.index');
-    Route::get('/clientes/crear',         [ClienteController::class, 'create'])->name('clientes.create');
-    Route::post('/clientes',              [ClienteController::class, 'store'])->name('clientes.store');
-    Route::get('/clientes/{id}',          [ClienteController::class, 'show'])->name('clientes.show');
-    Route::get('/clientes/{id}/editar',   [ClienteController::class, 'edit'])->name('clientes.edit');
-    Route::put('/clientes/{id}',          [ClienteController::class, 'update'])->name('clientes.update');
+    Route::get('/clientes',                       [ClienteController::class, 'index'])->name('clientes.index');
+    Route::get('/clientes/crear',                 [ClienteController::class, 'create'])->name('clientes.create');
+    Route::post('/clientes',                      [ClienteController::class, 'store'])->name('clientes.store');
+    Route::get('/clientes/nuevo-con-prestamo',    [ClienteController::class, 'createWithPrestamo'])->name('clientes.create_with_prestamo');
+    Route::post('/clientes/nuevo-con-prestamo',   [ClienteController::class, 'storeWithPrestamo'])->name('clientes.store_with_prestamo');
+    Route::get('/clientes/{id}',                  [ClienteController::class, 'show'])->name('clientes.show');
+    Route::get('/clientes/{id}/editar',           [ClienteController::class, 'edit'])->name('clientes.edit');
+    Route::put('/clientes/{id}',                  [ClienteController::class, 'update'])->name('clientes.update');
 
     // Préstamos
     Route::get('/prestamos',                                     [PrestamoController::class, 'index'])->name('prestamos.index');
