@@ -258,12 +258,54 @@ $activoMap = $clientesConPrestamo->toArray();
                 <div class="np-hint" id="hintPrimerCobro">Se calcula automáticamente según la frecuencia — puedes ajustarlo</div>
             </div>
 
+            {{-- Desembolso toggle ──────────────────────────────────────── --}}
+            <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:2px">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:0" id="togDesembolsoRow">
+                    <label style="position:relative;width:38px;height:21px;flex-shrink:0;cursor:pointer">
+                        <input type="checkbox" id="togDesembolso" name="desembolsar" value="1"
+                               onchange="toggleDesembolso()" style="opacity:0;width:0;height:0">
+                        <span id="togSlider" style="position:absolute;cursor:pointer;inset:0;background:#d1d5db;border-radius:21px;transition:.2s">
+                            <span id="togKnob" style="position:absolute;width:15px;height:15px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.2s;display:block"></span>
+                        </span>
+                    </label>
+                    <div>
+                        <div style="font-size:12px;font-weight:600;color:var(--text)">Desembolsar ahora</div>
+                        <div style="font-size:11px;color:var(--text3)" id="togDesembolsoHint">Activa para entregar el dinero al crear el préstamo</div>
+                    </div>
+                </div>
+
+                {{-- Disbursement fields (hidden by default) --}}
+                <div id="desembolsoFields" style="display:none;margin-top:14px;display:none;flex-direction:column;gap:12px">
+                    <div>
+                        <label class="np-label">Forma de entrega</label>
+                        <select name="forma_entrega" class="np-select">
+                            <option value="">— Seleccionar —</option>
+                            @foreach(['Efectivo','Transferencia','Cheque','Depósito','Otro'] as $fe)
+                            <option value="{{ $fe }}">{{ $fe }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label class="np-label">Fecha de entrega</label>
+                        <input type="date" name="fecha_entrega" id="inFechaEntrega"
+                               class="np-input" value="{{ date('Y-m-d') }}"
+                               style="font-family:var(--font)">
+                    </div>
+                    <div>
+                        <label class="np-label">Nota de entrega</label>
+                        <textarea name="nota_entrega" rows="2"
+                                  style="width:100%;padding:9px 12px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-family:var(--font);font-size:13px;outline:none;resize:vertical;box-sizing:border-box"
+                                  placeholder="Observaciones…"></textarea>
+                    </div>
+                </div>
+            </div>
+
             {{-- Buttons --}}
             <div style="display:flex;gap:10px;padding-top:4px">
                 <a href="{{ route('prestamos.index') }}" class="btn" style="background:#f3f4f6;color:var(--text);flex:1;text-align:center;justify-content:center">Cancelar</a>
                 <button type="submit" class="btn btn-primary" id="btnCrear" style="flex:2;justify-content:center" disabled>
                     <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 2v10M2 7h10"/></svg>
-                    Crear préstamo
+                    <span id="btnCrearLabel">Crear préstamo</span>
                 </button>
             </div>
 
@@ -498,6 +540,23 @@ function calcPreview() {
     }
     document.getElementById('pvTablaBody').innerHTML = rows;
     checkCanSubmit();
+}
+
+function toggleDesembolso() {
+    const on     = document.getElementById('togDesembolso').checked;
+    const fields = document.getElementById('desembolsoFields');
+    const slider = document.getElementById('togSlider');
+    const knob   = document.getElementById('togKnob');
+    const hint   = document.getElementById('togDesembolsoHint');
+    const lbl    = document.getElementById('btnCrearLabel');
+
+    fields.style.display  = on ? 'flex' : 'none';
+    slider.style.background = on ? 'var(--accent)' : '#d1d5db';
+    knob.style.transform    = on ? 'translateX(17px)' : 'translateX(0)';
+    hint.textContent  = on
+        ? 'El préstamo quedará en estatus Activo al guardar'
+        : 'Activa para entregar el dinero al crear el préstamo';
+    lbl.textContent   = on ? 'Crear y desembolsar' : 'Crear préstamo';
 }
 
 function checkCanSubmit() {
