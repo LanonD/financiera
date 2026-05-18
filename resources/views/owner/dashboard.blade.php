@@ -21,9 +21,9 @@
 
 /* List table */
 .ow-list-wrap{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
-.ow-list-header{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr auto;gap:0;padding:9px 18px;background:#f9fafb;border-bottom:1px solid var(--border)}
+.ow-list-header{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr auto;gap:0;padding:9px 18px;background:#f9fafb;border-bottom:1px solid var(--border)}
 .ow-list-hcell{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)}
-.ow-list-row{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr auto;gap:0;padding:13px 18px;border-bottom:1px solid var(--border);align-items:center;transition:background .1s}
+.ow-list-row{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr auto;gap:0;padding:13px 18px;border-bottom:1px solid var(--border);align-items:center;transition:background .1s}
 .ow-list-row:last-child{border-bottom:none}
 .ow-list-row:hover{background:#f9fafb}
 .ow-list-row.ow-inactive{opacity:.6}
@@ -71,6 +71,7 @@
     .ow-list-header{display:none}
     .ow-list-row{grid-template-columns:1fr auto;gap:8px}
     .ow-list-row > .ow-row-cell:not(:first-child):not(:last-child){display:none}
+    .ow-col-alias{display:none}
     .ow-modal{border-radius:14px!important;}
     .ow-modal-body{padding:18px 18px!important;}
     .ow-modal-header{padding:18px 18px!important;}
@@ -146,6 +147,7 @@
     {{-- Column headers --}}
     <div class="ow-list-header">
         <div class="ow-list-hcell">Administrador</div>
+        <div class="ow-list-hcell ow-col-alias">Alias</div>
         <div class="ow-list-hcell">Teléfono</div>
         <div class="ow-list-hcell">Presupuesto</div>
         <div class="ow-list-hcell">Empleados / Clientes</div>
@@ -162,19 +164,26 @@
         $fechaAlta = $admin->created_at?->format('d/m/Y') ?? '—';
     @endphp
     <div class="ow-list-row {{ !$admin->activo ? 'ow-inactive' : '' }}"
-         data-search="{{ strtolower($admin->usuario . ' ' . ($admin->nombre ?? '') . ' ' . ($admin->celular ?? '')) }}">
+         data-search="{{ strtolower($admin->usuario . ' ' . ($admin->nombre ?? '') . ' ' . ($admin->alias ?? '') . ' ' . ($admin->celular ?? '')) }}">
 
         {{-- Nombre / usuario --}}
         <div style="display:flex;align-items:center;gap:12px">
             <div class="ow-avatar" style="background:{{ $color }}">{{ $initial }}</div>
             <div>
                 <div class="ow-row-name">{{ $admin->nombre ?: $admin->usuario }}</div>
-                @if($admin->nombre)
                 <div class="ow-row-sub">@{{ $admin->usuario }} &nbsp;·&nbsp; Alta: {{ $fechaAlta }}</div>
-                @else
-                <div class="ow-row-sub">Alta: {{ $fechaAlta }}</div>
-                @endif
             </div>
+        </div>
+
+        {{-- Alias --}}
+        <div class="ow-row-cell ow-col-alias">
+            @if($admin->alias)
+            <span style="display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;background:#f3f4f6;font-size:12px;font-weight:600;color:var(--text2)">
+                {{ $admin->alias }}
+            </span>
+            @else
+            <span style="color:var(--text3);font-size:12px">—</span>
+            @endif
         </div>
 
         {{-- Teléfono --}}
@@ -238,7 +247,7 @@
             <button type="button" class="btn btn-sm"
                 style="background:#f1f5f9;color:var(--text2)"
                 title="Editar"
-                onclick="abrirEditarAdmin({{ $admin->id }}, '{{ addslashes($admin->usuario) }}', '{{ addslashes($admin->nombre ?? '') }}', '{{ addslashes($admin->celular ?? '') }}', '{{ $admin->presupuesto }}')">
+                onclick="abrirEditarAdmin({{ $admin->id }}, '{{ addslashes($admin->usuario) }}', '{{ addslashes($admin->nombre ?? '') }}', '{{ addslashes($admin->alias ?? '') }}', '{{ addslashes($admin->celular ?? '') }}', '{{ $admin->presupuesto }}')">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:13px;height:13px"><path d="M11 2l3 3-8 8H3v-3l8-8z"/></svg>
                 Editar
             </button>
@@ -399,6 +408,10 @@
                     <input type="text" name="nombre" id="edit_nombre_admin" placeholder="ej. Juan Pérez" autocomplete="off">
                 </div>
                 <div class="ow-field">
+                    <label>Alias <span style="font-weight:400;color:var(--text3)">(apodo interno)</span></label>
+                    <input type="text" name="alias" id="edit_alias_admin" placeholder="ej. El Gordo, Zona Norte…" autocomplete="off" maxlength="80">
+                </div>
+                <div class="ow-field">
                     <label>Usuario (login)</label>
                     <input type="text" name="usuario" id="edit_usuario_admin" placeholder="nombre de usuario" autocomplete="off">
                 </div>
@@ -444,6 +457,11 @@
                     <label>Nombre completo</label>
                     <input type="text" name="nombre" value="{{ old('nombre') }}"
                            placeholder="ej. Juan Pérez" autocomplete="off">
+                </div>
+                <div class="ow-field">
+                    <label>Alias <span style="font-weight:400;color:var(--text3)">(apodo interno)</span></label>
+                    <input type="text" name="alias" value="{{ old('alias') }}"
+                           placeholder="ej. El Gordo, Zona Norte…" autocomplete="off" maxlength="80">
                 </div>
                 <div class="ow-field">
                     <label>Nombre de usuario *</label>
@@ -584,9 +602,10 @@ document.getElementById('modalCrear').addEventListener('click', function(e) {
 // ── Modal Editar Admin ───────────────────────────────────
 const EDIT_BASE = '{{ url("owner/admins") }}/';
 
-function abrirEditarAdmin(adminId, usuario, nombre, celular, presupuesto) {
+function abrirEditarAdmin(adminId, usuario, nombre, alias, celular, presupuesto) {
     document.getElementById('editAdminLabel').textContent      = usuario;
     document.getElementById('edit_nombre_admin').value        = nombre || '';
+    document.getElementById('edit_alias_admin').value         = alias || '';
     document.getElementById('edit_usuario_admin').value       = usuario || '';
     document.getElementById('edit_celular').value             = celular || '';
     document.getElementById('edit_presupuesto').value         = presupuesto || 0;

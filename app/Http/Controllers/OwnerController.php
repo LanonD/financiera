@@ -58,6 +58,7 @@ class OwnerController extends Controller
         $data = $request->validate([
             'usuario'      => 'required|string|max:60|unique:users,usuario',
             'nombre'       => 'nullable|string|max:120',
+            'alias'        => 'nullable|string|max:80',
             'password'     => 'required|string|min:6|confirmed',
             'celular'      => 'nullable|string|max:20',
             'presupuesto'  => 'nullable|numeric|min:0',
@@ -66,6 +67,7 @@ class OwnerController extends Controller
         User::create([
             'usuario'     => $data['usuario'],
             'nombre'      => $data['nombre'] ?? null,
+            'alias'       => $data['alias'] ?? null,
             'password'    => Hash::make($data['password']),
             'puesto'      => 'admin',
             'activo'      => true,
@@ -86,6 +88,7 @@ class OwnerController extends Controller
 
         $request->validate([
             'nombre'      => 'nullable|string|max:120',
+            'alias'       => 'nullable|string|max:80',
             'usuario'     => 'nullable|string|max:60|unique:users,usuario,' . $user->id,
             'celular'     => 'nullable|string|max:20',
             'presupuesto' => 'nullable|numeric|min:0',
@@ -93,6 +96,7 @@ class OwnerController extends Controller
 
         if ($request->filled('nombre'))   $user->nombre      = $request->nombre;
         if ($request->filled('usuario'))  $user->usuario     = $request->usuario;
+        $user->alias       = $request->alias ?? null;
         $user->celular     = $request->celular;
         $user->presupuesto = $request->presupuesto ?? 0;
         $user->save();
