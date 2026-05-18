@@ -23,13 +23,18 @@ class PrestamoActividad extends Model
 
     // ── Iconos y colores por tipo ──────────────────────────────────────────────
     public static array $estilos = [
-        'creado'     => ['color' => '#3b82f6', 'icon' => '✦',  'label' => 'Creado'],
-        'desembolso' => ['color' => '#8b5cf6', 'icon' => '💸', 'label' => 'Desembolsado'],
-        'pago'       => ['color' => '#16a34a', 'icon' => '✓',  'label' => 'Pago registrado'],
-        'estatus'    => ['color' => '#f59e0b', 'icon' => '◉',  'label' => 'Cambio de estatus'],
-        'cobrador'   => ['color' => '#0ea5e9', 'icon' => '👤', 'label' => 'Cobrador'],
-        'mora'       => ['color' => '#ef4444', 'icon' => '⚠',  'label' => 'Mora'],
-        'edicion'    => ['color' => '#6b7280', 'icon' => '✎',  'label' => 'Edición'],
+        'creado'       => ['color' => '#3b82f6', 'icon' => '✦',  'label' => 'Creado'],
+        'desembolso'   => ['color' => '#8b5cf6', 'icon' => '💸', 'label' => 'Desembolsado'],
+        'pago'         => ['color' => '#16a34a', 'icon' => '✓',  'label' => 'Pago registrado'],
+        'cobro_extra'  => ['color' => '#10b981', 'icon' => '⚡', 'label' => 'Cobro extra'],
+        'agendado'     => ['color' => '#6366f1', 'icon' => '📅', 'label' => 'Cobro agendado'],
+        'estatus'      => ['color' => '#f59e0b', 'icon' => '◉',  'label' => 'Cambio de estatus'],
+        'cobrador'     => ['color' => '#0ea5e9', 'icon' => '👤', 'label' => 'Cobrador'],
+        'mora'         => ['color' => '#ef4444', 'icon' => '⚠',  'label' => 'Mora'],
+        'configuracion'=> ['color' => '#6b7280', 'icon' => '⚙',  'label' => 'Configuración'],
+        'ajuste'       => ['color' => '#f97316', 'icon' => '✎',  'label' => 'Ajuste manual'],
+        'pago_diferido'=> ['color' => '#a855f7', 'icon' => '⏸',  'label' => 'Pago diferido'],
+        'edicion'      => ['color' => '#6b7280', 'icon' => '✎',  'label' => 'Edición'],
     ];
 
     // ── Helper estático para registrar eventos ─────────────────────────────────
@@ -37,7 +42,7 @@ class PrestamoActividad extends Model
     {
         static::create([
             'prestamo_id' => $prestamoId,
-            'user_id'     => Auth::id(),
+            'user_id'     => Auth::user()?->id,
             'tipo'        => $tipo,
             'descripcion' => $descripcion,
             'meta'        => $meta,
