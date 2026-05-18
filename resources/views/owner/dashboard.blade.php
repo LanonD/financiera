@@ -248,9 +248,6 @@
                 title="Notas"
                 onclick="abrirNotas({{ $admin->id }}, '{{ addslashes($admin->nombre ?: $admin->usuario) }}')">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:13px;height:13px"><path d="M13 2H3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h4l2 2 2-2h2a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1z"/><path d="M5 6h6M5 9h4"/></svg>
-                @if($admin->notas->count() > 0)
-                <span class="ow-nota-badge">{{ $admin->notas->count() }}</span>
-                @endif
             </button>
 
             {{-- Editar --}}
