@@ -170,8 +170,18 @@
         <div style="display:flex;align-items:center;gap:12px">
             <div class="ow-avatar" style="background:{{ $color }}">{{ $initial }}</div>
             <div>
-                <div class="ow-row-name">{{ $admin->nombre ?: $admin->usuario }}</div>
-                <div class="ow-row-sub">@{{ $admin->usuario }} &nbsp;·&nbsp; Alta: {{ $fechaAlta }}</div>
+                {{-- Alias si existe, si no nombre, si no usuario --}}
+                <div class="ow-row-name">
+                    {{ $admin->alias ?: ($admin->nombre ?: $admin->usuario) }}
+                </div>
+                <div class="ow-row-sub" style="display:flex;gap:6px;flex-wrap:wrap">
+                    @if($admin->alias && $admin->nombre)
+                        <span>{{ $admin->nombre }}</span><span style="opacity:.4">·</span>
+                    @endif
+                    <span style="font-family:monospace">{{ $admin->usuario }}</span>
+                    <span style="opacity:.4">·</span>
+                    <span>Alta: {{ $fechaAlta }}</span>
+                </div>
             </div>
         </div>
 
