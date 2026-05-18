@@ -227,6 +227,7 @@ class PagoController extends Controller
                 ->where('admin_id', $adminId)
                 ->first();
             if (!$prestamo) continue;
+            $anteriorCobradorId = $prestamo->cobrador_id;
             $prestamo->cobrador_id = $cobradorId > 0 ? $cobradorId : null;
             $prestamo->save();
             // Also assign to pending pagos
@@ -234,6 +235,16 @@ class PagoController extends Controller
                 Pago::where('prestamo_id', $prestamoId)
                     ->whereIn('estatus', ['Pendiente', 'Atrasado'])
                     ->update(['cobrador_id' => $cobradorId]);
+            }
+            // Log if changed
+            if ($anteriorCobradorId !== $prestamo->cobrador_id) {
+                $cobrador = $cobradorId > 0 ? Empleado::find($cobradorId) : null;
+                PrestamoActividad::log($prestamoId, 'cobrador',
+                    $cobrador
+                        ? 'Cobrador asignado: ' . $cobrador->nombre . '.'
+                        : 'Cobrador removido.',
+                    ['cobrador_id' => $cobradorId > 0 ? $cobradorId : null, 'nombre' => $cobrador?->nombre]
+                );
             }
             $guardados++;
         }
@@ -504,6 +515,20 @@ class PagoController extends Controller
 
         $prestamo->save();
 
+        $quien = Auth::user()->empleado?->nombre ?? Auth::user()->usuario;
+        $descExtra = 'Cobro extra de $' . number_format($montoTotal, 2) . ' registrado por ' . $quien . '.';
+        if ($pagoMora > 0)      $descExtra .= ' Mora: $' . number_format($pagoMora, 2) . '.';
+        if ($pagoInteres > 0)   $descExtra .= ' Interés: $' . number_format($pagoInteres, 2) . '.';
+        if ($capitalPagado > 0) $descExtra .= ' Capital: $' . number_format($capitalPagado, 2) . '.';
+        if ($mensajeFin)        $descExtra .= $mensajeFin;
+        PrestamoActividad::log($prestamo->id, 'cobro_extra', $descExtra, [
+            'total'    => $montoTotal,
+            'mora'     => $pagoMora,
+            'interes'  => $pagoInteres,
+            'capital'  => $capitalPagado,
+            'saldo'    => $prestamo->saldo_actual,
+        ]);
+
         return redirect()->back()->with('success', 'Cobro inmediato de $' . number_format($montoTotal, 2) . ' registrado.' . $mensajeFin);
     }
 
@@ -544,6 +569,14 @@ class PagoController extends Controller
             'fecha_pago'       => null,
             'estatus'          => 'Pendiente',
         ]);
+
+        PrestamoActividad::log($prestamo->id, 'agendado',
+            'Cobro de $' . number_format($request->monto, 2) . ' agendado para ' .
+            \Carbon\Carbon::parse($request->fecha)->format('d/m/Y') .
+            ($request->nota ? ' — ' . $request->nota : '') .
+            ' (por ' . (Auth::user()->empleado?->nombre ?? Auth::user()->usuario) . ').',
+            ['monto' => $request->monto, 'fecha' => $request->fecha]
+        );
 
         return redirect()->back()->with('success', 'Cobro de $' . number_format($request->monto, 2) . ' agendado para ' . \Carbon\Carbon::parse($request->fecha)->format('d/m/Y') . '.');
     }
@@ -607,6 +640,11 @@ class PagoController extends Controller
             $prestamo->payment_hold = false;
             $prestamo->save();
 
+            PrestamoActividad::log($prestamo->id, 'pago_diferido',
+                'Pago diferido cancelado por ' . (Auth::user()->empleado?->nombre ?? Auth::user()->usuario) . '. Plan de pagos restaurado.',
+                ['accion' => 'cancelado']
+            );
+
             return redirect()->back()->with('success', 'Pago diferido cancelado. El plan de pagos fue restaurado.');
         }
 
@@ -643,6 +681,12 @@ class PagoController extends Controller
         $prestamo->payment_hold = true;
         $prestamo->save();
 
+        PrestamoActividad::log($prestamo->id, 'pago_diferido',
+            'Pago diferido activado por ' . (Auth::user()->empleado?->nombre ?? Auth::user()->usuario) .
+            '. Cuota #' . $pago1->numero_pago . ' diferida — siguiente cuota doble: $' . number_format($pago2->monto_cuota, 2) . '.',
+            ['accion' => 'activado', 'cuota_diferida' => $pago1->numero_pago, 'cuota_doble' => $pago2->monto_cuota]
+        );
+
         return redirect()->back()->with('success', 'Pago diferido establecido. La siguiente cuota será doble ($' . number_format($pago2->monto_cuota, 2) . ').');
     }
 
@@ -673,6 +717,11 @@ class PagoController extends Controller
         Pago::where('prestamo_id', $id)
             ->whereIn('estatus', ['Pendiente', 'Atrasado'])
             ->update(['cobrador_id' => $empleado->id]);
+
+        PrestamoActividad::log($prestamo->id, 'cobrador',
+            $empleado->nombre . ' se asignó como cobrador del préstamo.',
+            ['cobrador_id' => $empleado->id, 'nombre' => $empleado->nombre]
+        );
 
         return redirect()->back()->with('success', 'Te has asignado como cobrador de este préstamo.');
     }
@@ -773,6 +822,22 @@ class PagoController extends Controller
         if ($prestamo->estatus === 'Finalizado') {
             $msg .= ' ✓ Préstamo finalizado.';
         }
+
+        $quien    = Auth::user()->empleado?->nombre ?? Auth::user()->usuario;
+        $tipoPago = isset($tipo) ? $tipo : ($montoRecibido > 0 ? ($montoRecibido >= (float)$pago->monto_cuota ? 'Pagado' : 'Parcial') : 'Solo mora');
+        $descLog  = 'Cuota #' . $pago->numero_pago . ' registrada por ' . $quien .
+                    ' — $' . number_format($totalPagado, 2) .
+                    ' (' . strtolower($tipoPago) . ').';
+        if ($pagoMora > 0) $descLog .= ' Mora cobrada: $' . number_format($pagoMora, 2) . '.';
+        if ($prestamo->estatus === 'Finalizado') $descLog .= ' ✓ Préstamo finalizado.';
+        PrestamoActividad::log($prestamo->id, 'pago', $descLog, [
+            'pago_id'  => $pago->id,
+            'numero'   => $pago->numero_pago,
+            'monto'    => $totalPagado,
+            'mora'     => $pagoMora,
+            'tipo'     => $tipoPago,
+            'saldo'    => $prestamo->saldo_actual,
+        ]);
 
         return redirect()->back()->with('success', $msg);
     }

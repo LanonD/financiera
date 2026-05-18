@@ -351,12 +351,19 @@ class PrestamoController extends Controller
             'interes_diario' => 'required|numeric|min:0',
         ]);
 
+        $anterior = (float)$prestamo->interes_diario;
         $prestamo->interes_diario = (float)$data['interes_diario'];
         // Set start date if not yet set so we know when to start counting
         if (!$prestamo->fecha_ultimo_interes) {
             $prestamo->fecha_ultimo_interes = now()->toDateString();
         }
         $prestamo->save();
+
+        PrestamoActividad::log($id, 'configuracion',
+            'Interés diario por mora actualizado de $' . number_format($anterior, 2) .
+            ' a $' . number_format($prestamo->interes_diario, 2) . '/día por ' . Auth::user()->usuario . '.',
+            ['anterior' => $anterior, 'nuevo' => $prestamo->interes_diario]
+        );
 
         return redirect()->route('prestamos.show', $id)
             ->with('success', 'Interés diario por mora actualizado a $' . number_format($prestamo->interes_diario, 2) . '/día.');
@@ -376,6 +383,14 @@ class PrestamoController extends Controller
             'interes_acumulado' => 'required|numeric|min:0',
         ]);
 
+        $cambios = [];
+        if (round($prestamo->monto_entregado, 2) !== round((float)$data['monto_entregado'], 2))
+            $cambios[] = 'Capital: $' . number_format($prestamo->monto_entregado, 2) . ' → $' . number_format($data['monto_entregado'], 2);
+        if (round($prestamo->monto, 2) !== round((float)$data['monto'], 2))
+            $cambios[] = 'Total acordado: $' . number_format($prestamo->monto, 2) . ' → $' . number_format($data['monto'], 2);
+        if (round($prestamo->interes_acumulado, 2) !== round((float)$data['interes_acumulado'], 2))
+            $cambios[] = 'Mora acumulada: $' . number_format($prestamo->interes_acumulado, 2) . ' → $' . number_format($data['interes_acumulado'], 2);
+
         $prestamo->monto_entregado   = round((float)$data['monto_entregado'], 2);
         $prestamo->monto             = round((float)$data['monto'], 2);
         $prestamo->interes_acumulado = round((float)$data['interes_acumulado'], 2);
@@ -385,6 +400,13 @@ class PrestamoController extends Controller
             $prestamo->saldo_actual = max(0, round((float)$data['monto_entregado'] - (float)$pagado, 2));
         }
         $prestamo->save();
+
+        if (!empty($cambios)) {
+            PrestamoActividad::log($id, 'ajuste',
+                'Campos editados por ' . Auth::user()->usuario . ': ' . implode('; ', $cambios) . '.',
+                ['cambios' => $cambios]
+            );
+        }
 
         return redirect()->route('prestamos.show', $id)->with('success', 'Campos actualizados correctamente.');
     }
@@ -396,7 +418,13 @@ class PrestamoController extends Controller
         $prestamo->interes_activo = !$prestamo->interes_activo;
         $prestamo->save();
 
-        return redirect()->route('prestamos.show', $id)->with('success', 'Interés ' . ($prestamo->interes_activo ? 'activado' : 'pausado') . '.');
+        $estado = $prestamo->interes_activo ? 'activado' : 'pausado';
+        PrestamoActividad::log($id, 'configuracion',
+            'Interés ' . $estado . ' por ' . Auth::user()->usuario . '.',
+            ['interes_activo' => $prestamo->interes_activo]
+        );
+
+        return redirect()->route('prestamos.show', $id)->with('success', 'Interés ' . $estado . '.');
     }
 
     public function toggleMora($id)
@@ -412,7 +440,13 @@ class PrestamoController extends Controller
 
         $prestamo->save();
 
-        return redirect()->route('prestamos.show', $id)->with('success', 'Interés por mora ' . ($prestamo->interes_mora_activo ? 'activado' : 'desactivado') . '.');
+        $estadoMora = $prestamo->interes_mora_activo ? 'activado' : 'desactivado';
+        PrestamoActividad::log($id, 'configuracion',
+            'Interés por mora ' . $estadoMora . ' por ' . Auth::user()->usuario . '.',
+            ['mora_activo' => $prestamo->interes_mora_activo, 'interes_diario' => $prestamo->interes_diario]
+        );
+
+        return redirect()->route('prestamos.show', $id)->with('success', 'Interés por mora ' . $estadoMora . '.');
     }
 
     /**
@@ -451,8 +485,16 @@ class PrestamoController extends Controller
             $pago->save();
         }
 
+        $frecAnterior     = $prestamo->frecuencia;
         $prestamo->frecuencia = $request->frecuencia;
         $prestamo->save();
+
+        PrestamoActividad::log($id, 'configuracion',
+            'Frecuencia cambiada de ' . $frecAnterior . ' a ' . $request->frecuencia .
+            ' por ' . Auth::user()->usuario . '. ' . $pagosPendientes->count() . ' pagos reprogramados desde ' .
+            Carbon::parse($request->fecha_nuevo_inicio)->format('d/m/Y') . '.',
+            ['de' => $frecAnterior, 'a' => $request->frecuencia, 'desde' => $request->fecha_nuevo_inicio, 'pagos' => $pagosPendientes->count()]
+        );
 
         return redirect()->back()->with('success', 'Frecuencia actualizada a ' . $request->frecuencia . '. ' . $pagosPendientes->count() . ' pagos reprogramados.');
     }
