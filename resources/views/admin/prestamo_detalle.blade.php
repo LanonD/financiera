@@ -127,6 +127,15 @@ $puesto = auth()->user()->puesto;
         @endif
         @if($puesto === 'admin')
         <a href="{{ route('prestamos.edit', $prestamo->id) }}" class="btn btn-sm" style="background:#f3f4f6;color:var(--text)">Editar</a>
+        @if($prestamo->estatus === 'Pendiente')
+        <form method="POST" action="{{ route('prestamos.cancelar', $prestamo->id) }}" style="margin:0">
+            @csrf
+            <button type="submit" class="btn btn-sm" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5"
+                onclick="return confirm('¿Cancelar este préstamo? Quedará como Retirado.')">
+                Cancelar préstamo
+            </button>
+        </form>
+        @endif
         @endif
     </div>
 </div>
@@ -146,62 +155,74 @@ $puesto = auth()->user()->puesto;
 </style>
 @endpush
 
-{{-- KPI cards --}}
-<div class="rd-grid-3">
+@php
+    $interesAcordado = round((float)$prestamo->monto - (float)$prestamo->monto_entregado, 2);
+    // Próxima cuota: monto_cuota del siguiente pago pendiente (puede ser diferente a prestamo->cuota por carry-forward)
+    $proximoPago  = $pagos->whereIn('estatus', ['Pendiente','Atrasado'])->sortBy('numero_pago')->first();
+    $proximaCuota = $proximoPago ? (float)$proximoPago->monto_cuota : 0;
+    $proximaFecha = $proximoPago?->fecha_programada?->format('d/m/Y') ?? null;
+    // Balance restante = saldo_actual (principal+interés pendiente) + mora pendiente
+    // Se recalcula en cada visita automáticamente
+    $balanceRestante = (float)$prestamo->saldo_actual + $interesPendiente;
+@endphp
+
+{{-- KPI cards — 4 cards en una sola fila --}}
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px">
+
+    {{-- 1. Estatus --}}
     <div class="card" style="padding:16px 18px">
-        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:8px">Estatus</div>
-        <span style="display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:999px;font-size:14px;font-weight:700;background:{{ $estatusBg }};color:{{ $estatusTx }}">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px">Estatus</div>
+        <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:999px;font-size:13px;font-weight:700;background:{{ $estatusBg }};color:{{ $estatusTx }}">
             <span style="width:7px;height:7px;border-radius:50%;background:{{ $estatusTx }};display:inline-block"></span>
             {{ $prestamo->estatus }}
         </span>
         @if($prestamo->estatus === 'Pendiente')
         @php $diasRestantes = max(0, 5 - (int)$prestamo->created_at->diffInDays(now())); @endphp
-        <div style="margin-top:8px;font-size:11px;color:{{ $diasRestantes <= 1 ? '#dc2626' : '#ca8a04' }};font-weight:600">
-            ⏳ {{ $diasRestantes }} día(s) para retiro automático
+        <div style="margin-top:7px;font-size:11px;color:{{ $diasRestantes <= 1 ? '#dc2626' : '#ca8a04' }};font-weight:600">
+            ⏳ Auto-retira en {{ $diasRestantes }} día(s)
         </div>
+        @elseif($prestamo->estatus === 'Finalizado')
+        <div style="margin-top:7px;font-size:11px;color:#16a34a;font-weight:600">✓ Liquidado el {{ $fechaCompletado ? \Carbon\Carbon::parse($fechaCompletado)->format('d/m/Y') : '—' }}</div>
         @endif
     </div>
-    <div class="card" style="padding:16px 18px">
-        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:6px">Balance restante</div>
-        <div style="font-size:22px;font-weight:700;font-family:monospace;color:#dc2626">${{ number_format($totalAdeudadoKpi, 2, '.', ',') }}</div>
-        @if($interesPendiente > 0)
-        <div style="font-size:11px;color:var(--text2);margin-top:4px;font-family:monospace">
-            ${{ number_format((float)$prestamo->saldo_actual, 2, '.', ',') }} capital + ${{ number_format($interesPendiente, 2, '.', ',') }} mora
-        </div>
-        @else
-        <div style="font-size:11px;color:var(--text2);margin-top:4px;font-family:monospace">
-            ${{ number_format((float)$prestamo->saldo_actual, 2, '.', ',') }} capital · {{ $pendientes->count() }} cuota(s) pend.
-        </div>
-        @endif
-    </div>
-    <div class="card" style="padding:16px 18px">
-        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:6px">Fecha último pago</div>
-        @if($ultimaFechaPago)
-        <div style="font-size:22px;font-weight:700;font-family:monospace;color:#16a34a">{{ \Carbon\Carbon::parse($ultimaFechaPago)->format('d/m/Y') }}</div>
-        @else
-        <div style="font-size:18px;font-weight:600;color:var(--text3)">Sin pagos</div>
-        @endif
-        <div style="font-size:11px;color:var(--text2);margin-top:4px">{{ $pagados->count() }} de {{ $pagos->count() }} pagos realizados</div>
-    </div>
-</div>
 
-@php $interesAcordado = round((float)$prestamo->monto - (float)$prestamo->monto_entregado, 2); @endphp
-<div class="rd-grid-4" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px">
-    @foreach([
-        ['Total préstamo',  '$'.number_format($prestamo->monto,2,'.',','), '#2563eb'],
-        ['Cuota',           '$'.number_format($prestamo->cuota,2,'.',','), 'var(--text)'],
-        ['Total cobrado',   '$'.number_format($totalCobrado,2,'.',','),    '#16a34a'],
-    ] as [$label, $val, $color])
-    <div class="card" style="padding:14px 18px">
-        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:5px">{{ $label }}</div>
-        <div style="font-size:19px;font-weight:600;font-family:monospace;color:{{ $color }}">{{ $val }}</div>
-        @if($label === 'Total préstamo')
-        <div style="font-size:10px;color:var(--text3);margin-top:3px;font-family:monospace">
-            ${{ number_format($prestamo->monto_entregado,2,'.',',') }} principal + ${{ number_format($interesAcordado,2,'.',',') }} interés
+    {{-- 2. Balance restante — se recalcula en cada visita --}}
+    <div class="card" style="padding:16px 18px;border-left:3px solid #dc2626">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:6px">Balance restante</div>
+        <div style="font-size:22px;font-weight:800;font-family:monospace;color:#dc2626;line-height:1">${{ number_format($balanceRestante, 2, '.', ',') }}</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:5px;display:flex;flex-direction:column;gap:2px;font-family:monospace">
+            <span>Principal: ${{ number_format((float)$prestamo->monto_entregado - $capitalCobrado, 2, '.', ',') }}</span>
+            <span>Interés: ${{ number_format($interesRestante, 2, '.', ',') }}</span>
+            @if($interesPendiente > 0)
+            <span style="color:#c2410c">Mora: ${{ number_format($interesPendiente, 2, '.', ',') }}</span>
+            @endif
         </div>
+    </div>
+
+    {{-- 3. Próxima cuota (monto real del siguiente pago, no la cuota base) --}}
+    <div class="card" style="padding:16px 18px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:6px">Próxima cuota</div>
+        @if($proximaCuota > 0)
+        <div style="font-size:22px;font-weight:800;font-family:monospace;color:#f59e0b;line-height:1">${{ number_format($proximaCuota, 2, '.', ',') }}</div>
+        @if($proximaFecha)
+        <div style="font-size:11px;color:var(--text3);margin-top:5px">Vence: {{ $proximaFecha }}</div>
+        @endif
+        @else
+        <div style="font-size:16px;font-weight:600;color:var(--text3)">Sin cuotas pend.</div>
         @endif
     </div>
-    @endforeach
+
+    {{-- 4. Total cobrado --}}
+    <div class="card" style="padding:16px 18px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:6px">Total cobrado</div>
+        <div style="font-size:22px;font-weight:800;font-family:monospace;color:#16a34a;line-height:1">${{ number_format($totalCobrado, 2, '.', ',') }}</div>
+        @if($ultimaFechaPago)
+        <div style="font-size:11px;color:var(--text3);margin-top:5px">Último: {{ \Carbon\Carbon::parse($ultimaFechaPago)->format('d/m/Y') }}</div>
+        @else
+        <div style="font-size:11px;color:var(--text3);margin-top:5px">{{ $pagados->count() }} pagos realizados</div>
+        @endif
+    </div>
+
 </div>
 
 @push('styles')

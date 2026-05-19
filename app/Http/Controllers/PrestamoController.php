@@ -563,6 +563,29 @@ class PrestamoController extends Controller
         return redirect()->route('prestamos.edit', $id)->with('success', 'Campos actualizados correctamente.');
     }
 
+    /**
+     * Cancel a pending loan (sets status to Retirado).
+     */
+    public function cancelar($id)
+    {
+        $adminId  = auth()->user()->adminId();
+        $prestamo = Prestamo::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
+
+        if ($prestamo->estatus !== 'Pendiente') {
+            return redirect()->back()->with('error', 'Solo se pueden cancelar préstamos en estado Pendiente.');
+        }
+
+        $prestamo->estatus = 'Retirado';
+        $prestamo->save();
+
+        PrestamoActividad::log($id, 'estatus',
+            'Préstamo cancelado por ' . Auth::user()->usuario . '.',
+            ['de' => 'Pendiente', 'a' => 'Retirado']
+        );
+
+        return redirect()->route('prestamos.show', $id)->with('success', 'Préstamo cancelado correctamente.');
+    }
+
     public function toggleInteres($id)
     {
         $adminId  = auth()->user()->adminId();
