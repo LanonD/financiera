@@ -733,9 +733,10 @@ class PagoController extends Controller
     public function pagarCuota(Request $request, $prestamoId)
     {
         $request->validate([
-            'pago_id' => 'required|integer|exists:pagos,id',
-            'monto'   => 'required|numeric|min:0.01',
-            'nota'    => 'nullable|string|max:255',
+            'pago_id'       => 'required|integer|exists:pagos,id',
+            'monto'         => 'required|numeric|min:0.01',
+            'nota'          => 'nullable|string|max:255',
+            'carry_forward' => 'nullable|boolean',
         ]);
 
         $user     = Auth::user();
@@ -817,8 +818,39 @@ class PagoController extends Controller
 
         $prestamo->save();
 
-        $totalPagado = (float)$request->monto;
-        $msg = 'Cuota #' . $pago->numero_pago . ' — $' . number_format($totalPagado, 2) . ' registrada.';
+        $totalPagado  = (float)$request->monto;
+        $carryForward = $request->boolean('carry_forward');
+
+        // ── Carry-forward: diferencia pasa al siguiente pago pendiente ──────
+        $carryMsg = '';
+        if ($carryForward && isset($tipo) && $tipo === 'Parcial') {
+            $diferencia = round((float)$pago->monto_cuota - (float)$pago->monto_cobrado, 2);
+            if ($diferencia > 0) {
+                $nextPago = Pago::where('prestamo_id', $prestamoId)
+                    ->whereIn('estatus', ['Pendiente', 'Atrasado'])
+                    ->orderBy('fecha_programada')
+                    ->orderBy('numero_pago')
+                    ->first();
+
+                if ($nextPago) {
+                    $nextPago->monto_cuota = round((float)$nextPago->monto_cuota + $diferencia, 2);
+                    $nota_carry = 'Incluye $' . number_format($diferencia, 2) . ' diferido de cuota #' . $pago->numero_pago;
+                    $nextPago->nota_cobro  = $nextPago->nota_cobro
+                        ? $nextPago->nota_cobro . ' | ' . $nota_carry
+                        : $nota_carry;
+                    $nextPago->save();
+                    $carryMsg = " Diferencia de \${$diferencia} pasó a cuota #{$nextPago->numero_pago}.";
+
+                    PrestamoActividad::log($prestamo->id, 'ajuste',
+                        'Saldo diferido de $' . number_format($diferencia, 2) .
+                        ' de cuota #' . $pago->numero_pago . ' añadido a cuota #' . $nextPago->numero_pago . '.',
+                        ['diferencia' => $diferencia, 'de_cuota' => $pago->numero_pago, 'a_cuota' => $nextPago->numero_pago]
+                    );
+                }
+            }
+        }
+
+        $msg = 'Cuota #' . $pago->numero_pago . ' — $' . number_format($totalPagado, 2) . ' registrada.' . $carryMsg;
         if ($prestamo->estatus === 'Finalizado') {
             $msg .= ' ✓ Préstamo finalizado.';
         }
@@ -828,15 +860,17 @@ class PagoController extends Controller
         $descLog  = 'Cuota #' . $pago->numero_pago . ' registrada por ' . $quien .
                     ' — $' . number_format($totalPagado, 2) .
                     ' (' . strtolower($tipoPago) . ').';
-        if ($pagoMora > 0) $descLog .= ' Mora cobrada: $' . number_format($pagoMora, 2) . '.';
+        if ($pagoMora > 0)   $descLog .= ' Mora cobrada: $' . number_format($pagoMora, 2) . '.';
+        if ($carryMsg)       $descLog .= $carryMsg;
         if ($prestamo->estatus === 'Finalizado') $descLog .= ' ✓ Préstamo finalizado.';
         PrestamoActividad::log($prestamo->id, 'pago', $descLog, [
-            'pago_id'  => $pago->id,
-            'numero'   => $pago->numero_pago,
-            'monto'    => $totalPagado,
-            'mora'     => $pagoMora,
-            'tipo'     => $tipoPago,
-            'saldo'    => $prestamo->saldo_actual,
+            'pago_id'       => $pago->id,
+            'numero'        => $pago->numero_pago,
+            'monto'         => $totalPagado,
+            'mora'          => $pagoMora,
+            'tipo'          => $tipoPago,
+            'saldo'         => $prestamo->saldo_actual,
+            'carry_forward' => $carryForward,
         ]);
 
         return redirect()->back()->with('success', $msg);

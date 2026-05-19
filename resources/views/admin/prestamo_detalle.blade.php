@@ -580,11 +580,18 @@ $puesto = auth()->user()->puesto;
             @if(in_array($puesto, ['admin','promo']) && in_array($prestamo->estatus, ['Activo','Atrasado']))
             <td>
                 @if(!$esDimmed && in_array($p->estatus, ['Pendiente','Atrasado']))
-                <button
-                    onclick="abrirModalCuota({{ $p->id }}, {{ $p->numero_pago }}, {{ $p->monto_cuota }})"
-                    style="padding:4px 10px;border-radius:6px;border:1.5px solid #16a34a;background:rgba(22,163,74,.08);color:#16a34a;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font);white-space:nowrap">
-                    Cobrar
-                </button>
+                <div style="display:flex;gap:4px;flex-wrap:nowrap">
+                    <button
+                        onclick="abrirModalCuota({{ $p->id }}, {{ $p->numero_pago }}, {{ $p->monto_cuota }}, false)"
+                        style="padding:4px 9px;border-radius:6px;border:1.5px solid #16a34a;background:rgba(22,163,74,.08);color:#16a34a;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font);white-space:nowrap">
+                        Completo
+                    </button>
+                    <button
+                        onclick="abrirModalCuota({{ $p->id }}, {{ $p->numero_pago }}, {{ $p->monto_cuota }}, true)"
+                        style="padding:4px 9px;border-radius:6px;border:1.5px solid #f59e0b;background:rgba(245,158,11,.08);color:#b45309;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font);white-space:nowrap">
+                        Parcial
+                    </button>
+                </div>
                 @else
                 <span style="font-size:11px;color:var(--text3)">—</span>
                 @endif
@@ -744,48 +751,86 @@ $puesto = auth()->user()->puesto;
 @endif
 
 {{-- Modal: Cobrar cuota específica --}}
-<dialog id="modal-pagar-cuota" style="border:none;border-radius:14px;padding:0;box-shadow:0 8px 40px rgba(0,0,0,.18);max-width:400px;width:100%">
+<dialog id="modal-pagar-cuota" style="border:none;border-radius:16px;padding:0;box-shadow:0 12px 48px rgba(0,0,0,.2);max-width:420px;width:100%">
     <div style="padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
         <div>
             <div style="font-size:15px;font-weight:700" id="mcq-titulo">Cobrar cuota #—</div>
-            <div style="font-size:12px;color:var(--text2);margin-top:2px">Registra el pago de esta cuota específica</div>
+            <div style="font-size:12px;color:var(--text2);margin-top:2px" id="mcq-subtitulo">Pago completo</div>
         </div>
         <button onclick="document.getElementById('modal-pagar-cuota').close()"
-            style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text3);line-height:1">&times;</button>
+            style="background:#f1f5f9;border:none;width:28px;height:28px;border-radius:50%;font-size:17px;cursor:pointer;color:var(--text3);display:flex;align-items:center;justify-content:center">&times;</button>
     </div>
+
     <form method="POST" action="{{ route('prestamos.pagarCuota', $prestamo->id) }}" onsubmit="return submitOnce(this)">
         @csrf
-        <input type="hidden" name="pago_id" id="mcq-pago-id">
+        <input type="hidden" name="pago_id"      id="mcq-pago-id">
+        <input type="hidden" name="carry_forward" id="mcq-carry"  value="0">
+
         <div style="padding:20px 24px;display:grid;gap:14px">
-            <div style="padding:10px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;font-size:12px;color:#166534;font-weight:600" id="mcq-info">
-                Cuota: $—
+
+            {{-- Cuota info card --}}
+            <div style="padding:12px 16px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;display:flex;align-items:center;justify-content:space-between">
+                <div>
+                    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#166534">Cuota del plan</div>
+                    <div style="font-size:22px;font-weight:800;font-family:monospace;color:#15803d;line-height:1.2" id="mcq-cuota-display">$—</div>
+                </div>
+                {{-- Mode toggle --}}
+                <div style="display:flex;border:1.5px solid var(--border);border-radius:8px;overflow:hidden;font-size:12px;font-weight:700">
+                    <button type="button" id="mcq-btn-completo"
+                        onclick="setModo(false)"
+                        style="padding:6px 14px;border:none;background:#16a34a;color:#fff;cursor:pointer;font-family:var(--font);font-size:12px;font-weight:700">
+                        Completo
+                    </button>
+                    <button type="button" id="mcq-btn-parcial"
+                        onclick="setModo(true)"
+                        style="padding:6px 14px;border:none;background:#f9fafb;color:var(--text2);cursor:pointer;font-family:var(--font);font-size:12px;font-weight:700">
+                        Parcial
+                    </button>
+                </div>
             </div>
+
             @if((float)($prestamo->interes_acumulado ?? 0) > 0)
             <div style="padding:8px 12px;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;font-size:11px;color:#92400e;font-weight:600">
-                ⚠ Mora pendiente: ${{ number_format($prestamo->interes_acumulado,2,'.',',') }} — se aplicará primero.
+                ⚠ Mora pendiente: ${{ number_format($prestamo->interes_acumulado,2,'.',',') }} — se aplicará primero al monto ingresado.
             </div>
             @endif
+
+            {{-- Monto --}}
             <div>
                 <label style="font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:5px">Monto a cobrar *</label>
                 <div style="display:flex;align-items:center;gap:6px">
-                    <span style="font-size:13px;color:var(--text2)">$</span>
+                    <span style="font-size:14px;color:var(--text2);font-weight:600">$</span>
                     <input type="number" name="monto" id="mcq-monto" step="0.01" min="0.01" required placeholder="0.00"
-                        style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:monospace;outline:none">
+                        oninput="calcDiferencia()"
+                        style="flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:16px;font-family:monospace;outline:none;transition:border-color .15s">
                 </div>
             </div>
+
+            {{-- Diferencia (solo modo parcial) --}}
+            <div id="mcq-diferencia-box" style="display:none;padding:12px 14px;background:#fff7ed;border:1.5px solid #fed7aa;border-radius:10px">
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#c2410c;margin-bottom:6px">Saldo que pasa al siguiente pago</div>
+                <div style="display:flex;align-items:center;justify-content:space-between">
+                    <div style="font-size:20px;font-weight:800;font-family:monospace;color:#ea580c" id="mcq-diferencia-val">$0.00</div>
+                    <div style="font-size:11px;color:#9a3412;text-align:right" id="mcq-diferencia-desc">— cuota #—</div>
+                </div>
+                <div style="font-size:11px;color:#9a3412;margin-top:5px">Se sumará automáticamente al próximo pago pendiente.</div>
+            </div>
+
+            {{-- Nota --}}
             <div>
                 <label style="font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:5px">Nota (opcional)</label>
                 <input type="text" name="nota" maxlength="255" placeholder="Ej. Pago en efectivo"
-                    style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
+                    style="width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
             </div>
         </div>
-        <div style="padding:14px 24px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end">
+
+        <div style="padding:14px 24px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end;background:#f9fafb;border-radius:0 0 16px 16px">
             <button type="button" onclick="document.getElementById('modal-pagar-cuota').close()"
-                style="padding:8px 18px;border-radius:8px;border:1px solid var(--border);background:#f9fafb;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">
+                style="padding:8px 18px;border-radius:8px;border:1px solid var(--border);background:#fff;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">
                 Cancelar
             </button>
-            <button type="submit"
-                style="padding:8px 18px;border-radius:8px;border:none;background:#16a34a;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">
+            <button type="submit" id="mcq-btn-submit"
+                style="padding:8px 20px;border-radius:8px;border:none;background:#16a34a;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font)">
                 Registrar pago
             </button>
         </div>
@@ -794,27 +839,96 @@ $puesto = auth()->user()->puesto;
 
 {{-- Close dialogs on backdrop click; prevent double submit --}}
 <script>
+// Map of pending pagos: {id, numero_pago, monto_cuota} ordered by fecha_programada
+const PAGOS_PENDIENTES = @json(
+    $pagos->whereIn('estatus', ['Pendiente','Atrasado'])
+          ->sortBy('numero_pago')
+          ->values()
+          ->map(fn($p) => ['id' => $p->id, 'num' => $p->numero_pago, 'cuota' => (float)$p->monto_cuota])
+);
+
 ['modal-cobro-extra','modal-agendar','modal-frecuencia','modal-pagar-cuota'].forEach(function(id){
     var el = document.getElementById(id);
     if(!el) return;
     el.addEventListener('click', function(e){ if(e.target === el) el.close(); });
 });
+
 function submitOnce(form) {
     var btn = form.querySelector('button[type="submit"]');
-    if(btn && btn.disabled) return false; // block duplicate
-    if(btn) {
-        btn.disabled = true;
-        btn.textContent = 'Guardando...';
-    }
+    if(btn && btn.disabled) return false;
+    if(btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
     return true;
 }
 
-function abrirModalCuota(pagoId, numeroPago, montoCuota) {
+let _mcqCuota   = 0;
+let _mcqPagoId  = 0;
+let _mcqNumPago = 0;
+let _mcqParcial = false;
+
+function abrirModalCuota(pagoId, numeroPago, montoCuota, parcial) {
+    _mcqPagoId  = pagoId;
+    _mcqNumPago = numeroPago;
+    _mcqCuota   = parseFloat(montoCuota);
+
     document.getElementById('mcq-pago-id').value = pagoId;
     document.getElementById('mcq-titulo').textContent = 'Cobrar cuota #' + numeroPago;
-    document.getElementById('mcq-info').textContent   = 'Cuota del plan: $' + parseFloat(montoCuota).toLocaleString('es-MX', {minimumFractionDigits:2, maximumFractionDigits:2});
-    document.getElementById('mcq-monto').value        = parseFloat(montoCuota).toFixed(2);
+    document.getElementById('mcq-cuota-display').textContent = '$' + _mcqCuota.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+    // Reset submit button
+    const btn = document.getElementById('mcq-btn-submit');
+    btn.disabled = false;
+    btn.textContent = 'Registrar pago';
+
+    setModo(!!parcial);
     document.getElementById('modal-pagar-cuota').showModal();
+    setTimeout(() => document.getElementById('mcq-monto').select(), 60);
+}
+
+function setModo(parcial) {
+    _mcqParcial = parcial;
+    document.getElementById('mcq-carry').value = parcial ? '1' : '0';
+
+    const btnC = document.getElementById('mcq-btn-completo');
+    const btnP = document.getElementById('mcq-btn-parcial');
+    btnC.style.background = parcial ? '#f9fafb' : '#16a34a';
+    btnC.style.color       = parcial ? 'var(--text2)' : '#fff';
+    btnP.style.background  = parcial ? '#f59e0b' : '#f9fafb';
+    btnP.style.color        = parcial ? '#fff' : 'var(--text2)';
+
+    document.getElementById('mcq-subtitulo').textContent = parcial ? 'Pago parcial — diferencia al siguiente cobro' : 'Pago completo';
+
+    if (parcial) {
+        document.getElementById('mcq-monto').value = '';
+        document.getElementById('mcq-monto').removeAttribute('max');
+    } else {
+        document.getElementById('mcq-monto').value = _mcqCuota.toFixed(2);
+        document.getElementById('mcq-monto').removeAttribute('max');
+    }
+    calcDiferencia();
+}
+
+function calcDiferencia() {
+    const monto    = parseFloat(document.getElementById('mcq-monto').value) || 0;
+    const diffBox  = document.getElementById('mcq-diferencia-box');
+    const diffVal  = document.getElementById('mcq-diferencia-val');
+    const diffDesc = document.getElementById('mcq-diferencia-desc');
+
+    if (!_mcqParcial) { diffBox.style.display = 'none'; return; }
+
+    const diferencia = Math.max(0, Math.round((_mcqCuota - monto) * 100) / 100);
+    diffBox.style.display = '';
+    diffVal.textContent = '$' + diferencia.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+    // Find next pending pago after current
+    const idx  = PAGOS_PENDIENTES.findIndex(p => p.id === _mcqPagoId);
+    const next = PAGOS_PENDIENTES[idx + 1] || null;
+    diffDesc.textContent = next ? '→ cuota #' + next.num : '→ no hay siguiente pago';
+
+    // Color feedback
+    diffBox.style.borderColor = diferencia > 0 ? '#fed7aa' : '#86efac';
+    diffBox.style.background  = diferencia > 0 ? '#fff7ed' : '#f0fdf4';
+    document.getElementById('mcq-diferencia-val').style.color = diferencia > 0 ? '#ea580c' : '#16a34a';
+    document.getElementById('mcq-diferencia-desc').style.color= diferencia > 0 ? '#9a3412' : '#166534';
 }
 </script>
 
