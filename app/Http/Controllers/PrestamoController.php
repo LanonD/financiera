@@ -426,35 +426,125 @@ class PrestamoController extends Controller
     }
 
     /**
-     * Admin: edit principal, total acordado, and mora acumulada directly
+     * Admin: edit financial fields — behaviour differs by loan status.
+     *
+     * PENDIENTE  → full edit: principal, total acordado, mora, fecha_inicio,
+     *              fecha_primer_cobro, frecuencia, num_pagos.
+     *              Pagos dates are recalculated automatically.
+     *
+     * ACTIVO/+   → limited edit: interés acordado (= monto - principal) and
+     *              mora acumulada. Principal is locked (already delivered).
      */
     public function updateCampos(Request $request, $id)
     {
         $adminId  = auth()->user()->adminId();
         $prestamo = Prestamo::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
+        $esPendiente = $prestamo->estatus === 'Pendiente';
 
-        $data = $request->validate([
-            'monto_entregado'   => 'required|numeric|min:0',
-            'monto'             => 'required|numeric|min:0',
-            'interes_acumulado' => 'required|numeric|min:0',
-        ]);
+        // ── Validation ────────────────────────────────────────────────────
+        if ($esPendiente) {
+            $data = $request->validate([
+                'monto_entregado'    => 'required|numeric|min:0',
+                'monto'              => 'required|numeric|min:0',
+                'interes_acumulado'  => 'required|numeric|min:0',
+                'fecha_inicio'       => 'required|date',
+                'fecha_primer_cobro' => 'required|date',
+                'frecuencia'         => 'required|in:Diario,Semanal,Quincenal,Mensual',
+                'num_pagos'          => 'required|integer|min:1',
+            ]);
+        } else {
+            $data = $request->validate([
+                'interes_acordado'   => 'required|numeric|min:0',
+                'interes_acumulado'  => 'required|numeric|min:0',
+            ]);
+        }
 
         $cambios = [];
-        if (round($prestamo->monto_entregado, 2) !== round((float)$data['monto_entregado'], 2))
-            $cambios[] = 'Capital: $' . number_format($prestamo->monto_entregado, 2) . ' → $' . number_format($data['monto_entregado'], 2);
-        if (round($prestamo->monto, 2) !== round((float)$data['monto'], 2))
-            $cambios[] = 'Total acordado: $' . number_format($prestamo->monto, 2) . ' → $' . number_format($data['monto'], 2);
+
+        if ($esPendiente) {
+            // ── Full edit (Pendiente) ──────────────────────────────────────
+            if (round($prestamo->monto_entregado, 2) !== round((float)$data['monto_entregado'], 2))
+                $cambios[] = 'Principal: $' . number_format($prestamo->monto_entregado, 2) . ' → $' . number_format($data['monto_entregado'], 2);
+            if (round($prestamo->monto, 2) !== round((float)$data['monto'], 2))
+                $cambios[] = 'Total acordado: $' . number_format($prestamo->monto, 2) . ' → $' . number_format($data['monto'], 2);
+
+            $prestamo->monto_entregado = round((float)$data['monto_entregado'], 2);
+            $prestamo->monto           = round((float)$data['monto'], 2);
+            $prestamo->saldo_actual    = round((float)$data['monto'], 2); // reset saldo to full
+            $prestamo->cuota           = $data['num_pagos'] > 1
+                ? ceil((float)$data['monto'] / (int)$data['num_pagos'] / 10) * 10
+                : (float)$data['monto'];
+
+            $oldFecha   = $prestamo->fecha_inicio;
+            $oldFreq    = $prestamo->frecuencia;
+            $oldPrimer  = $prestamo->fecha_primer_cobro ?? null;
+            $oldNumPagos= $prestamo->num_pagos;
+
+            $prestamo->fecha_inicio       = $data['fecha_inicio'];
+            $prestamo->frecuencia         = $data['frecuencia'];
+            $prestamo->num_pagos          = (int)$data['num_pagos'];
+
+            if ($oldFreq !== $data['frecuencia'])
+                $cambios[] = 'Frecuencia: ' . $oldFreq . ' → ' . $data['frecuencia'];
+            if ((string)$oldNumPagos !== (string)$data['num_pagos'])
+                $cambios[] = 'Núm. pagos: ' . $oldNumPagos . ' → ' . $data['num_pagos'];
+
+            // Recalculate pagos dates
+            $diasMap = ['Diario' => 1, 'Semanal' => 7, 'Quincenal' => 14, 'Mensual' => 30];
+            $dias    = $diasMap[$data['frecuencia']] ?? 30;
+            $pagos   = Pago::where('prestamo_id', $id)->orderBy('numero_pago')->get();
+
+            $monto        = round((float)$data['monto'], 2);
+            $numPagos     = (int)$data['num_pagos'];
+            $cuotaBase    = $numPagos > 1 ? ceil($monto / $numPagos / 10) * 10 : $monto;
+            $ultimoPago   = max(0, round(($monto - $cuotaBase * ($numPagos - 1)) * 100) / 100);
+            $interesTotal = round($monto - (float)$data['monto_entregado'], 2);
+            $interesRest  = $interesTotal;
+            $saldo        = round((float)$data['monto_entregado'], 2);
+
+            foreach ($pagos as $i => $pago) {
+                $idx   = $i; // 0-based
+                $fecha = $data['frecuencia'] === 'Mensual'
+                    ? Carbon::parse($data['fecha_primer_cobro'])->addMonths($idx)->toDateString()
+                    : Carbon::parse($data['fecha_primer_cobro'])->addDays($dias * $idx)->toDateString();
+
+                $cuota   = ($idx === $numPagos - 1) ? $ultimoPago : $cuotaBase;
+                $interes = min($cuota, max(0, $interesRest));
+                $capital = round($cuota - $interes, 2);
+                $interesRest = max(0, round($interesRest - $interes, 2));
+                $saldo   = max(0, round($saldo - $capital, 2));
+
+                $pago->fecha_programada = $fecha;
+                $pago->monto_cuota      = $cuota;
+                $pago->interes          = $interes;
+                $pago->capital          = $capital;
+                $pago->saldo_restante   = $saldo;
+                $pago->save();
+            }
+
+            // Update fecha_fin
+            $lastPago = $pagos->last();
+            if ($lastPago) $prestamo->fecha_fin = $lastPago->fecha_programada;
+
+            $cambios[] = 'Fechas del plan recalculadas (1er cobro: ' . Carbon::parse($data['fecha_primer_cobro'])->format('d/m/Y') . ').';
+
+        } else {
+            // ── Limited edit (Activo / Atrasado / etc.) ───────────────────
+            $nuevoInteres = round((float)$data['interes_acordado'], 2);
+            $nuevoMonto   = round((float)$prestamo->monto_entregado + $nuevoInteres, 2);
+
+            $anteriorInteres = round((float)$prestamo->monto - (float)$prestamo->monto_entregado, 2);
+            if ($anteriorInteres !== $nuevoInteres)
+                $cambios[] = 'Interés acordado: $' . number_format($anteriorInteres, 2) . ' → $' . number_format($nuevoInteres, 2);
+
+            $prestamo->monto = $nuevoMonto;
+        }
+
+        // Mora acumulada (both modes)
         if (round($prestamo->interes_acumulado, 2) !== round((float)$data['interes_acumulado'], 2))
             $cambios[] = 'Mora acumulada: $' . number_format($prestamo->interes_acumulado, 2) . ' → $' . number_format($data['interes_acumulado'], 2);
-
-        $prestamo->monto_entregado   = round((float)$data['monto_entregado'], 2);
-        $prestamo->monto             = round((float)$data['monto'], 2);
         $prestamo->interes_acumulado = round((float)$data['interes_acumulado'], 2);
-        // Keep saldo_actual in sync if principal changed
-        if ($prestamo->isDirty('monto_entregado')) {
-            $pagado = $prestamo->pagos()->whereIn('estatus', ['Pagado', 'Parcial'])->sum('capital');
-            $prestamo->saldo_actual = max(0, round((float)$data['monto_entregado'] - (float)$pagado, 2));
-        }
+
         $prestamo->save();
 
         if (!empty($cambios)) {
@@ -464,7 +554,7 @@ class PrestamoController extends Controller
             );
         }
 
-        return redirect()->route('prestamos.show', $id)->with('success', 'Campos actualizados correctamente.');
+        return redirect()->route('prestamos.edit', $id)->with('success', 'Campos actualizados correctamente.');
     }
 
     public function toggleInteres($id)
