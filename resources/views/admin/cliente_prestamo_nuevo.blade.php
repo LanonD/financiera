@@ -137,7 +137,7 @@
 </div>
 
 {{-- ═══════════════════════════════════════════════════════════════════════ --}}
-<form id="wizForm" method="POST" action="{{ route('clientes.store_with_prestamo') }}">
+<form id="wizForm" method="POST" action="{{ route('clientes.store_with_prestamo') }}" enctype="multipart/form-data">
 @csrf
 <input type="hidden" name="with_prestamo" id="hidWithPrestamo" value="0">
 <input type="hidden" name="desembolsar"   id="hidDesembolsar"  value="0">
@@ -493,6 +493,48 @@
                 </div>
 
             </div>
+
+            {{-- Documentos del desembolso --}}
+            <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:12px">Documentos del desembolso</div>
+
+                @php $docStyle = 'width:100%;padding:7px 10px;background:#f9fafb;border:1.5px solid var(--border);border-radius:6px;font-family:var(--font);font-size:12px;color:var(--text);cursor:pointer;box-sizing:border-box'; @endphp
+
+                <div class="frm-grid-2col">
+                    <div class="frm-field">
+                        <label>INE / Identificación <span style="color:#ef4444">*</span></label>
+                        <input type="file" name="doc_ine" accept=".jpg,.jpeg,.png,.pdf"
+                               style="{{ $docStyle }}" onchange="previewDocWiz(this,'wiz-prev-ine')">
+                        <div id="wiz-prev-ine" style="display:none;margin-top:6px"></div>
+                        <div class="frm-hint">JPG, PNG o PDF — máx. 10 MB</div>
+                    </div>
+
+                    <div class="frm-field">
+                        <label>Pagaré <span style="color:#ef4444">*</span></label>
+                        <input type="file" name="doc_pagare" accept=".jpg,.jpeg,.png,.pdf"
+                               style="{{ $docStyle }}" onchange="previewDocWiz(this,'wiz-prev-pagare')">
+                        <div id="wiz-prev-pagare" style="display:none;margin-top:6px"></div>
+                        <div class="frm-hint">JPG, PNG o PDF — máx. 10 MB</div>
+                    </div>
+
+                    <div class="frm-field">
+                        <label>Comprobante de domicilio <span style="color:#ef4444">*</span></label>
+                        <input type="file" name="doc_comprobante" accept=".jpg,.jpeg,.png,.pdf"
+                               style="{{ $docStyle }}" onchange="previewDocWiz(this,'wiz-prev-comprobante')">
+                        <div id="wiz-prev-comprobante" style="display:none;margin-top:6px"></div>
+                        <div class="frm-hint">JPG, PNG o PDF — máx. 10 MB</div>
+                    </div>
+
+                    <div class="frm-field">
+                        <label>Foto de domicilio <span style="color:var(--text3);font-weight:400">(opcional)</span></label>
+                        <input type="file" name="doc_foto_domicilio" accept=".jpg,.jpeg,.png"
+                               style="{{ $docStyle }}" onchange="previewDocWiz(this,'wiz-prev-foto')">
+                        <div id="wiz-prev-foto" style="display:none;margin-top:6px"></div>
+                        <div class="frm-hint">Solo imágenes — máx. 10 MB</div>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 
@@ -584,6 +626,28 @@ function togglePrestamo() {
     document.getElementById('sinPrestamoMsg').style.display = on ? 'none' : '';
     document.getElementById('btnSiguiente2').style.display  = on ? '' : 'none';
     document.getElementById('btnSoloCliente').style.display = on ? 'none' : '';
+}
+
+// ── Document preview ──────────────────────────────────────────────────────
+function previewDocWiz(input, previewId) {
+    const container = document.getElementById(previewId);
+    const file = input.files[0];
+    if (!file) { container.style.display = 'none'; container.innerHTML = ''; return; }
+    const isPdf  = file.name.toLowerCase().endsWith('.pdf');
+    const sizeMb = (file.size / 1024 / 1024).toFixed(1);
+    if (isPdf) {
+        container.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:12px;color:#15803d">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="1" width="12" height="14" rx="1.5"/><path d="M5 5h6M5 8h6M5 11h4"/></svg>
+            ${file.name} <span style="color:var(--text3)">(${sizeMb} MB)</span></div>`;
+    } else {
+        const reader = new FileReader();
+        reader.onload = e => {
+            container.innerHTML = `<img src="${e.target.result}" style="max-width:100%;max-height:100px;border-radius:6px;border:1px solid var(--border);object-fit:cover">
+                <div style="font-size:11px;color:var(--text3);margin-top:3px">${file.name} · ${sizeMb} MB</div>`;
+        };
+        reader.readAsDataURL(file);
+    }
+    container.style.display = '';
 }
 
 // ── Disbursement toggle ───────────────────────────────────────────────────

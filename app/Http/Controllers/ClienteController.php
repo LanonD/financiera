@@ -203,9 +203,13 @@ class ClienteController extends Controller
             ];
             if ($desembolsar) {
                 $rules += [
-                    'forma_entrega' => 'nullable|string|max:50',
-                    'fecha_entrega' => 'nullable|date',
-                    'nota_entrega'  => 'nullable|string|max:1000',
+                    'forma_entrega'      => 'nullable|string|max:50',
+                    'fecha_entrega'      => 'nullable|date',
+                    'nota_entrega'       => 'nullable|string|max:1000',
+                    'doc_ine'            => 'required|file|mimes:jpg,jpeg,png,pdf|max:10240',
+                    'doc_pagare'         => 'required|file|mimes:jpg,jpeg,png,pdf|max:10240',
+                    'doc_comprobante'    => 'required|file|mimes:jpg,jpeg,png,pdf|max:10240',
+                    'doc_foto_domicilio' => 'nullable|file|mimes:jpg,jpeg,png|max:10240',
                 ];
             }
         }
@@ -286,6 +290,27 @@ class ClienteController extends Controller
             'fecha_entrega'       => $fecha_entrega,
             'nota_entrega'        => $nota_entrega,
         ]);
+
+        // ── Save uploaded documents (only when desembolsar = true) ────────────
+        if ($desembolsar && $request->hasFile('doc_ine')) {
+            $carpeta = public_path('documentos/prestamo_' . $prestamo->id);
+            if (!file_exists($carpeta)) mkdir($carpeta, 0775, true);
+
+            $guardar = function (string $campo, string $prefijo) use ($request, $carpeta, $prestamo): ?string {
+                if (!$request->hasFile($campo)) return null;
+                $file = $request->file($campo);
+                if (!$file->isValid()) return null;
+                $nombre = $prefijo . '_' . time() . '_' . uniqid() . '.' . strtolower($file->getClientOriginalExtension());
+                $file->move($carpeta, $nombre);
+                return 'documentos/prestamo_' . $prestamo->id . '/' . $nombre;
+            };
+
+            $prestamo->doc_ine            = $guardar('doc_ine', 'ine');
+            $prestamo->doc_pagare         = $guardar('doc_pagare', 'pagare');
+            $prestamo->doc_comprobante    = $guardar('doc_comprobante', 'comprobante');
+            $prestamo->doc_foto_domicilio = $guardar('doc_foto_domicilio', 'foto_domicilio');
+            $prestamo->save();
+        }
 
         // ── Payment schedule (interest-first) ────────────────────────────────
         $interes_restante = round($monto_retornar - $monto_entregado, 2);
