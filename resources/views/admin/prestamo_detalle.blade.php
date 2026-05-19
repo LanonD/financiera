@@ -837,15 +837,19 @@ $puesto = auth()->user()->puesto;
     </form>
 </dialog>
 
+@php
+$pagosPendientesJs = $pagos
+    ->whereIn('estatus', ['Pendiente','Atrasado'])
+    ->sortBy('numero_pago')
+    ->values()
+    ->map(fn($p) => ['id' => $p->id, 'num' => $p->numero_pago, 'cuota' => (float)$p->monto_cuota])
+    ->values()
+    ->toArray();
+@endphp
+
 {{-- Close dialogs on backdrop click; prevent double submit --}}
 <script>
-// Map of pending pagos: {id, numero_pago, monto_cuota} ordered by fecha_programada
-const PAGOS_PENDIENTES = @json(
-    $pagos->whereIn('estatus', ['Pendiente','Atrasado'])
-          ->sortBy('numero_pago')
-          ->values()
-          ->map(fn($p) => ['id' => $p->id, 'num' => $p->numero_pago, 'cuota' => (float)$p->monto_cuota])
-);
+const PAGOS_PENDIENTES = {!! json_encode($pagosPendientesJs) !!};
 
 ['modal-cobro-extra','modal-agendar','modal-frecuencia','modal-pagar-cuota'].forEach(function(id){
     var el = document.getElementById(id);
