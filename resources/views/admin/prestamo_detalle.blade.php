@@ -37,15 +37,35 @@ $interesPendiente = (float)($prestamo->interes_acumulado ?? 0);
 // Balance = remaining principal (saldo_actual) + mora. Reflects extra payments immediately.
 $totalAdeudadoKpi = (float)$prestamo->saldo_actual + $interesPendiente;
 
-// Breakdown of what has been collected (capital vs interest/mora)
-$capitalCobrado = $cobrosEfectivos->sum('capital');
-$interesCobrado = $cobrosEfectivos->sum('interes');
-
-// Remaining interest = total agreed interest minus all interest already collected
-// (never derived from plan cuota fields so the plan stays unmodified)
+// ── Distribución REAL de cada cobro (interés-primero) ──────────────────────────
+// El pool de interés acordado = monto_retornar - monto_entregado.
+// Cada cobro efectivo va primero a reducir ese pool; lo que sobra es capital.
+// Esto es SOLO para mostrar en tabla y KPIs — no altera pagos.capital/interes guardados.
 $interesAcordadoTotal = max(0, (float)$prestamo->monto - (float)$prestamo->monto_entregado);
-$interesTotalCobrado  = $cobrosEfectivos->sum('interes');
-$interesRestante      = max(0, round($interesAcordadoTotal - $interesTotalCobrado, 2));
+$interesPoolRestante  = $interesAcordadoTotal; // se va vaciando conforme se cobra
+
+$capitalDisplay = []; // [pago_id => capital real cobrado en ese pago]
+$interesDisplay = []; // [pago_id => interés real cobrado en ese pago]
+
+foreach ($pagosOrdenados as $pag) {
+    $cobrado = (float)($pag->monto_cobrado ?? 0);
+    $tipoPag = $pag->tipo_pago ?? 'plan';
+    if ($cobrado > 0 && !in_array($tipoPag, ['congelado', 'liquidado'])) {
+        $intPago = min($cobrado, max(0.0, $interesPoolRestante));
+        $capPago = round($cobrado - $intPago, 2);
+        $interesPoolRestante = max(0.0, round($interesPoolRestante - $intPago, 2));
+    } else {
+        $intPago = 0.0;
+        $capPago = 0.0;
+    }
+    $capitalDisplay[$pag->id] = round($capPago, 2);
+    $interesDisplay[$pag->id] = round($intPago, 2);
+}
+
+// KPIs calculados desde la distribución real (no desde valores del plan)
+$capitalCobrado      = round(array_sum($capitalDisplay), 2);
+$interesCobrado      = round(array_sum($interesDisplay), 2);
+$interesRestante     = max(0, round($interesAcordadoTotal - $interesCobrado, 2));
 
 // Progress: collected vs total agreed (monto = total to return)
 $montoTotal = max((float)$prestamo->monto, $totalCobrado);
@@ -537,8 +557,17 @@ $puesto = auth()->user()->puesto;
                 {{ $p->monto_cobrado !== null ? '$'.number_format($p->monto_cobrado,2,'.',',') : '—' }}
                 @endif
             </td>
-            <td class="pd-col-capital" style="text-align:right;font-family:monospace;font-size:12px">${{ number_format($p->capital,2,'.',',') }}</td>
-            <td class="pd-col-interes" style="text-align:right;font-family:monospace;font-size:12px">${{ number_format($p->interes,2,'.',',') }}</td>
+            @php
+                // Distribución real: usar valores calculados para cobros; plan para pendientes
+                $capShow = in_array($p->estatus, ['Pagado','Parcial'])
+                    ? ($capitalDisplay[$p->id] ?? 0)
+                    : $p->capital;
+                $intShow = in_array($p->estatus, ['Pagado','Parcial'])
+                    ? ($interesDisplay[$p->id] ?? 0)
+                    : $p->interes;
+            @endphp
+            <td class="pd-col-capital" style="text-align:right;font-family:monospace;font-size:12px">${{ number_format($capShow,2,'.',',') }}</td>
+            <td class="pd-col-interes" style="text-align:right;font-family:monospace;font-size:12px">${{ number_format($intShow,2,'.',',') }}</td>
             <td class="pd-col-saldo" style="text-align:right;font-family:monospace;font-size:12px">${{ number_format($saldoDisplay[$p->id] ?? $p->saldo_restante, 2, '.', ',') }}</td>
             <td><span style="display:inline-flex;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600;background:{{ $statusColors[0] }};color:{{ $statusColors[1] }}">{{ $estatusLabel }}</span></td>
             <td class="pd-col-nota" style="font-size:12px;color:var(--text2);max-width:160px">{{ $notaDisplay }}</td>
