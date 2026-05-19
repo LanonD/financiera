@@ -36,14 +36,22 @@
 @endif
 
 @php
-    $interesAcordado = round((float)$prestamo->monto - (float)$prestamo->monto_entregado, 2);
-    $esPendiente     = $prestamo->estatus === 'Pendiente';
-    $inputStyle      = 'width:100%;padding:9px 12px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-size:14px;font-family:monospace;outline:none;box-sizing:border-box';
-    $lblStyle        = 'display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:5px';
+    $interesAcordado  = round((float)$prestamo->monto - (float)$prestamo->monto_entregado, 2);
+    $esPendiente      = $prestamo->estatus === 'Pendiente';
+    $esFinalizado     = in_array($prestamo->estatus, ['Finalizado', 'Retirado']);
+    $esActivo         = !$esPendiente && !$esFinalizado; // Activo o Atrasado
+    $inputStyle       = 'width:100%;padding:9px 12px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-size:14px;font-family:monospace;outline:none;box-sizing:border-box';
+    $inputReadStyle   = 'width:100%;padding:9px 12px;background:#f1f5f9;border:1px solid var(--border);border-radius:6px;font-size:14px;font-family:monospace;color:var(--text2);cursor:not-allowed;box-sizing:border-box';
+    $lblStyle         = 'display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:5px';
+
+    // Valores calculados de lo que queda pendiente
+    $pagosEfectivos   = $prestamo->pagos->whereIn('estatus', ['Pagado','Parcial']);
+    $interesCobrado   = collect($pagosEfectivos)->sum('interes');
+    $interesRestante  = max(0, round($interesAcordado - $interesCobrado, 2));
 @endphp
 
 {{-- ═══════════════════════════════════════════════════════════════ --}}
-{{-- CAMPOS FINANCIEROS — comportamiento por estatus del préstamo  --}}
+{{-- CAMPOS FINANCIEROS — comportamiento por estatus               --}}
 {{-- ═══════════════════════════════════════════════════════════════ --}}
 <div class="card" style="padding:0;overflow:hidden;margin-bottom:20px">
 
@@ -53,23 +61,52 @@
         @if($esPendiente)
         <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;background:#fef9c3;color:#854d0e;font-size:11px;font-weight:700">
             <span style="width:6px;height:6px;border-radius:50%;background:#f59e0b;display:inline-block"></span>
-            Pendiente — edición completa disponible
+            Pendiente — edición completa
+        </span>
+        @elseif($esFinalizado)
+        <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;background:#f1f5f9;color:#475569;font-size:11px;font-weight:700">
+            <span style="width:6px;height:6px;border-radius:50%;background:#94a3b8;display:inline-block"></span>
+            {{ $prestamo->estatus }} — solo lectura
         </span>
         @else
         <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;background:#dcfce7;color:#166534;font-size:11px;font-weight:700">
             <span style="width:6px;height:6px;border-radius:50%;background:#16a34a;display:inline-block"></span>
-            {{ $prestamo->estatus }} — interés y mora editables, principal bloqueado
+            {{ $prestamo->estatus }} — edición de saldos pendientes
         </span>
         @endif
     </div>
 
+    {{-- ── FINALIZADO: estado de cuenta, nada editable ──────────────────── --}}
+    @if($esFinalizado)
+    <div style="padding:20px">
+        <div style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:16px">
+            <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.06em">Estado de cuenta — {{ $prestamo->estatus }}</div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+                @foreach([
+                    ['Principal entregado', '$'.number_format($prestamo->monto_entregado,2,'.',',')],
+                    ['Interés acordado',    '$'.number_format($interesAcordado,2,'.',',')],
+                    ['Total acordado',      '$'.number_format($prestamo->monto,2,'.',',')],
+                    ['Total cobrado',       '$'.number_format($pagosEfectivos->sum('monto_cobrado'),2,'.',',')],
+                    ['Mora cobrada',        '$'.number_format(0,2,'.',',')],
+                    ['Saldo final',         '$'.number_format($prestamo->saldo_actual,2,'.',',')],
+                ] as [$l,$v])
+                <div>
+                    <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text3)">{{ $l }}</div>
+                    <div style="font-size:15px;font-weight:700;font-family:monospace;color:var(--text);margin-top:3px">{{ $v }}</div>
+                </div>
+                @endforeach
+            </div>
+        </div>
+        <p style="font-size:12px;color:var(--text3)">
+            El préstamo está {{ strtolower($prestamo->estatus) }}. El historial de pagos queda como estado de cuenta permanente y no puede modificarse.
+        </p>
+    </div>
+
+    {{-- ── PENDIENTE: edición completa ─────────────────────────────────── --}}
+    @elseif($esPendiente)
     <form method="POST" action="{{ route('prestamos.campos', $prestamo->id) }}" style="padding:20px">
         @csrf
 
-        @if($esPendiente)
-        {{-- ── MODO PENDIENTE: edición completa ──────────────────────────── --}}
-
-        {{-- Financieros --}}
         <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:10px">Montos</div>
         <div class="pe-grid-3" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px">
             <div>
@@ -80,31 +117,29 @@
                 <p style="font-size:11px;color:var(--text3);margin-top:4px">Dinero real entregado al cliente.</p>
             </div>
             <div>
-                <label style="{{ $lblStyle }}">Total acordado — deuda completa ($)</label>
+                <label style="{{ $lblStyle }}">Total acordado ($)</label>
                 <input type="number" name="monto" id="peMontoTotal" step="0.01" min="0"
                     value="{{ number_format((float)$prestamo->monto, 2, '.', '') }}"
                     style="{{ $inputStyle }}" oninput="calcInteresAcordado()">
                 <p style="font-size:11px;color:var(--text3);margin-top:4px">
-                    Principal + interés. Interés actual: <strong id="peInteresLabel">${{ number_format($interesAcordado, 2, '.', ',') }}</strong>
+                    Interés acordado: <strong id="peInteresLabel">${{ number_format($interesAcordado, 2, '.', ',') }}</strong>
                 </p>
             </div>
             <div>
-                <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#d97706;margin-bottom:5px">Interés por mora acumulado ($)</label>
+                <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#d97706;margin-bottom:5px">Mora acumulada ($)</label>
                 <input type="number" name="interes_acumulado" step="0.01" min="0"
                     value="{{ number_format((float)$prestamo->interes_acumulado, 2, '.', '') }}"
                     style="{{ $inputStyle }};background:#fffbeb;border-color:#fcd34d;color:#92400e">
-                <p style="font-size:11px;color:#92400e;margin-top:4px">Mora pendiente de cobrar.</p>
             </div>
         </div>
 
-        {{-- Plan de pagos --}}
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:10px;padding-top:4px;border-top:1px solid var(--border)">Plan de pagos</div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:10px;padding-top:14px;border-top:1px solid var(--border)">Plan de pagos</div>
         <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#92400e">
-            ⚠ Al guardar, las fechas de todos los pagos programados se <strong>recalcularán automáticamente</strong> según la nueva fecha de primer cobro y frecuencia.
+            ⚠ Las fechas de todos los pagos programados se <strong>recalcularán automáticamente</strong> al guardar.
         </div>
-        <div class="pe-grid-3" style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;margin-bottom:20px">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;margin-bottom:20px">
             <div>
-                <label style="{{ $lblStyle }}">Fecha inicio del préstamo</label>
+                <label style="{{ $lblStyle }}">Fecha inicio</label>
                 <input type="date" name="fecha_inicio"
                     value="{{ $prestamo->fecha_inicio ? $prestamo->fecha_inicio->format('Y-m-d') : '' }}"
                     style="{{ $inputStyle }};font-family:var(--font)">
@@ -114,7 +149,6 @@
                 <input type="date" name="fecha_primer_cobro"
                     value="{{ $prestamo->pagos()->orderBy('numero_pago')->first()?->fecha_programada?->format('Y-m-d') ?? '' }}"
                     style="{{ $inputStyle }};font-family:var(--font)">
-                <p style="font-size:11px;color:var(--text3);margin-top:4px">Todas las fechas se recalculan desde aquí.</p>
             </div>
             <div>
                 <label style="{{ $lblStyle }}">Frecuencia</label>
@@ -125,74 +159,87 @@
                 </select>
             </div>
             <div>
-                <label style="{{ $lblStyle }}">Núm. de pagos</label>
+                <label style="{{ $lblStyle }}">Núm. pagos</label>
                 <input type="number" name="num_pagos" step="1" min="1"
-                    value="{{ $prestamo->num_pagos }}"
-                    style="{{ $inputStyle }}">
+                    value="{{ $prestamo->num_pagos }}" style="{{ $inputStyle }}">
             </div>
         </div>
 
-        @else
-        {{-- ── MODO ACTIVO/ATRASADO/etc.: edición limitada ───────────────── --}}
-        <div class="pe-grid-3" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px">
+        <button type="submit" class="btn btn-primary"
+            onclick="return confirm('¿Confirmar los cambios?')">
+            Guardar y recalcular fechas
+        </button>
+    </form>
 
-            {{-- Principal: solo lectura --}}
+    {{-- ── ACTIVO / ATRASADO: solo saldos pendientes ────────────────────── --}}
+    @else
+    <form method="POST" action="{{ route('prestamos.campos', $prestamo->id) }}" style="padding:20px">
+        @csrf
+
+        {{-- Contexto (read-only) --}}
+        <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:18px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
             <div>
-                <label style="{{ $lblStyle }}">Principal entregado ($)</label>
-                <div style="padding:9px 12px;background:#f1f5f9;border:1px solid var(--border);border-radius:6px;font-size:14px;font-family:monospace;color:var(--text2);cursor:not-allowed">
-                    ${{ number_format((float)$prestamo->monto_entregado, 2, '.', ',') }}
-                </div>
-                <p style="font-size:11px;color:var(--text3);margin-top:4px">Bloqueado — fue el dinero entregado al cliente.</p>
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3)">Principal entregado</div>
+                <div style="font-size:15px;font-weight:700;font-family:monospace;color:var(--text2);margin-top:3px">${{ number_format($prestamo->monto_entregado,2,'.',',') }}</div>
+                <div style="font-size:10px;color:var(--text3);margin-top:1px">Histórico — no editable</div>
+            </div>
+            <div>
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3)">Total acordado</div>
+                <div style="font-size:15px;font-weight:700;font-family:monospace;color:var(--text2);margin-top:3px">${{ number_format($prestamo->monto,2,'.',',') }}</div>
+                <div style="font-size:10px;color:var(--text3);margin-top:1px">Histórico — no editable</div>
+            </div>
+            <div>
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3)">Interés acordado</div>
+                <div style="font-size:15px;font-weight:700;font-family:monospace;color:var(--text2);margin-top:3px">${{ number_format($interesAcordado,2,'.',',') }}</div>
+                <div style="font-size:10px;color:var(--text3);margin-top:1px">Histórico — no editable</div>
+            </div>
+        </div>
+
+        {{-- Saldos pendientes editables --}}
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:12px">Saldos pendientes actuales</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px">
+
+            <div>
+                <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#2563eb;margin-bottom:5px">Saldo pendiente ($)</label>
+                <input type="number" name="saldo_actual" step="0.01" min="0"
+                    value="{{ number_format((float)$prestamo->saldo_actual, 2, '.', '') }}"
+                    style="{{ $inputStyle }};background:#eff6ff;border-color:#bfdbfe;color:#1e40af">
+                <p style="font-size:11px;color:#3b82f6;margin-top:4px">Deuda total que aún le queda al cliente.</p>
             </div>
 
-            {{-- Interés acordado: editable --}}
             <div>
-                <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#2563eb;margin-bottom:5px">Interés acordado sobre la deuda ($)</label>
-                <input type="number" name="interes_acordado" step="0.01" min="0"
-                    value="{{ number_format($interesAcordado, 2, '.', '') }}"
-                    style="{{ $inputStyle }};background:#eff6ff;border-color:#bfdbfe;color:#1e40af"
-                    oninput="calcTotalActivo()">
-                <p style="font-size:11px;color:#3b82f6;margin-top:4px">
-                    Nuevo total acordado: <strong id="peNuevoTotal">${{ number_format((float)$prestamo->monto, 2, '.', ',') }}</strong>
-                </p>
+                <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#16a34a;margin-bottom:5px">Interés pendiente ($)</label>
+                <input type="number" name="interes_restante_manual" step="0.01" min="0"
+                    value="{{ number_format($interesRestante, 2, '.', '') }}"
+                    style="{{ $inputStyle }};background:#f0fdf4;border-color:#86efac;color:#166534">
+                <p style="font-size:11px;color:#16a34a;margin-top:4px">Del interés acordado, lo que falta cobrar.</p>
             </div>
 
-            {{-- Mora: editable --}}
             <div>
-                <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#d97706;margin-bottom:5px">Interés por mora acumulado ($)</label>
+                <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#d97706;margin-bottom:5px">Mora pendiente ($)</label>
                 <input type="number" name="interes_acumulado" step="0.01" min="0"
                     value="{{ number_format((float)$prestamo->interes_acumulado, 2, '.', '') }}"
                     style="{{ $inputStyle }};background:#fffbeb;border-color:#fcd34d;color:#92400e">
-                <p style="font-size:11px;color:#92400e;margin-top:4px">Mora pendiente de cobrar.</p>
+                <p style="font-size:11px;color:#92400e;margin-top:4px">Interés por mora que aún no se ha cobrado.</p>
             </div>
         </div>
-        @endif
 
         <button type="submit" class="btn btn-primary"
-            onclick="return confirm('¿Confirmar los cambios en los campos financieros?')">
-            Guardar campos financieros
+            onclick="return confirm('¿Ajustar los saldos pendientes de la cuenta?')">
+            Guardar saldos pendientes
         </button>
     </form>
+    @endif
 </div>
 
 @push('scripts')
 <script>
 const PE_PRINCIPAL = {{ (float)$prestamo->monto_entregado }};
-
 function calcInteresAcordado() {
-    const monto = parseFloat(document.getElementById('peMontoTotal')?.value) || 0;
+    const monto   = parseFloat(document.getElementById('peMontoTotal')?.value) || 0;
     const interes = Math.max(0, monto - PE_PRINCIPAL);
     const el = document.getElementById('peInteresLabel');
     if (el) el.textContent = '$' + interes.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
-}
-
-function calcTotalActivo() {
-    const input = document.querySelector('input[name="interes_acordado"]');
-    if (!input) return;
-    const interes = parseFloat(input.value) || 0;
-    const total   = PE_PRINCIPAL + interes;
-    const el = document.getElementById('peNuevoTotal');
-    if (el) el.textContent = '$' + total.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
 </script>
 @endpush

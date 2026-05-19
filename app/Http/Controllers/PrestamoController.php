@@ -441,6 +441,14 @@ class PrestamoController extends Controller
         $prestamo = Prestamo::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
         $esPendiente = $prestamo->estatus === 'Pendiente';
 
+        // Bloquear edición en préstamos finalizados/retirados
+        if (in_array($prestamo->estatus, ['Finalizado', 'Retirado'])) {
+            return redirect()->route('prestamos.edit', $id)
+                ->with('error', 'Este préstamo está ' . strtolower($prestamo->estatus) . ' y no puede editarse.');
+        }
+
+        $esPendiente = $prestamo->estatus === 'Pendiente';
+
         // ── Validation ────────────────────────────────────────────────────
         if ($esPendiente) {
             $data = $request->validate([
@@ -453,9 +461,11 @@ class PrestamoController extends Controller
                 'num_pagos'          => 'required|integer|min:1',
             ]);
         } else {
+            // Activo / Atrasado — solo saldos pendientes
             $data = $request->validate([
-                'interes_acordado'   => 'required|numeric|min:0',
-                'interes_acumulado'  => 'required|numeric|min:0',
+                'saldo_actual'            => 'required|numeric|min:0',
+                'interes_restante_manual' => 'nullable|numeric|min:0',
+                'interes_acumulado'       => 'required|numeric|min:0',
             ]);
         }
 
@@ -529,15 +539,12 @@ class PrestamoController extends Controller
             $cambios[] = 'Fechas del plan recalculadas (1er cobro: ' . Carbon::parse($data['fecha_primer_cobro'])->format('d/m/Y') . ').';
 
         } else {
-            // ── Limited edit (Activo / Atrasado / etc.) ───────────────────
-            $nuevoInteres = round((float)$data['interes_acordado'], 2);
-            $nuevoMonto   = round((float)$prestamo->monto_entregado + $nuevoInteres, 2);
+            // ── Activo / Atrasado: solo saldos pendientes ─────────────────
+            if (round($prestamo->saldo_actual, 2) !== round((float)$data['saldo_actual'], 2))
+                $cambios[] = 'Saldo pendiente: $' . number_format($prestamo->saldo_actual, 2) . ' → $' . number_format($data['saldo_actual'], 2);
 
-            $anteriorInteres = round((float)$prestamo->monto - (float)$prestamo->monto_entregado, 2);
-            if ($anteriorInteres !== $nuevoInteres)
-                $cambios[] = 'Interés acordado: $' . number_format($anteriorInteres, 2) . ' → $' . number_format($nuevoInteres, 2);
-
-            $prestamo->monto = $nuevoMonto;
+            $prestamo->saldo_actual = round((float)$data['saldo_actual'], 2);
+            // interes_acumulado handled below
         }
 
         // Mora acumulada (both modes)
