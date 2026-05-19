@@ -87,6 +87,15 @@
             </select>
         </div>
         <div style="margin-bottom:16px">
+            <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:5px">Promotor</label>
+            <select name="promotor_id" style="width:100%;padding:9px 12px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none">
+                <option value="">— Sin asignar —</option>
+                @foreach($promotores as $p)
+                <option value="{{ $p->id }}" {{ $prestamo->promotor_id == $p->id ? 'selected' : '' }}>{{ $p->nombre }}</option>
+                @endforeach
+            </select>
+        </div>
+        <div style="margin-bottom:16px">
             <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:5px">Cobrador asignado</label>
             <select name="cobrador_id" style="width:100%;padding:9px 12px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none">
                 <option value="">— Sin asignar —</option>
@@ -94,6 +103,16 @@
                 <option value="{{ $c->id }}" {{ $prestamo->cobrador_id == $c->id ? 'selected' : '' }}>{{ $c->nombre }}</option>
                 @endforeach
             </select>
+        </div>
+        <div style="margin-bottom:16px">
+            <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:5px">Desembolsador</label>
+            <select name="desembolso_id" style="width:100%;padding:9px 12px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none">
+                <option value="">— Sin asignar —</option>
+                @foreach($desembolsadores as $d)
+                <option value="{{ $d->id }}" {{ $prestamo->desembolso_id == $d->id ? 'selected' : '' }}>{{ $d->nombre }}</option>
+                @endforeach
+            </select>
+            <p style="font-size:11px;color:var(--text3);margin-top:4px">Empleado que realizó el desembolso.</p>
         </div>
         <div style="margin-bottom:16px">
             <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:5px">Interés diario por mora ($)</label>

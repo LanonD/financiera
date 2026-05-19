@@ -321,16 +321,18 @@ class PrestamoController extends Controller
     public function edit($id)
     {
         $adminId    = auth()->user()->adminId();
-        $prestamo   = Prestamo::with(['cliente', 'promotor'])
+        $prestamo   = Prestamo::with(['cliente', 'promotor', 'cobrador', 'desembolso'])
             ->where('id', $id)
             ->where('admin_id', $adminId)
             ->firstOrFail();
-        $cobradores = Empleado::where('admin_id', $adminId)
-            ->where('activo', true)
-            ->get()
-            ->filter(fn($e) => $e->hasRole('collector'))
-            ->values();
-        return view('admin.prestamo_editar', compact('prestamo', 'cobradores'));
+
+        $empleados = Empleado::where('admin_id', $adminId)->where('activo', true)->get();
+
+        $cobradores     = $empleados->filter(fn($e) => $e->hasRole('collector'))->values();
+        $promotores     = $empleados->filter(fn($e) => $e->hasRole('promo'))->values();
+        $desembolsadores= $empleados->filter(fn($e) => $e->hasRole('desembolso'))->values();
+
+        return view('admin.prestamo_editar', compact('prestamo', 'cobradores', 'promotores', 'desembolsadores'));
     }
 
     public function update(Request $request, $id)
@@ -341,12 +343,16 @@ class PrestamoController extends Controller
         $data = $request->validate([
             'estatus'         => 'required|in:Pendiente,Activo,Atrasado,Finalizado,Retirado',
             'cobrador_id'     => 'nullable|exists:empleados,id',
+            'promotor_id'     => 'nullable|exists:empleados,id',
+            'desembolso_id'   => 'nullable|exists:empleados,id',
             'interes_diario'  => 'nullable|numeric|min:0',
         ]);
 
         $update = [
-            'estatus'     => $data['estatus'],
-            'cobrador_id' => $data['cobrador_id'] ?? null,
+            'estatus'       => $data['estatus'],
+            'cobrador_id'   => $data['cobrador_id']   ?? null,
+            'promotor_id'   => $data['promotor_id']   ?? null,
+            'desembolso_id' => $data['desembolso_id'] ?? null,
         ];
         if (isset($data['interes_diario'])) {
             $update['interes_diario'] = (float)$data['interes_diario'];
@@ -357,6 +363,7 @@ class PrestamoController extends Controller
         }
         $estatusAnterior   = $prestamo->estatus;
         $cobradorAnterior  = $prestamo->cobrador_id;
+        $promotorAnterior  = $prestamo->promotor_id;
         $prestamo->update($update);
 
         // Log cambio de estatus
@@ -371,10 +378,17 @@ class PrestamoController extends Controller
         if ($cobradorAnterior !== $nuevoCobradorId) {
             $cobrador = $nuevoCobradorId ? Empleado::find($nuevoCobradorId) : null;
             PrestamoActividad::log($id, 'cobrador',
-                $cobrador
-                    ? "Cobrador asignado: {$cobrador->nombre}."
-                    : 'Cobrador removido.',
+                $cobrador ? "Cobrador asignado: {$cobrador->nombre}." : 'Cobrador removido.',
                 ['cobrador_id' => $nuevoCobradorId, 'nombre' => $cobrador?->nombre]
+            );
+        }
+        // Log cambio de promotor
+        $nuevoPromotorId = $data['promotor_id'] ?? null;
+        if ($promotorAnterior !== $nuevoPromotorId) {
+            $promotor = $nuevoPromotorId ? Empleado::find($nuevoPromotorId) : null;
+            PrestamoActividad::log($id, 'configuracion',
+                $promotor ? "Promotor cambiado a: {$promotor->nombre}." : 'Promotor removido.',
+                ['promotor_id' => $nuevoPromotorId, 'nombre' => $promotor?->nombre]
             );
         }
 

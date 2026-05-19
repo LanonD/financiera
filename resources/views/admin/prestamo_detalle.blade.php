@@ -372,18 +372,24 @@ $puesto = auth()->user()->puesto;
                     ${{ number_format($prestamo->monto_entregado,2,'.',',') }} principal
                     + ${{ number_format($interesAcordado,2,'.',',') }} interés acordado
                 </div>
-                @if($totalCobrado > 0)
-                <div style="margin-top:8px;padding:6px 10px;background:#f8fafc;border:1px solid var(--border);border-radius:6px;display:flex;gap:14px;flex-wrap:wrap">
+                @php $principalPagado = max(0, round((float)$prestamo->monto_entregado - (float)$prestamo->saldo_actual + $interesAcordado - $interesRestante, 2)); @endphp
+                <div style="margin-top:8px;padding:8px 12px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;display:flex;gap:14px;flex-wrap:wrap">
+                    {{-- Interés acordado sobre la deuda --}}
+                    <span style="font-size:11px;font-family:monospace;color:#8b5cf6;display:flex;align-items:center;gap:4px">
+                        <span style="width:7px;height:7px;border-radius:50%;background:#8b5cf6;display:inline-block"></span>
+                        Interés s/deuda: <strong>${{ number_format($interesAcordado,2,'.',',') }}</strong>
+                    </span>
+                    {{-- Principal pagado --}}
                     <span style="font-size:11px;font-family:monospace;color:#2563eb;display:flex;align-items:center;gap:4px">
                         <span style="width:7px;height:7px;border-radius:50%;background:#2563eb;display:inline-block"></span>
-                        Capital restante: <strong>${{ number_format((float)$prestamo->saldo_actual,2,'.',',') }}</strong>
+                        Principal pagado: <strong>${{ number_format($capitalCobrado,2,'.',',') }}</strong>
                     </span>
+                    {{-- Interés restante --}}
                     <span style="font-size:11px;font-family:monospace;color:#16a34a;display:flex;align-items:center;gap:4px">
                         <span style="width:7px;height:7px;border-radius:50%;background:#16a34a;display:inline-block"></span>
                         Interés restante: <strong>${{ number_format($interesRestante,2,'.',',') }}</strong>
                     </span>
                 </div>
-                @endif
             </div>
 
             @foreach([
