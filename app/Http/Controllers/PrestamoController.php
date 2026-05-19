@@ -463,9 +463,8 @@ class PrestamoController extends Controller
         } else {
             // Activo / Atrasado — solo saldos pendientes
             $data = $request->validate([
-                'saldo_actual'            => 'required|numeric|min:0',
-                'interes_restante_manual' => 'nullable|numeric|min:0',
-                'interes_acumulado'       => 'required|numeric|min:0',
+                'saldo_actual'      => 'required|numeric|min:0',
+                'interes_acumulado' => 'required|numeric|min:0',
             ]);
         }
 

@@ -28,12 +28,7 @@
     </div>
 </div>
 
-@if(session('success'))
-<div style="background:#dcfce7;border:1px solid #bbf7d0;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:13px;color:#166534;font-weight:500">{{ session('success') }}</div>
-@endif
-@if(session('error'))
-<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:13px;color:#991b1b;font-weight:500">{{ session('error') }}</div>
-@endif
+{{-- Alerts are shown by layouts/app.blade.php — no need to repeat them here --}}
 
 @php
     $interesAcordado  = round((float)$prestamo->monto - (float)$prestamo->monto_entregado, 2);
@@ -208,11 +203,11 @@
             </div>
 
             <div>
-                <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#16a34a;margin-bottom:5px">Interés pendiente ($)</label>
-                <input type="number" name="interes_restante_manual" step="0.01" min="0"
-                    value="{{ number_format($interesRestante, 2, '.', '') }}"
-                    style="{{ $inputStyle }};background:#f0fdf4;border-color:#86efac;color:#166534">
-                <p style="font-size:11px;color:#16a34a;margin-top:4px">Del interés acordado, lo que falta cobrar.</p>
+                <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#16a34a;margin-bottom:5px">Interés pendiente</label>
+                <div style="{{ $inputReadStyle }};background:#f0fdf4;border-color:#86efac;color:#166534">
+                    ${{ number_format($interesRestante, 2, '.', ',') }}
+                </div>
+                <p style="font-size:11px;color:#16a34a;margin-top:4px">Calculado: interés acordado menos cobrado. Solo lectura.</p>
             </div>
 
             <div>
