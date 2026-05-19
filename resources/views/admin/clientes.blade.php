@@ -26,11 +26,9 @@
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
         <a href="{{ route('clientes.create') }}" class="btn" style="background:#f3f4f6;color:var(--text)">
-            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:13px;height:13px"><path d="M7 2v10M2 7h10"/></svg>
             Solo cliente
         </a>
         <a href="{{ route('clientes.create_with_prestamo') }}" class="btn btn-primary">
-            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:13px;height:13px"><path d="M7 2v10M2 7h10"/></svg>
             Cliente + préstamo
         </a>
     </div>

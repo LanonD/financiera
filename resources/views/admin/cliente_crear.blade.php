@@ -138,7 +138,6 @@
     <div class="frm-footer" style="padding:14px 20px;border-top:1px solid var(--border);background:#f9fafb;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
         <a href="{{ route('clientes.index') }}" class="btn" style="background:#f3f4f6;color:var(--text)">Cancelar</a>
         <button type="submit" id="btnGuardar" class="btn btn-primary">
-            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="width:13px;height:13px"><path d="M7 2v10M2 7h10"/></svg>
             Registrar cliente
         </button>
     </div>

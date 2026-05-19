@@ -343,7 +343,6 @@ $activoMap = $clientesConPrestamo->toArray();
             <div style="display:flex;gap:10px;padding-top:4px">
                 <a href="{{ route('prestamos.index') }}" class="btn" style="background:#f3f4f6;color:var(--text);flex:1;text-align:center;justify-content:center">Cancelar</a>
                 <button type="submit" class="btn btn-primary" id="btnCrear" style="flex:2;justify-content:center" disabled>
-                    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 2v10M2 7h10"/></svg>
                     <span id="btnCrearLabel">Crear préstamo</span>
                 </button>
             </div>

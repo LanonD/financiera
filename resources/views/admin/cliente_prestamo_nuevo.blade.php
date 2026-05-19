@@ -511,7 +511,6 @@
             Anterior
         </button>
         <button type="submit" id="btnFinal" class="btn btn-primary" onclick="prepareSubmit()">
-            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M7 2v10M2 7h10"/></svg>
             <span id="btnFinalLabel">Registrar cliente y préstamo</span>
         </button>
     </div>

@@ -40,7 +40,6 @@
     </div>
     @if(in_array($puesto, ['admin','promo']))
     <a href="{{ route('prestamos.create') }}" class="btn btn-primary">
-        <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:13px;height:13px"><path d="M7 2v10M2 7h10"/></svg>
         Nuevo préstamo
     </a>
     @endif
