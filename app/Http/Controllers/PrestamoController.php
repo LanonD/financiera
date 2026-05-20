@@ -106,9 +106,9 @@ class PrestamoController extends Controller
             'monto_retornar'      => 'required|numeric|min:1',
             'num_pagos'           => 'required|integer|min:1',
             'frecuencia'          => 'required|in:Diario,Semanal,Quincenal,Mensual',
-            // Allow up to 7 days in the past to support offline sync
-            'fecha_inicio'        => 'required|date|after_or_equal:' . now()->subDays(7)->toDateString(),
-            'fecha_primer_cobro'  => 'required|date|after_or_equal:' . now()->subDays(7)->toDateString(),
+            // Allow up to 1 year in the past to support offline sync
+            'fecha_inicio'        => 'required|date|after_or_equal:' . now()->subYear()->toDateString(),
+            'fecha_primer_cobro'  => 'required|date|after_or_equal:' . now()->subYear()->toDateString(),
         ];
 
         if ($desembolsar) {

@@ -198,8 +198,8 @@ class ClienteController extends Controller
                 'monto_retornar'     => 'required|numeric|min:1',
                 'num_pagos'          => 'required|integer|min:1',
                 'frecuencia'         => 'required|in:Diario,Semanal,Quincenal,Mensual',
-                'fecha_inicio'       => 'required|date|after_or_equal:' . now()->subDays(7)->toDateString(),
-                'fecha_primer_cobro' => 'required|date|after_or_equal:' . now()->subDays(7)->toDateString(),
+                'fecha_inicio'        => 'required|date|after_or_equal:' . now()->subYear()->toDateString(),
+                'fecha_primer_cobro'  => 'required|date|after_or_equal:' . now()->subYear()->toDateString(),
             ];
             if ($desembolsar) {
                 $rules += [
