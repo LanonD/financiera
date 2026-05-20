@@ -258,8 +258,9 @@ class ClienteController extends Controller
         $dias_map = ['Diario' => 1, 'Semanal' => 7, 'Quincenal' => 14, 'Mensual' => 30];
         $dias = $dias_map[$frecuencia];
 
-        $cuota_base  = $num_pagos > 1 ? ceil($monto_retornar / $num_pagos / 10) * 10 : $monto_retornar;
-        $ultimo_pago = max(0, round(($monto_retornar - $cuota_base * ($num_pagos - 1)) * 100) / 100);
+        // Cuota en pesos enteros; último pago absorbe el residuo de centavos
+        $cuota_base  = $num_pagos > 1 ? (float) floor($monto_retornar / $num_pagos) : $monto_retornar;
+        $ultimo_pago = $num_pagos > 1 ? round($monto_retornar - $cuota_base * ($num_pagos - 1), 2) : $monto_retornar;
 
         $promotor_id   = $empleado?->id ?? $cliente->promotor_id;
         $estatus       = $desembolsar ? 'Activo' : 'Pendiente';
