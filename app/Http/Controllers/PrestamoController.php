@@ -341,8 +341,8 @@ class PrestamoController extends Controller
         $adminId  = auth()->user()->adminId();
         $prestamo = Prestamo::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
 
+        // El estatus NO es editable — se actualiza automáticamente por el sistema
         $data = $request->validate([
-            'estatus'         => 'required|in:Pendiente,Activo,Atrasado,Finalizado,Retirado',
             'cobrador_id'     => 'nullable|exists:empleados,id',
             'promotor_id'     => 'nullable|exists:empleados,id',
             'desembolso_id'   => 'nullable|exists:empleados,id',
@@ -350,7 +350,6 @@ class PrestamoController extends Controller
         ]);
 
         $update = [
-            'estatus'       => $data['estatus'],
             'cobrador_id'   => $data['cobrador_id']   ?? null,
             'promotor_id'   => $data['promotor_id']   ?? null,
             'desembolso_id' => $data['desembolso_id'] ?? null,
@@ -358,22 +357,11 @@ class PrestamoController extends Controller
         if (isset($data['interes_diario'])) {
             $update['interes_diario'] = (float)$data['interes_diario'];
         }
-        // Al revertir a Pendiente, limpiar fecha_entrega para que aparezca en desembolsos
-        if ($data['estatus'] === 'Pendiente') {
-            $update['fecha_entrega'] = null;
-        }
         $estatusAnterior   = $prestamo->estatus;
         $cobradorAnterior  = $prestamo->cobrador_id;
         $promotorAnterior  = $prestamo->promotor_id;
         $prestamo->update($update);
 
-        // Log cambio de estatus
-        if ($estatusAnterior !== $data['estatus']) {
-            PrestamoActividad::log($id, 'estatus',
-                "Estatus cambiado de {$estatusAnterior} a {$data['estatus']}.",
-                ['de' => $estatusAnterior, 'a' => $data['estatus']]
-            );
-        }
         // Log cambio de cobrador
         $nuevoCobradorId = $data['cobrador_id'] ?? null;
         if ($cobradorAnterior !== $nuevoCobradorId) {

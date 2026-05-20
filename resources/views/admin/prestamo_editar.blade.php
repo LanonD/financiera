@@ -246,13 +246,25 @@ function calcInteresAcordado() {
     <div style="padding:12px 18px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600">Estado del préstamo</div>
     <form method="POST" action="{{ route('prestamos.update', $prestamo->id) }}" style="padding:20px">
         @csrf @method('PUT')
+        @php
+            $estatusColors = [
+                'Activo'     => ['#f0fdf4','#16a34a'],
+                'Atrasado'   => ['#fef2f2','#dc2626'],
+                'Pendiente'  => ['#fefce8','#ca8a04'],
+                'Finalizado' => ['#eff6ff','#2563eb'],
+                'Retirado'   => ['#f3f4f6','#6b7280'],
+            ];
+            [$eBg, $eTx] = $estatusColors[$prestamo->estatus] ?? ['#f3f4f6','#374151'];
+        @endphp
         <div style="margin-bottom:16px">
             <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:5px">Estatus</label>
-            <select name="estatus" style="width:100%;padding:9px 12px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none">
-                @foreach(['Pendiente','Activo','Atrasado','Finalizado','Retirado'] as $est)
-                <option value="{{ $est }}" {{ $prestamo->estatus === $est ? 'selected' : '' }}>{{ $est }}</option>
-                @endforeach
-            </select>
+            <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:#f9fafb;border:1px solid var(--border);border-radius:6px">
+                <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:999px;font-size:13px;font-weight:700;background:{{ $eBg }};color:{{ $eTx }}">
+                    <span style="width:7px;height:7px;border-radius:50%;background:{{ $eTx }};display:inline-block"></span>
+                    {{ $prestamo->estatus }}
+                </span>
+                <span style="font-size:11px;color:var(--text3)">Se actualiza automáticamente</span>
+            </div>
         </div>
         <div style="margin-bottom:16px">
             <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:5px">Promotor</label>
