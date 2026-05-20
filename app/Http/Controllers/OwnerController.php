@@ -37,10 +37,26 @@ class OwnerController extends Controller
                     ->orderBy('nombre')
                     ->get();
 
-                $prestamos = Prestamo::where('admin_id', $u->id)
-                    ->whereIn('estatus', ['Activo', 'Atrasado'])
+                // ALL prestamos (all statuses) for rich detail
+                $allPrestamos = Prestamo::with('cliente')
+                    ->where('admin_id', $u->id)
                     ->orderBy('created_at', 'desc')
                     ->get();
+
+                $prestamos       = $allPrestamos->whereIn('estatus', ['Activo', 'Atrasado']);
+                $porEstatus      = $allPrestamos->groupBy('estatus')->map->count();
+                $deployedIds     = $allPrestamos->whereIn('estatus', ['Activo','Atrasado','Finalizado'])->pluck('id');
+                $capitalDesplegado = $allPrestamos->whereIn('estatus', ['Activo','Atrasado','Finalizado'])->sum('monto_entregado');
+                $totalAcordado     = $allPrestamos->whereIn('estatus', ['Activo','Atrasado','Finalizado'])->sum('monto');
+                $totalCobrado      = $deployedIds->isNotEmpty()
+                    ? (float) Pago::whereIn('prestamo_id', $deployedIds->all())
+                        ->whereIn('estatus', ['Pagado','Parcial'])->sum('monto_cobrado')
+                    : 0.0;
+                $saldoPendiente  = $allPrestamos->whereIn('estatus', ['Activo','Atrasado'])->sum('saldo_actual');
+                $moraPendiente   = $allPrestamos->whereIn('estatus', ['Activo','Atrasado'])->sum('interes_acumulado');
+                $rendimientoPct  = $capitalDesplegado > 0
+                    ? round(max(0, $totalCobrado - $capitalDesplegado) / $capitalDesplegado * 100, 1)
+                    : 0;
 
                 $u->stats = [
                     'empleados' => $empleados->count(),
@@ -49,9 +65,16 @@ class OwnerController extends Controller
                 ];
 
                 $u->detalle = [
-                    'empleados' => $empleados,
-                    'clientes'  => $clientes,
-                    'prestamos' => $prestamos,
+                    'empleados'          => $empleados,
+                    'clientes'           => $clientes,
+                    'prestamos'          => $allPrestamos,
+                    'por_estatus'        => $porEstatus,
+                    'capital_desplegado' => $capitalDesplegado,
+                    'total_acordado'     => $totalAcordado,
+                    'total_cobrado'      => $totalCobrado,
+                    'saldo_pendiente'    => $saldoPendiente,
+                    'mora_pendiente'     => $moraPendiente,
+                    'rendimiento_pct'    => $rendimientoPct,
                 ];
 
                 $u->notas = AdminNota::where('admin_id', $u->id)

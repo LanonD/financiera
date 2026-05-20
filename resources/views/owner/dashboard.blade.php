@@ -328,20 +328,33 @@
 @foreach($admins as $admin)
 <script type="application/json" id="detalle-admin-{{ $admin->id }}">
 {!! json_encode([
-    'nombre' => $admin->alias ?: ($admin->nombre ?: $admin->celular),
+    'nombre' => $admin->alias ?: ($admin->nombre ?: $admin->usuario),
+
+    'totales' => [
+        'capital_desplegado' => $admin->detalle['capital_desplegado'] ?? 0,
+        'total_acordado'     => $admin->detalle['total_acordado']     ?? 0,
+        'total_cobrado'      => $admin->detalle['total_cobrado']      ?? 0,
+        'saldo_pendiente'    => $admin->detalle['saldo_pendiente']    ?? 0,
+        'mora_pendiente'     => $admin->detalle['mora_pendiente']     ?? 0,
+        'rendimiento_pct'    => $admin->detalle['rendimiento_pct']    ?? 0,
+    ],
+
+    'por_estatus' => $admin->detalle['por_estatus'] ?? [],
 
     'empleados' => collect($admin->detalle['empleados'] ?? [])->map(fn($e) => [
-        'nombre' => $e->nombre ?? 'Sin nombre',
+        'nombre'  => $e->nombre  ?? 'Sin nombre',
         'celular' => $e->celular ?? '—',
+        'roles'   => implode(', ', array_map('ucfirst', $e->roles ?? [$e->puesto ?? ''])),
     ])->values(),
 
     'clientes' => collect($admin->detalle['clientes'] ?? [])->map(fn($c) => [
-        'nombre' => $c->nombre ?? 'Sin nombre',
+        'nombre'  => $c->nombre  ?? 'Sin nombre',
         'celular' => $c->celular ?? '—',
     ])->values(),
 
     'prestamos' => collect($admin->detalle['prestamos'] ?? [])->map(fn($p) => [
-        'monto' => '$' . number_format($p->monto ?? 0, 2),
+        'cliente' => $p->cliente?->nombre ?? '—',
+        'monto'   => number_format($p->monto ?? 0, 0, '.', ','),
         'estatus' => $p->estatus ?? '—',
     ])->values(),
 
@@ -540,19 +553,36 @@
     </div>
 </div>
 
+<style>
+.det-kpi-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+.det-kpi{background:#f9fafb;border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+.det-kpi-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:3px}
+.det-kpi-value{font-size:16px;font-weight:800;letter-spacing:-.02em}
+.det-acc{border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:8px}
+.det-acc-hd{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;background:#f9fafb;cursor:pointer;user-select:none;transition:background .12s}
+.det-acc-hd:hover{background:#f3f4f6}
+.det-acc-title{font-size:13px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px}
+.det-acc-badge{padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700}
+.det-acc-chev{transition:transform .18s;color:var(--text3)}
+.det-acc-chev.open{transform:rotate(180deg)}
+.det-acc-body{display:none;border-top:1px solid var(--border)}
+.det-acc-body.open{display:block}
+.det-pill{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;margin:2px}
+@media(max-width:600px){.det-kpi-row{grid-template-columns:1fr 1fr}}
+</style>
+
 <div class="ow-modal-overlay" id="modalDetalleAdmin">
-    <div class="ow-modal" style="width:720px">
-        <div class="ow-modal-header">
+    <div class="ow-modal" style="width:660px;max-height:88vh;overflow-y:auto">
+        <div class="ow-modal-header" style="position:sticky;top:0;background:#fff;z-index:1">
             <div>
                 <div class="ow-modal-title">Detalle del administrador</div>
                 <div style="font-size:12px;color:var(--text3);margin-top:2px">
-                    Admin: <strong id="detalleAdminNombre">—</strong>
+                    <strong id="detalleAdminNombre">—</strong>
                 </div>
             </div>
             <button class="ow-modal-close" onclick="cerrarDetalleAdmin()">&times;</button>
         </div>
-
-        <div class="ow-modal-body" id="detalleAdminBody"></div>
+        <div class="ow-modal-body" id="detalleAdminBody" style="padding:20px 24px"></div>
     </div>
 </div>
 
@@ -710,53 +740,136 @@ function submitOnce(form) {
     return true;
 }
 
+// ── Detalle Admin ────────────────────────────────────────────
+let detAccCounter = 0;
+
 function abrirDetalleAdmin(adminId) {
     const script = document.getElementById('detalle-admin-' + adminId);
     if (!script) return;
-
     const data = JSON.parse(script.textContent);
-
     document.getElementById('detalleAdminNombre').textContent = data.nombre;
 
-    const body = document.getElementById('detalleAdminBody');
+    const fmt = (n) => '$' + Number(n).toLocaleString('es-MX', {minimumFractionDigits:0, maximumFractionDigits:0});
+    const t = data.totales || {};
+    const pe = data.por_estatus || {};
 
-    body.innerHTML = `
-        ${renderSeccion('Empleados', data.empleados, ['nombre', 'celular'])}
-        ${renderSeccion('Clientes', data.clientes, ['nombre', 'celular'])}
-        ${renderSeccion('Préstamos', data.prestamos, ['monto', 'estatus'])}
-    `;
+    // ── Status pills ─────────────────────────────────────────
+    const estatusCfg = {
+        'Activo':     ['#eff6ff','#2563eb'],
+        'Atrasado':   ['#fef2f2','#dc2626'],
+        'Pendiente':  ['#fefce8','#ca8a04'],
+        'Finalizado': ['#f0fdf4','#16a34a'],
+        'Retirado':   ['#f3f4f6','#6b7280'],
+    };
+    const pillsHtml = Object.entries(pe).filter(([,v]) => v > 0).map(([est, cnt]) => {
+        const [bg, tx] = estatusCfg[est] || ['#f3f4f6','#374151'];
+        return `<span class="det-pill" style="background:${bg};color:${tx}">${cnt} ${est}</span>`;
+    }).join('');
 
+    // ── KPI grid ─────────────────────────────────────────────
+    const kpiHtml = `
+        <div class="det-kpi-row">
+            <div class="det-kpi">
+                <div class="det-kpi-label">Capital desplegado</div>
+                <div class="det-kpi-value" style="color:#2563eb">${fmt(t.capital_desplegado||0)}</div>
+            </div>
+            <div class="det-kpi">
+                <div class="det-kpi-label">Total cobrado</div>
+                <div class="det-kpi-value" style="color:#16a34a">${fmt(t.total_cobrado||0)}</div>
+            </div>
+            <div class="det-kpi">
+                <div class="det-kpi-label">Rendimiento</div>
+                <div class="det-kpi-value" style="color:#7c3aed">${t.rendimiento_pct||0}%</div>
+            </div>
+            <div class="det-kpi">
+                <div class="det-kpi-label">Saldo pendiente</div>
+                <div class="det-kpi-value" style="color:#d97706">${fmt(t.saldo_pendiente||0)}</div>
+            </div>
+            <div class="det-kpi">
+                <div class="det-kpi-label">Mora pendiente</div>
+                <div class="det-kpi-value" style="color:#dc2626">${fmt(t.mora_pendiente||0)}</div>
+            </div>
+            <div class="det-kpi">
+                <div class="det-kpi-label">Total acordado</div>
+                <div class="det-kpi-value">${fmt(t.total_acordado||0)}</div>
+            </div>
+        </div>`;
+
+    // Préstamos totals strip
+    const totalPrestamos = Object.values(pe).reduce((a,b)=>a+b,0);
+    const prestamoStrip = totalPrestamos > 0
+        ? `<div style="margin-bottom:14px;padding:10px 12px;background:#f9fafb;border:1px solid var(--border);border-radius:8px">
+               <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:6px">${totalPrestamos} préstamos en total</div>
+               <div>${pillsHtml}</div>
+           </div>`
+        : '';
+
+    // ── Accordion builder ─────────────────────────────────────
+    const acc = (title, badge, badgeStyle, rows, emptyMsg) => {
+        const id = 'det-acc-' + (++detAccCounter);
+        const rowsHtml = rows.length === 0
+            ? `<div style="padding:12px 14px;font-size:12px;color:var(--text3)">${emptyMsg}</div>`
+            : `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">${rows}</table></div>`;
+        return `
+            <div class="det-acc">
+                <div class="det-acc-hd" onclick="toggleDetAcc('${id}')">
+                    <span class="det-acc-title">
+                        ${title}
+                        <span class="det-acc-badge" style="${badgeStyle}">${badge}</span>
+                    </span>
+                    <svg class="det-acc-chev" id="${id}-chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:14px;height:14px"><path d="M4 6l4 4 4-4"/></svg>
+                </div>
+                <div class="det-acc-body" id="${id}">${rowsHtml}</div>
+            </div>`;
+    };
+
+    const tdStyle = 'padding:9px 12px;border-bottom:1px solid var(--border);font-size:12px';
+    const thStyle = 'padding:8px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);background:#f9fafb;border-bottom:1px solid var(--border)';
+
+    // Empleados
+    const empRows = (data.empleados||[]).map(e =>
+        `<tr><td style="${tdStyle}">${escHtml(e.nombre)}</td><td style="${tdStyle};color:var(--text2)">${escHtml(e.roles||'—')}</td><td style="${tdStyle};color:var(--text3)">${escHtml(e.celular||'—')}</td></tr>`
+    ).join('');
+    const empHead = `<tr><th style="${thStyle}">Nombre</th><th style="${thStyle}">Roles</th><th style="${thStyle}">Celular</th></tr>`;
+    const empHtml = acc('Empleados', (data.empleados||[]).length, 'background:#eff6ff;color:#2563eb',
+        empRows.length ? empHead + empRows : '', 'Sin empleados registrados.');
+
+    // Clientes
+    const cliRows = (data.clientes||[]).map(c =>
+        `<tr><td style="${tdStyle}">${escHtml(c.nombre)}</td><td style="${tdStyle};color:var(--text3)">${escHtml(c.celular||'—')}</td></tr>`
+    ).join('');
+    const cliHead = `<tr><th style="${thStyle}">Nombre</th><th style="${thStyle}">Celular</th></tr>`;
+    const cliHtml = acc('Clientes', (data.clientes||[]).length, 'background:#f0fdf4;color:#16a34a',
+        cliRows.length ? cliHead + cliRows : '', 'Sin clientes activos.');
+
+    // Préstamos
+    const estColors = {Activo:'#2563eb',Atrasado:'#dc2626',Pendiente:'#ca8a04',Finalizado:'#16a34a',Retirado:'#6b7280'};
+    const preRows = (data.prestamos||[]).map(p => {
+        const col = estColors[p.estatus]||'#374151';
+        return `<tr>
+            <td style="${tdStyle}">${escHtml(p.cliente||'—')}</td>
+            <td style="${tdStyle};font-family:monospace;font-weight:600">$${escHtml(String(p.monto||0))}</td>
+            <td style="${tdStyle}"><span style="font-size:11px;font-weight:700;color:${col}">${escHtml(p.estatus||'—')}</span></td>
+        </tr>`;
+    }).join('');
+    const preHead = `<tr><th style="${thStyle}">Cliente</th><th style="${thStyle}">Monto</th><th style="${thStyle}">Estatus</th></tr>`;
+    const preHtml = acc('Préstamos', totalPrestamos, 'background:#fef9c3;color:#854d0e',
+        preRows.length ? preHead + preRows : '', 'Sin préstamos.');
+
+    document.getElementById('detalleAdminBody').innerHTML = kpiHtml + prestamoStrip + empHtml + cliHtml + preHtml;
     document.getElementById('modalDetalleAdmin').classList.add('open');
+}
+
+function toggleDetAcc(id) {
+    const body = document.getElementById(id);
+    const chev = document.getElementById(id + '-chev');
+    if (!body) return;
+    body.classList.toggle('open');
+    if (chev) chev.classList.toggle('open');
 }
 
 function cerrarDetalleAdmin() {
     document.getElementById('modalDetalleAdmin').classList.remove('open');
-}
-
-function renderSeccion(titulo, items, campos) {
-    if (!items || items.length === 0) {
-        return `
-            <div style="border:1px solid var(--border);border-radius:12px;padding:14px">
-                <strong>${titulo}</strong>
-                <p style="font-size:13px;color:var(--text3);margin-top:8px">Sin registros.</p>
-            </div>
-        `;
-    }
-
-    let rows = items.map(item => `
-        <tr>
-            ${campos.map(c => `<td style="padding:8px;border-bottom:1px solid var(--border);font-size:13px">${escHtml(String(item[c] ?? '—'))}</td>`).join('')}
-        </tr>
-    `).join('');
-
-    return `
-        <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">
-            <div style="padding:12px 14px;background:#f9fafb;font-weight:700">${titulo}</div>
-            <table style="width:100%;border-collapse:collapse">
-                <tbody>${rows}</tbody>
-            </table>
-        </div>
-    `;
 }
 
 document.getElementById('modalDetalleAdmin').addEventListener('click', function(e) {

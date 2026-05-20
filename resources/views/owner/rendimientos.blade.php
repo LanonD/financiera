@@ -246,6 +246,24 @@
     </div>
 </div>
 
+{{-- ── Buscador de administradores ─────────────────────────── --}}
+@if(!$stats->isEmpty())
+<div style="position:relative;margin-bottom:14px">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+         style="position:absolute;left:13px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--text3);pointer-events:none">
+        <circle cx="6.5" cy="6.5" r="4.5"/><path d="M11.5 11.5L15 15"/>
+    </svg>
+    <input type="text" id="rndSearch" autocomplete="off"
+        placeholder="Buscar administrador por nombre o alias…"
+        style="width:100%;padding:9px 14px 9px 38px;background:var(--card);border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--font);color:var(--text);outline:none;box-sizing:border-box;transition:border-color .15s"
+        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
+        oninput="filtrarRendimientos(this.value)">
+    <div id="rndNoResult" style="display:none;padding:24px;text-align:center;color:var(--text3);font-size:13px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);margin-top:8px">
+        Sin resultados para tu búsqueda.
+    </div>
+</div>
+@endif
+
 {{-- ── Sin datos ────────────────────────────────────────────── --}}
 @if($stats->isEmpty())
 <div class="card" style="text-align:center;padding:60px 24px;color:var(--text3)">
@@ -288,7 +306,8 @@
     }
 @endphp
 
-<div class="rnd-card" style="{{ $i===0?'border-radius:0 0 var(--radius) var(--radius);border-top:none':'' }}">
+<div class="rnd-card" style="{{ $i===0?'border-radius:0 0 var(--radius) var(--radius);border-top:none':'' }}"
+     data-search="{{ strtolower(($admin->alias ?? '') . ' ' . ($admin->nombre ?? '') . ' ' . $admin->usuario) }}">
     <div class="rnd-card-header" onclick="toggleDetalle({{ $admin->id }})">
 
         {{-- Admin --}}
@@ -471,6 +490,22 @@
 @push('scripts')
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script>
+// ── Buscador de admins ────────────────────────────────────────
+function filtrarRendimientos(q) {
+    q = q.toLowerCase().trim();
+    const cards  = document.querySelectorAll('.rnd-card');
+    let visible  = 0;
+    cards.forEach(function(c) {
+        const match = !q || (c.dataset.search || '').includes(q);
+        c.style.display = match ? '' : 'none';
+        if (match) visible++;
+    });
+    const noRes  = document.getElementById('rndNoResult');
+    const header = document.querySelector('.rnd-list-header');
+    if (noRes) noRes.style.display = visible === 0 ? '' : 'none';
+    if (header) header.style.display = visible === 0 ? 'none' : '';
+}
+
 // ════════════════════════════════════════════════════════════
 // PORTFOLIO CHART — filtros interactivos
 // ════════════════════════════════════════════════════════════
