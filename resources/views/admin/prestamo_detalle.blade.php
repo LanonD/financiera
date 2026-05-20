@@ -1041,20 +1041,20 @@ function calcDiferencia() {
 
             {{-- Consecuencias --}}
             <div style="font-size:13px;font-weight:700;color:#111827;margin-bottom:10px">Al cancelar este préstamo:</div>
-            <ul style="margin:0 0 18px;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px">
-                <li style="display:flex;align-items:flex-start;gap:9px;font-size:13px;color:#374151">
-                    <span style="width:18px;height:18px;border-radius:50%;background:#fee2e2;color:#dc2626;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">!</span>
-                    El préstamo quedará como <strong>&nbsp;Retirado&nbsp;</strong> y <strong>no podrá reactivarse</strong>.
-                </li>
-                <li style="display:flex;align-items:flex-start;gap:9px;font-size:13px;color:#374151">
-                    <span style="width:18px;height:18px;border-radius:50%;background:#fee2e2;color:#dc2626;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">!</span>
-                    El historial crediticio del cliente registrará un préstamo cancelado, lo que <strong>puede afectar su acceso a futuros créditos</strong>.
-                </li>
-                <li style="display:flex;align-items:flex-start;gap:9px;font-size:13px;color:#374151">
-                    <span style="width:18px;height:18px;border-radius:50%;background:#fee2e2;color:#dc2626;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">!</span>
-                    Si el cliente aún necesita el dinero, <strong>deberá crearse un nuevo préstamo</strong> desde cero.
-                </li>
-            </ul>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px">
+                <div style="display:flex;gap:10px;align-items:flex-start">
+                    <span style="min-width:18px;height:18px;border-radius:50%;background:#fee2e2;color:#dc2626;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px">!</span>
+                    <p style="margin:0;font-size:13px;color:#374151;line-height:1.5">El préstamo quedará como <strong>Retirado</strong> y no podrá reactivarse.</p>
+                </div>
+                <div style="display:flex;gap:10px;align-items:flex-start">
+                    <span style="min-width:18px;height:18px;border-radius:50%;background:#fee2e2;color:#dc2626;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px">!</span>
+                    <p style="margin:0;font-size:13px;color:#374151;line-height:1.5">El historial del cliente registrará un préstamo cancelado, lo que <strong>puede afectar su acceso a futuros créditos</strong>.</p>
+                </div>
+                <div style="display:flex;gap:10px;align-items:flex-start">
+                    <span style="min-width:18px;height:18px;border-radius:50%;background:#fee2e2;color:#dc2626;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px">!</span>
+                    <p style="margin:0;font-size:13px;color:#374151;line-height:1.5">Si el cliente necesita el dinero, tendrá que <strong>solicitarse un nuevo préstamo</strong> desde cero.</p>
+                </div>
+            </div>
 
             {{-- Confirmación de texto --}}
             <div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:10px 14px;font-size:12px;color:#713f12;margin-bottom:20px">
