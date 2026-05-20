@@ -763,7 +763,7 @@ function calcPreview() {
         document.getElementById(id).style.display = ok ? '' : 'none');
     if (!ok) return;
 
-    const cuotaBase  = numPagos > 1 ? Math.ceil(retornar / numPagos / 10) * 10 : retornar;
+    const cuotaBase  = numPagos > 1 ? Math.ceil(retornar / numPagos / 5) * 5 : retornar;
     const ultimoPago = Math.max(0, Math.round((retornar - cuotaBase * (numPagos - 1)) * 100) / 100);
     const ganancia   = retornar - entregado;
     const rentPctFmt = (ganancia / entregado * 100).toFixed(1);
