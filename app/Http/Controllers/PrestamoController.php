@@ -452,8 +452,9 @@ class PrestamoController extends Controller
         } else {
             // Activo / Atrasado — solo saldos pendientes
             $data = $request->validate([
-                'saldo_actual'      => 'required|numeric|min:0',
-                'interes_acumulado' => 'required|numeric|min:0',
+                'saldo_actual'       => 'required|numeric|min:0',
+                'interes_pendiente'  => 'nullable|numeric|min:0',
+                'interes_acumulado'  => 'required|numeric|min:0',
             ]);
         }
 
@@ -533,7 +534,49 @@ class PrestamoController extends Controller
                 $cambios[] = 'Saldo pendiente: $' . number_format($prestamo->saldo_actual, 2) . ' → $' . number_format($data['saldo_actual'], 2);
 
             $prestamo->saldo_actual = round((float)$data['saldo_actual'], 2);
-            // interes_acumulado handled below
+
+            // ── Redistribuir interés pendiente en los pagos pendientes ────
+            if (isset($data['interes_pendiente']) && $data['interes_pendiente'] !== null) {
+                $nuevoInteres = round((float)$data['interes_pendiente'], 2);
+
+                // Interés actual en pagos pendientes (para log)
+                $pendingPagos = Pago::where('prestamo_id', $id)
+                    ->whereIn('estatus', ['Pendiente', 'Atrasado'])
+                    ->orderBy('numero_pago')
+                    ->get();
+
+                $interesActual = round($pendingPagos->sum('interes'), 2);
+
+                if ($pendingPagos->count() > 0 && round($interesActual, 2) !== $nuevoInteres) {
+                    $cambios[] = 'Interés pendiente: $' . number_format($interesActual, 2) . ' → $' . number_format($nuevoInteres, 2);
+
+                    $n         = $pendingPagos->count();
+                    $asignado  = 0.0;
+                    $capitalPagado = (float) Pago::where('prestamo_id', $id)
+                        ->whereIn('estatus', ['Pagado', 'Parcial'])
+                        ->sum('capital');
+                    $saldoBase = max(0, round((float)$prestamo->monto_entregado - $capitalPagado, 2));
+
+                    foreach ($pendingPagos as $idx => $pago) {
+                        $isLast  = ($idx === $n - 1);
+                        // Distribute: last pago absorbs rounding residual
+                        $intPago = $isLast
+                            ? round($nuevoInteres - $asignado, 2)
+                            : floor($nuevoInteres / $n * 100) / 100;
+
+                        $intPago = max(0, min($intPago, $pago->monto_cuota));
+                        $capPago = round($pago->monto_cuota - $intPago, 2);
+                        $saldoBase = max(0, round($saldoBase - $capPago, 2));
+
+                        $pago->interes         = $intPago;
+                        $pago->capital         = $capPago;
+                        $pago->saldo_restante  = $saldoBase;
+                        $pago->save();
+
+                        $asignado += $intPago;
+                    }
+                }
+            }
         }
 
         // Mora acumulada (both modes)
@@ -550,7 +593,7 @@ class PrestamoController extends Controller
             );
         }
 
-        return redirect()->route('prestamos.edit', $id)->with('success', 'Campos actualizados correctamente.');
+        return redirect()->route('prestamos.show', $id)->with('success', 'Saldos actualizados correctamente.');
     }
 
     /**

@@ -203,11 +203,11 @@
             </div>
 
             <div>
-                <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#16a34a;margin-bottom:5px">Interés pendiente</label>
-                <div style="{{ $inputReadStyle }};background:#f0fdf4;border-color:#86efac;color:#166534">
-                    ${{ number_format($interesRestante, 2, '.', ',') }}
-                </div>
-                <p style="font-size:11px;color:#16a34a;margin-top:4px">Calculado: interés acordado menos cobrado. Solo lectura.</p>
+                <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#16a34a;margin-bottom:5px">Interés pendiente ($)</label>
+                <input type="number" name="interes_pendiente" step="0.01" min="0"
+                    value="{{ number_format($interesRestante, 2, '.', '') }}"
+                    style="{{ $inputStyle }};background:#f0fdf4;border-color:#86efac;color:#166534">
+                <p style="font-size:11px;color:#16a34a;margin-top:4px">Interés del acuerdo que aún no se ha cobrado.</p>
             </div>
 
             <div>
