@@ -299,42 +299,43 @@ $activoMap = $clientesConPrestamo->toArray();
                     </div>
 
                     {{-- Documentos --}}
-                    <div style="border-top:1px solid var(--border);padding-top:12px;display:flex;flex-direction:column;gap:10px">
+                    <div style="border-top:1px solid var(--border);padding-top:12px;display:flex;flex-direction:column;gap:12px">
                         <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Documentos del desembolso</div>
 
-                        @php $docStyle = 'width:100%;padding:7px 10px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-family:var(--font);font-size:12px;color:var(--text);cursor:pointer;box-sizing:border-box'; @endphp
+                        @php
+                        $docs = [
+                            ['ine',         'doc_ine',           'INE / Identificación',      true,  '.jpg,.jpeg,.png,.pdf', 'image/*,application/pdf'],
+                            ['pagare',      'doc_pagare',        'Pagaré',                    true,  '.jpg,.jpeg,.png,.pdf', 'image/*,application/pdf'],
+                            ['comprobante', 'doc_comprobante',   'Comprobante de domicilio',  true,  '.jpg,.jpeg,.png,.pdf', 'image/*,application/pdf'],
+                            ['foto',        'doc_foto_domicilio','Foto de domicilio',         false, '.jpg,.jpeg,.png',      'image/*'],
+                        ];
+                        @endphp
 
+                        @foreach($docs as [$key, $name, $label, $required, $accept, $camAccept])
                         <div>
-                            <label class="np-label">INE / Identificación <span style="color:#ef4444">*</span></label>
-                            <input type="file" name="doc_ine" id="docIne" accept=".jpg,.jpeg,.png,.pdf"
-                                   style="{{ $docStyle }}" onchange="previewDoc(this,'prevIne')">
-                            <div id="prevIne" style="display:none;margin-top:6px"></div>
-                            <div class="np-hint">JPG, PNG o PDF — máx. 10 MB</div>
+                            <label class="np-label">
+                                {{ $label }}
+                                @if($required)<span style="color:#ef4444">*</span>@else<span style="font-weight:400;text-transform:none;color:var(--text3)"> (opcional)</span>@endif
+                            </label>
+                            <div style="display:flex;gap:6px">
+                                {{-- Subir archivo --}}
+                                <label style="flex:1;display:flex;align-items:center;gap:7px;padding:8px 12px;background:#f9fafb;border:1.5px dashed var(--border);border-radius:7px;cursor:pointer;font-size:12px;color:var(--text2);transition:border-color .15s;min-width:0" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                    <span style="white-space:nowrap">Subir archivo</span>
+                                    <input type="file" name="{{ $name }}" id="np_{{ $key }}_file" accept="{{ $accept }}" style="display:none"
+                                           onchange="npSelDoc('{{ $key }}', this)">
+                                </label>
+                                {{-- Tomar foto directa (sin guardar en galería) --}}
+                                <label style="display:flex;align-items:center;gap:7px;padding:8px 12px;background:#f9fafb;border:1.5px dashed var(--border);border-radius:7px;cursor:pointer;font-size:12px;color:var(--text2);transition:border-color .15s;white-space:nowrap" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                                    Tomar foto
+                                    <input type="file" id="np_{{ $key }}_cam" accept="{{ $camAccept }}" capture="environment" style="display:none"
+                                           onchange="npSelDoc('{{ $key }}', this)">
+                                </label>
+                            </div>
+                            <div id="np_{{ $key }}_txt" style="display:none;margin-top:5px;font-size:11px;color:#166534;padding:5px 8px;background:rgba(22,163,74,.06);border-radius:5px"></div>
                         </div>
-
-                        <div>
-                            <label class="np-label">Pagaré <span style="color:#ef4444">*</span></label>
-                            <input type="file" name="doc_pagare" id="docPagare" accept=".jpg,.jpeg,.png,.pdf"
-                                   style="{{ $docStyle }}" onchange="previewDoc(this,'prevPagare')">
-                            <div id="prevPagare" style="display:none;margin-top:6px"></div>
-                            <div class="np-hint">JPG, PNG o PDF — máx. 10 MB</div>
-                        </div>
-
-                        <div>
-                            <label class="np-label">Comprobante de domicilio <span style="color:#ef4444">*</span></label>
-                            <input type="file" name="doc_comprobante" id="docComprobante" accept=".jpg,.jpeg,.png,.pdf"
-                                   style="{{ $docStyle }}" onchange="previewDoc(this,'prevComprobante')">
-                            <div id="prevComprobante" style="display:none;margin-top:6px"></div>
-                            <div class="np-hint">JPG, PNG o PDF — máx. 10 MB</div>
-                        </div>
-
-                        <div>
-                            <label class="np-label">Foto de domicilio <span style="color:var(--text3);font-weight:400">(opcional)</span></label>
-                            <input type="file" name="doc_foto_domicilio" id="docFoto" accept=".jpg,.jpeg,.png"
-                                   style="{{ $docStyle }}" onchange="previewDoc(this,'prevFoto')">
-                            <div id="prevFoto" style="display:none;margin-top:6px"></div>
-                            <div class="np-hint">Solo imágenes — máx. 10 MB</div>
-                        </div>
+                        @endforeach
                     </div>
                 </div>
             </div>
@@ -599,6 +600,31 @@ function previewDoc(input, previewId) {
         reader.readAsDataURL(file);
     }
     container.style.display = '';
+}
+
+// Maneja selección desde botón "Subir archivo" O "Tomar foto"
+// Copia el archivo al input principal (name="doc_xxx") para que el form lo envíe
+const npActiveDoc = {};
+function npSelDoc(key, srcInput) {
+    if (!srcInput.files || !srcInput.files[0]) return;
+    const file = srcInput.files[0];
+    npActiveDoc[key] = srcInput; // guardar cuál input tiene el archivo
+
+    // Transferir al input con name="" para el submit del formulario
+    const mainInput = document.getElementById('np_' + key + '_file');
+    if (mainInput && srcInput !== mainInput) {
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        mainInput.files = dt.files;
+    }
+
+    // Mostrar nombre del archivo
+    const txt = document.getElementById('np_' + key + '_txt');
+    if (txt) {
+        const sizeMb = (file.size / 1024 / 1024).toFixed(1);
+        txt.textContent = '✓ ' + (file.name.length > 40 ? '…' + file.name.slice(-37) : file.name) + ' · ' + sizeMb + ' MB';
+        txt.style.display = '';
+    }
 }
 
 function toggleDesembolso() {

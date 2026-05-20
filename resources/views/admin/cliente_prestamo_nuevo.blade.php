@@ -498,40 +498,40 @@
             <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
                 <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:12px">Documentos del desembolso</div>
 
-                @php $docStyle = 'width:100%;padding:7px 10px;background:#f9fafb;border:1.5px solid var(--border);border-radius:6px;font-family:var(--font);font-size:12px;color:var(--text);cursor:pointer;box-sizing:border-box'; @endphp
-
                 <div class="frm-grid-2col">
+                    @foreach([
+                        ['ine',         'doc_ine',           'INE / Identificación',     true],
+                        ['pagare',      'doc_pagare',        'Pagaré',                   true],
+                        ['comprobante', 'doc_comprobante',   'Comprobante de domicilio', true],
+                        ['foto',        'doc_foto_domicilio','Foto de domicilio',         false],
+                    ] as [$wk, $wname, $wlabel, $wreq])
                     <div class="frm-field">
-                        <label>INE / Identificación <span style="color:#ef4444">*</span></label>
-                        <input type="file" name="doc_ine" accept=".jpg,.jpeg,.png,.pdf"
-                               style="{{ $docStyle }}" onchange="previewDocWiz(this,'wiz-prev-ine')">
-                        <div id="wiz-prev-ine" style="display:none;margin-top:6px"></div>
-                        <div class="frm-hint">JPG, PNG o PDF — máx. 10 MB</div>
+                        <label>{{ $wlabel }}
+                            @if($wreq)<span style="color:#ef4444">*</span>
+                            @else<span style="font-weight:400;color:var(--text3)"> (opcional)</span>@endif
+                        </label>
+                        <div style="display:flex;gap:6px">
+                            {{-- Subir archivo --}}
+                            <label style="flex:1;display:flex;align-items:center;gap:7px;padding:8px 11px;background:#f9fafb;border:1.5px dashed var(--border);border-radius:7px;cursor:pointer;font-size:12px;color:var(--text2);transition:border-color .15s;min-width:0" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                <span style="white-space:nowrap">Subir archivo</span>
+                                <input type="file" name="{{ $wname }}" id="wiz_{{ $wk }}_file"
+                                       accept="{{ $wk === 'foto' ? '.jpg,.jpeg,.png' : '.jpg,.jpeg,.png,.pdf' }}"
+                                       style="display:none" onchange="wizSelDoc('{{ $wk }}', this)">
+                            </label>
+                            {{-- Tomar foto directa --}}
+                            <label style="display:flex;align-items:center;gap:7px;padding:8px 11px;background:#f9fafb;border:1.5px dashed var(--border);border-radius:7px;cursor:pointer;font-size:12px;color:var(--text2);transition:border-color .15s;white-space:nowrap" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                                Tomar foto
+                                <input type="file" id="wiz_{{ $wk }}_cam"
+                                       accept="image/*" capture="environment"
+                                       style="display:none" onchange="wizSelDoc('{{ $wk }}', this)">
+                            </label>
+                        </div>
+                        <div id="wiz_{{ $wk }}_txt" style="display:none;margin-top:5px;font-size:11px;color:#166534;padding:5px 8px;background:rgba(22,163,74,.06);border-radius:5px"></div>
+                        <div class="frm-hint">{{ $wk === 'foto' ? 'Solo imágenes' : 'JPG, PNG o PDF' }} — máx. 10 MB</div>
                     </div>
-
-                    <div class="frm-field">
-                        <label>Pagaré <span style="color:#ef4444">*</span></label>
-                        <input type="file" name="doc_pagare" accept=".jpg,.jpeg,.png,.pdf"
-                               style="{{ $docStyle }}" onchange="previewDocWiz(this,'wiz-prev-pagare')">
-                        <div id="wiz-prev-pagare" style="display:none;margin-top:6px"></div>
-                        <div class="frm-hint">JPG, PNG o PDF — máx. 10 MB</div>
-                    </div>
-
-                    <div class="frm-field">
-                        <label>Comprobante de domicilio <span style="color:#ef4444">*</span></label>
-                        <input type="file" name="doc_comprobante" accept=".jpg,.jpeg,.png,.pdf"
-                               style="{{ $docStyle }}" onchange="previewDocWiz(this,'wiz-prev-comprobante')">
-                        <div id="wiz-prev-comprobante" style="display:none;margin-top:6px"></div>
-                        <div class="frm-hint">JPG, PNG o PDF — máx. 10 MB</div>
-                    </div>
-
-                    <div class="frm-field">
-                        <label>Foto de domicilio <span style="color:var(--text3);font-weight:400">(opcional)</span></label>
-                        <input type="file" name="doc_foto_domicilio" accept=".jpg,.jpeg,.png"
-                               style="{{ $docStyle }}" onchange="previewDocWiz(this,'wiz-prev-foto')">
-                        <div id="wiz-prev-foto" style="display:none;margin-top:6px"></div>
-                        <div class="frm-hint">Solo imágenes — máx. 10 MB</div>
-                    </div>
+                    @endforeach
                 </div>
             </div>
 
@@ -626,6 +626,28 @@ function togglePrestamo() {
     document.getElementById('sinPrestamoMsg').style.display = on ? 'none' : '';
     document.getElementById('btnSiguiente2').style.display  = on ? '' : 'none';
     document.getElementById('btnSoloCliente').style.display = on ? 'none' : '';
+}
+
+// ── Selección dual: archivo o cámara ──────────────────────────────────────
+function wizSelDoc(key, srcInput) {
+    if (!srcInput.files || !srcInput.files[0]) return;
+    const file = srcInput.files[0];
+
+    // Si vino de la cámara, transferir al input principal (con name="") para el submit
+    const mainInput = document.getElementById('wiz_' + key + '_file');
+    if (mainInput && srcInput !== mainInput) {
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        mainInput.files = dt.files;
+    }
+
+    // Mostrar nombre del archivo seleccionado
+    const txt = document.getElementById('wiz_' + key + '_txt');
+    if (txt) {
+        const sizeMb = (file.size / 1024 / 1024).toFixed(1);
+        txt.textContent = '✓ ' + (file.name.length > 40 ? '…' + file.name.slice(-37) : file.name) + ' · ' + sizeMb + ' MB';
+        txt.style.display = '';
+    }
 }
 
 // ── Document preview ──────────────────────────────────────────────────────
