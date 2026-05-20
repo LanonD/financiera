@@ -128,13 +128,10 @@ $puesto = auth()->user()->puesto;
         @if($puesto === 'admin')
         <a href="{{ route('prestamos.edit', $prestamo->id) }}" class="btn btn-sm" style="background:#f3f4f6;color:var(--text)">Editar</a>
         @if($prestamo->estatus === 'Pendiente')
-        <form method="POST" action="{{ route('prestamos.cancelar', $prestamo->id) }}" style="margin:0">
-            @csrf
-            <button type="submit" class="btn btn-sm" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5"
-                onclick="return confirm('¿Cancelar este préstamo? Quedará como Retirado.')">
-                Cancelar préstamo
-            </button>
-        </form>
+        <button type="button" class="btn btn-sm" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5"
+            onclick="document.getElementById('modalCancelarPrestamo').style.display='flex'">
+            Cancelar préstamo
+        </button>
         @endif
         @endif
     </div>
@@ -1005,5 +1002,85 @@ function calcDiferencia() {
     </div>
     @endif
 </div>
+
+{{-- ── Modal: Cancelar préstamo ────────────────────────────── --}}
+@if($prestamo->estatus === 'Pendiente')
+<div id="modalCancelarPrestamo"
+     style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);backdrop-filter:blur(4px);z-index:500;align-items:center;justify-content:center;padding:20px"
+     onclick="if(event.target===this)this.style.display='none'">
+
+    <div style="background:#fff;border-radius:16px;width:100%;max-width:460px;box-shadow:0 24px 64px rgba(0,0,0,.22);overflow:hidden">
+
+        {{-- Cabecera roja --}}
+        <div style="background:linear-gradient(135deg,#dc2626,#b91c1c);padding:24px 28px;display:flex;align-items:flex-start;gap:14px">
+            <div style="width:44px;height:44px;background:rgba(255,255,255,.15);border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" style="width:22px;height:22px">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+            </div>
+            <div>
+                <div style="font-size:17px;font-weight:800;color:#fff;letter-spacing:-.02em">Acción irreversible</div>
+                <div style="font-size:13px;color:rgba(255,255,255,.8);margin-top:3px">Cancelar préstamo #{{ $prestamo->id }}</div>
+            </div>
+        </div>
+
+        {{-- Cuerpo --}}
+        <div style="padding:24px 28px">
+
+            {{-- Cliente destacado --}}
+            <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;margin-bottom:18px">
+                <div style="width:36px;height:36px;border-radius:50%;background:#dc2626;color:#fff;font-size:14px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                    {{ strtoupper(substr($prestamo->cliente?->nombre ?? 'C', 0, 1)) }}
+                </div>
+                <div>
+                    <div style="font-size:13px;font-weight:700;color:#991b1b">{{ $prestamo->cliente?->nombre ?? '—' }}</div>
+                    <div style="font-size:11px;color:#b91c1c">Préstamo de ${{ number_format($prestamo->monto_entregado, 0, '.', ',') }} · {{ $prestamo->num_pagos }} pagos {{ strtolower($prestamo->frecuencia) }}s</div>
+                </div>
+            </div>
+
+            {{-- Consecuencias --}}
+            <div style="font-size:13px;font-weight:700;color:#111827;margin-bottom:10px">Al cancelar este préstamo:</div>
+            <ul style="margin:0 0 18px;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px">
+                <li style="display:flex;align-items:flex-start;gap:9px;font-size:13px;color:#374151">
+                    <span style="width:18px;height:18px;border-radius:50%;background:#fee2e2;color:#dc2626;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">!</span>
+                    El préstamo quedará como <strong>&nbsp;Retirado&nbsp;</strong> y <strong>no podrá reactivarse</strong>.
+                </li>
+                <li style="display:flex;align-items:flex-start;gap:9px;font-size:13px;color:#374151">
+                    <span style="width:18px;height:18px;border-radius:50%;background:#fee2e2;color:#dc2626;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">!</span>
+                    El historial crediticio del cliente registrará un préstamo cancelado, lo que <strong>puede afectar su acceso a futuros créditos</strong>.
+                </li>
+                <li style="display:flex;align-items:flex-start;gap:9px;font-size:13px;color:#374151">
+                    <span style="width:18px;height:18px;border-radius:50%;background:#fee2e2;color:#dc2626;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">!</span>
+                    Si el cliente aún necesita el dinero, <strong>deberá crearse un nuevo préstamo</strong> desde cero.
+                </li>
+            </ul>
+
+            {{-- Confirmación de texto --}}
+            <div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:10px 14px;font-size:12px;color:#713f12;margin-bottom:20px">
+                <strong>¿Estás seguro?</strong> Esta acción quedará registrada en el historial de actividad del préstamo.
+            </div>
+
+            {{-- Botones --}}
+            <div style="display:flex;gap:10px;flex-direction:column">
+                <button type="button"
+                    style="width:100%;padding:11px;background:#f3f4f6;border:none;border-radius:8px;font-size:14px;font-weight:600;color:var(--text);cursor:pointer;transition:background .15s"
+                    onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='#f3f4f6'"
+                    onclick="document.getElementById('modalCancelarPrestamo').style.display='none'">
+                    Volver — no cancelar
+                </button>
+                <form method="POST" action="{{ route('prestamos.cancelar', $prestamo->id) }}" style="margin:0">
+                    @csrf
+                    <button type="submit"
+                        style="width:100%;padding:11px;background:#dc2626;border:none;border-radius:8px;font-size:13px;font-weight:700;color:#fff;cursor:pointer;transition:opacity .15s;letter-spacing:.01em"
+                        onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+                        Sí, cancelar el préstamo definitivamente
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+@endif
 
 @endsection
