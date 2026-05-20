@@ -262,7 +262,12 @@ class ClienteController extends Controller
         $cuota_base  = $num_pagos > 1 ? (float)((int) round($monto_retornar / $num_pagos / 5) * 5) : $monto_retornar;
         $ultimo_pago = $num_pagos > 1 ? round($monto_retornar - $cuota_base * ($num_pagos - 1), 2) : $monto_retornar;
 
-        $promotor_id   = $empleado?->id ?? $cliente->promotor_id;
+        // Admin: usar el promotor del cliente (no el empleado del admin)
+        $isAdmin     = in_array('admin', $user->getAllRoles());
+        $promotor_id = $isAdmin
+            ? $cliente->promotor_id
+            : ($empleado?->id ?? $cliente->promotor_id);
+
         $estatus       = $desembolsar ? 'Activo' : 'Pendiente';
         $forma_entrega = $desembolsar ? ($data['forma_entrega'] ?? null) : null;
         $fecha_entrega = $desembolsar ? ($data['fecha_entrega'] ?? null) : null;

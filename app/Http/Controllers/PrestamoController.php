@@ -124,6 +124,7 @@ class PrestamoController extends Controller
 
         $user     = Auth::user();
         $empleado = $user->empleado;
+        $isAdmin  = in_array('admin', $user->getAllRoles());
 
         // ── Block: One active loan per client ────────────────────────────────
         $prestamoActivo = Prestamo::where('cliente_id', $data['cliente_id'])
@@ -156,8 +157,16 @@ class PrestamoController extends Controller
         $cuota_base  = $num_pagos > 1 ? (float)((int) round($monto_retornar / $num_pagos / 5) * 5) : $monto_retornar;
         $ultimo_pago = $num_pagos > 1 ? round($monto_retornar - $cuota_base * ($num_pagos - 1), 2) : $monto_retornar;
 
-        $cliente     = Cliente::where('id', $data['cliente_id'])->where('admin_id', auth()->user()->adminId())->firstOrFail();
-        $promotor_id = $empleado?->id ?? $cliente->promotor_id;
+        $cliente = Cliente::where('id', $data['cliente_id'])->where('admin_id', auth()->user()->adminId())->firstOrFail();
+
+        // Admin: no usar su propio registro de empleado como promotor —
+        // usar el promotor del cliente, o el seleccionado en el form
+        if ($isAdmin) {
+            $promotor_id = $request->input('promotor_id') ?: $cliente->promotor_id;
+        } else {
+            // Promo: asignarse a sí mismo como promotor
+            $promotor_id = $empleado?->id ?? $cliente->promotor_id;
+        }
 
         // ── Disbursement (optional) ───────────────────────────────────────
         $forma_entrega   = $desembolsar ? $request->input('forma_entrega') : null;
