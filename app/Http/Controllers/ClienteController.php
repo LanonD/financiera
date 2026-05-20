@@ -258,8 +258,8 @@ class ClienteController extends Controller
         $dias_map = ['Diario' => 1, 'Semanal' => 7, 'Quincenal' => 14, 'Mensual' => 30];
         $dias = $dias_map[$frecuencia];
 
-        // Cuota en pesos enteros; último pago absorbe el residuo de centavos
-        $cuota_base  = $num_pagos > 1 ? (float) floor($monto_retornar / $num_pagos) : $monto_retornar;
+        // Cuota redondeada al peso más cercano; el último pago absorbe el residuo (máx. ~1 peso)
+        $cuota_base  = $num_pagos > 1 ? (float)(int) round($monto_retornar / $num_pagos) : $monto_retornar;
         $ultimo_pago = $num_pagos > 1 ? round($monto_retornar - $cuota_base * ($num_pagos - 1), 2) : $monto_retornar;
 
         $promotor_id   = $empleado?->id ?? $cliente->promotor_id;

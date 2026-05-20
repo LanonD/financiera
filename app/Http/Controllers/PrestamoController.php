@@ -152,8 +152,8 @@ class PrestamoController extends Controller
         $dias_map = ['Diario' => 1, 'Semanal' => 7, 'Quincenal' => 14, 'Mensual' => 30];
         $dias = $dias_map[$frecuencia];
 
-        // Cuota en pesos enteros (sin centavos); el último pago absorbe el residuo
-        $cuota_base  = $num_pagos > 1 ? (float) floor($monto_retornar / $num_pagos) : $monto_retornar;
+        // Cuota redondeada al peso más cercano; el último pago absorbe el residuo (máx. ~1 peso)
+        $cuota_base  = $num_pagos > 1 ? (float)(int) round($monto_retornar / $num_pagos) : $monto_retornar;
         $ultimo_pago = $num_pagos > 1 ? round($monto_retornar - $cuota_base * ($num_pagos - 1), 2) : $monto_retornar;
 
         $cliente     = Cliente::where('id', $data['cliente_id'])->where('admin_id', auth()->user()->adminId())->firstOrFail();
@@ -495,8 +495,8 @@ class PrestamoController extends Controller
 
             $monto        = round((float)$data['monto'], 2);
             $numPagos     = (int)$data['num_pagos'];
-            // Cuota en pesos enteros; último pago absorbe el residuo de centavos
-            $cuotaBase    = $numPagos > 1 ? (float) floor($monto / $numPagos) : $monto;
+            // Cuota redondeada al peso más cercano; el último pago absorbe el residuo (máx. ~1 peso)
+            $cuotaBase    = $numPagos > 1 ? (float)(int) round($monto / $numPagos) : $monto;
             $ultimoPago   = $numPagos > 1 ? round($monto - $cuotaBase * ($numPagos - 1), 2) : $monto;
             $interesTotal = round($monto - (float)$data['monto_entregado'], 2);
             $interesRest  = $interesTotal;
@@ -766,8 +766,8 @@ class PrestamoController extends Controller
         $fecha_primer_cobro = $request->input('fecha_primer_cobro')
             ?? Carbon::parse($fecha_ini)->addDays($dias)->toDateString();
 
-        // Cuota en pesos enteros; último pago absorbe el residuo de centavos
-        $cuota_base  = $num_pagos > 1 ? (float) floor($monto_retornar / $num_pagos) : $monto_retornar;
+        // Cuota redondeada al peso más cercano; el último pago absorbe el residuo (máx. ~1 peso)
+        $cuota_base  = $num_pagos > 1 ? (float)(int) round($monto_retornar / $num_pagos) : $monto_retornar;
         $ultimo_pago = $num_pagos > 1 ? round($monto_retornar - $cuota_base * ($num_pagos - 1), 2) : $monto_retornar;
 
         $ratio = $monto_retornar > 0 ? $monto_entregado / $monto_retornar : 1;
