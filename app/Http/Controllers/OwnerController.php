@@ -374,21 +374,37 @@ class OwnerController extends Controller
             ];
         });
 
-        $sumCapital = $stats->sum('capital_desplegado');
-        $sumCobrado = $stats->sum('total_cobrado');
-        $sumInteres = $stats->sum('interes_cobrado');
+        $sumCapital  = $stats->sum('capital_desplegado');
+        $sumCobrado  = $stats->sum('total_cobrado');
+        $sumInteres  = $stats->sum('interes_cobrado');
+        $sumAcordado = $stats->sum('total_acordado');
+
+        // ── Global daily chart (sum of all admins) ────────────────────
+        $nDays     = count($dateRange);
+        $globalDes = array_fill(0, $nDays, 0.0);
+        $globalCob = array_fill(0, $nDays, 0.0);
+        foreach ($stats as $s) {
+            foreach ($s['chart_desembolsos'] as $i => $v) { $globalDes[$i] += $v; }
+            foreach ($s['chart_cobros']      as $i => $v) { $globalCob[$i] += $v; }
+        }
 
         $globales = [
             'capital_desplegado' => $sumCapital,
-            'total_acordado'     => $stats->sum('total_acordado'),
+            'total_acordado'     => $sumAcordado,
             'total_cobrado'      => $sumCobrado,
             'interes_cobrado'    => $sumInteres,
             'saldo_pendiente'    => $stats->sum('saldo_pendiente'),
             'mora_pendiente'     => $stats->sum('mora_pendiente'),
             'total_prestamos'    => $stats->sum('total'),
             'rendimiento_pct'    => $sumCapital > 0 ? round($sumInteres / $sumCapital * 100, 2) : 0,
-            'recuperado_pct'     => $stats->sum('total_acordado') > 0
-                ? min(100, round($sumCobrado / $stats->sum('total_acordado') * 100, 1)) : 0,
+            'recuperado_pct'     => $sumAcordado > 0
+                ? min(100, round($sumCobrado / $sumAcordado * 100, 1)) : 0,
+            // Chart
+            'chart_dates'        => $dateRange,
+            'chart_labels'       => array_map(fn($d) => \Carbon\Carbon::parse($d)->format('d/m'), $dateRange),
+            'chart_desembolsos'  => $globalDes,
+            'chart_cobros'       => $globalCob,
+            'chart_from'         => $chartFrom,
         ];
 
         return view('owner.rendimientos', compact('stats', 'globales'));

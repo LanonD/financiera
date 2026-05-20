@@ -70,6 +70,26 @@
 .rnd-stat-value{font-size:18px;font-weight:800;letter-spacing:-.02em;color:var(--text)}
 .rnd-stat-sub{font-size:11px;color:var(--text2);margin-top:2px}
 
+/* ── Portfolio chart section ────────────────────────────── */
+.pf-section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:22px;overflow:hidden}
+.pf-section-head{padding:16px 20px 0;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.pf-title{font-size:15px;font-weight:800;letter-spacing:-.02em;color:var(--text)}
+.pf-subtitle{font-size:11px;color:var(--text3);margin-top:2px}
+.pf-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 20px 0}
+.pf-filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);white-space:nowrap}
+.pf-select,.pf-date{padding:7px 10px;background:#f9fafb;border:1.5px solid var(--border);border-radius:7px;font-size:12px;font-family:var(--font);color:var(--text);outline:none;cursor:pointer;transition:border-color .15s}
+.pf-select:focus,.pf-date:focus{border-color:var(--accent)}
+.pf-quick-btns{display:flex;gap:4px}
+.pf-qbtn{padding:5px 10px;background:#f3f4f6;border:none;border-radius:6px;font-size:11px;font-weight:600;color:var(--text2);cursor:pointer;transition:background .12s,color .12s}
+.pf-qbtn:hover,.pf-qbtn.active{background:var(--accent);color:#fff}
+.pf-mode-btns{display:flex;border:1.5px solid var(--border);border-radius:8px;overflow:hidden}
+.pf-mbtn{padding:6px 14px;background:transparent;border:none;font-size:11px;font-weight:700;color:var(--text2);cursor:pointer;transition:background .12s,color .12s;white-space:nowrap}
+.pf-mbtn.active{background:var(--accent);color:#fff}
+.pf-chart-wrap{padding:16px 20px 18px;position:relative;height:280px}
+.pf-legend{display:flex;gap:16px;padding:0 20px 14px;flex-wrap:wrap}
+.pf-legend-item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);font-weight:500}
+.pf-legend-dot{width:20px;height:3px;border-radius:2px;flex-shrink:0}
+
 /* Responsive */
 @media(max-width:1200px){
     .rnd-kpi-grid{grid-template-columns:repeat(3,1fr)}
@@ -174,6 +194,55 @@
             <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Rendimiento</div>
             <div style="font-size:16px;font-weight:800;color:{{ $globales['rendimiento_pct']>0?'#16a34a':'#9ca3af' }}">{{ $globales['rendimiento_pct'] }}%</div>
         </div>
+    </div>
+</div>
+
+{{-- ── Rendimiento general de cartera ─────────────────────── --}}
+<div class="pf-section">
+    <div class="pf-section-head">
+        <div>
+            <div class="pf-title">Rendimiento general de cartera</div>
+            <div class="pf-subtitle">Flujo diario de desembolsos y cobros — filtra por admin, rango y modo</div>
+        </div>
+        <div class="pf-mode-btns" id="pfModeBtns">
+            <button class="pf-mbtn active" data-mode="comparar" onclick="setPfMode(this)">Desembolsos vs Cobros</button>
+            <button class="pf-mbtn"        data-mode="sumatoria" onclick="setPfMode(this)">Sumatoria</button>
+        </div>
+    </div>
+
+    {{-- Filtros --}}
+    <div class="pf-filters">
+        <span class="pf-filter-label">Admin</span>
+        <select class="pf-select" id="pf-admin" onchange="updatePortfolioChart()" style="min-width:160px">
+            <option value="all">Todos los administradores</option>
+            @foreach($stats as $s)
+            <option value="{{ $s['admin']->id }}">{{ $s['admin']->alias ?: ($s['admin']->nombre ?: $s['admin']->usuario) }}</option>
+            @endforeach
+        </select>
+
+        <span class="pf-filter-label" style="margin-left:4px">Desde</span>
+        <input type="date" class="pf-date" id="pf-desde" onchange="updatePortfolioChart()">
+
+        <span class="pf-filter-label">Hasta</span>
+        <input type="date" class="pf-date" id="pf-hasta" onchange="updatePortfolioChart()">
+
+        <div class="pf-quick-btns" id="pfQuickBtns">
+            <button class="pf-qbtn" onclick="setPfRange(7,this)">7D</button>
+            <button class="pf-qbtn" onclick="setPfRange(30,this)">30D</button>
+            <button class="pf-qbtn" onclick="setPfRange(60,this)">60D</button>
+            <button class="pf-qbtn active" onclick="setPfRange(90,this)">90D</button>
+        </div>
+    </div>
+
+    {{-- Leyenda dinámica --}}
+    <div class="pf-legend" id="pf-legend">
+        <span class="pf-legend-item"><span class="pf-legend-dot" style="background:#ef4444"></span>Desembolsos</span>
+        <span class="pf-legend-item"><span class="pf-legend-dot" style="background:#16a34a"></span>Cobros</span>
+    </div>
+
+    {{-- Canvas --}}
+    <div class="pf-chart-wrap">
+        <canvas id="portfolioChart"></canvas>
     </div>
 </div>
 
@@ -382,9 +451,203 @@
 @endforeach
 @endif
 
+{{-- ── JSON data para la gráfica de portafolio ────────────── --}}
+<script type="application/json" id="portfolio-json">{!! json_encode([
+    'dates'  => $globales['chart_dates'],
+    'labels' => $globales['chart_labels'],
+    'from'   => $globales['chart_from'],
+    'global' => [
+        'desembolsos' => $globales['chart_desembolsos'],
+        'cobros'      => $globales['chart_cobros'],
+    ],
+    'admins' => $stats->map(fn($s) => [
+        'id'          => $s['admin']->id,
+        'nombre'      => $s['admin']->alias ?: ($s['admin']->nombre ?: $s['admin']->usuario),
+        'desembolsos' => $s['chart_desembolsos'],
+        'cobros'      => $s['chart_cobros'],
+    ])->values(),
+], JSON_UNESCAPED_UNICODE) !!}</script>
+
 @push('scripts')
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script>
+// ════════════════════════════════════════════════════════════
+// PORTFOLIO CHART — filtros interactivos
+// ════════════════════════════════════════════════════════════
+const PF = JSON.parse(document.getElementById('portfolio-json').textContent);
+let portfolioChart = null;
+let pfMode = 'comparar';
+
+// Modos de la gráfica
+function setPfMode(btn) {
+    pfMode = btn.dataset.mode;
+    document.querySelectorAll('#pfModeBtns .pf-mbtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    // Actualizar leyenda
+    const legend = document.getElementById('pf-legend');
+    if (pfMode === 'comparar') {
+        legend.innerHTML = '<span class="pf-legend-item"><span class="pf-legend-dot" style="background:#ef4444"></span>Desembolsos</span>' +
+                           '<span class="pf-legend-item"><span class="pf-legend-dot" style="background:#16a34a"></span>Cobros</span>';
+    } else {
+        legend.innerHTML = '<span class="pf-legend-item"><span class="pf-legend-dot" style="background:#7c3aed"></span>Sumatoria (Desembolsos + Cobros)</span>';
+    }
+    updatePortfolioChart();
+}
+
+// Rango rápido de días
+function setPfRange(days, btn) {
+    document.querySelectorAll('#pfQuickBtns .pf-qbtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    const today  = PF.dates[PF.dates.length - 1];
+    const desde  = PF.dates[Math.max(0, PF.dates.length - days)];
+    document.getElementById('pf-desde').value = desde;
+    document.getElementById('pf-hasta').value = today;
+    updatePortfolioChart();
+}
+
+// Construir/actualizar gráfica de portafolio
+function updatePortfolioChart() {
+    // Quitar el active de los botones rápidos si cambian las fechas manualmente
+    const desdeEl = document.getElementById('pf-desde');
+    const hastaEl = document.getElementById('pf-hasta');
+    const adminId = document.getElementById('pf-admin').value;
+    const desde   = desdeEl.value;
+    const hasta   = hastaEl.value;
+
+    // Obtener datos del admin seleccionado
+    let rawDes, rawCob;
+    if (adminId === 'all') {
+        rawDes = PF.global.desembolsos;
+        rawCob = PF.global.cobros;
+    } else {
+        const admin = PF.admins.find(a => a.id == adminId);
+        rawDes = admin ? admin.desembolsos : PF.global.desembolsos;
+        rawCob = admin ? admin.cobros      : PF.global.cobros;
+    }
+
+    // Filtrar por rango de fechas
+    let startIdx = 0;
+    let endIdx   = PF.dates.length - 1;
+    if (desde) {
+        const si = PF.dates.indexOf(desde);
+        if (si !== -1) startIdx = si;
+    }
+    if (hasta) {
+        const ei = PF.dates.indexOf(hasta);
+        if (ei !== -1) endIdx = Math.max(startIdx, ei);
+    }
+
+    const filtLabels = PF.labels.slice(startIdx, endIdx + 1);
+    const filtDes    = rawDes.slice(startIdx, endIdx + 1);
+    const filtCob    = rawCob.slice(startIdx, endIdx + 1);
+
+    // Construir datasets según modo
+    let datasets;
+    if (pfMode === 'comparar') {
+        datasets = [
+            {
+                label: 'Desembolsos',
+                data: filtDes,
+                borderColor: '#ef4444',
+                backgroundColor: 'rgba(239,68,68,.08)',
+                fill: true, tension: 0.38, pointRadius: 0, pointHoverRadius: 5,
+                pointHoverBackgroundColor: '#ef4444', borderWidth: 2,
+            },
+            {
+                label: 'Cobros',
+                data: filtCob,
+                borderColor: '#16a34a',
+                backgroundColor: 'rgba(22,163,74,.08)',
+                fill: true, tension: 0.38, pointRadius: 0, pointHoverRadius: 5,
+                pointHoverBackgroundColor: '#16a34a', borderWidth: 2,
+            }
+        ];
+    } else {
+        // Sumatoria: desembolsos + cobros como una sola línea
+        const sumData = filtDes.map((d, i) => d + filtCob[i]);
+        datasets = [
+            {
+                label: 'Sumatoria',
+                data: sumData,
+                borderColor: '#7c3aed',
+                backgroundColor: 'rgba(124,58,237,.08)',
+                fill: true, tension: 0.38, pointRadius: 0, pointHoverRadius: 5,
+                pointHoverBackgroundColor: '#7c3aed', borderWidth: 2.5,
+            }
+        ];
+    }
+
+    // Reusar o crear
+    if (portfolioChart) {
+        portfolioChart.data.labels   = filtLabels;
+        portfolioChart.data.datasets = datasets;
+        portfolioChart.update('active');
+        return;
+    }
+
+    const ctx = document.getElementById('portfolioChart').getContext('2d');
+    portfolioChart = new Chart(ctx, {
+        type: 'line',
+        data: { labels: filtLabels, datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(15,23,42,.92)',
+                    titleColor: '#e2e8f0',
+                    bodyColor: '#94a3b8',
+                    padding: 12,
+                    cornerRadius: 8,
+                    callbacks: {
+                        title: items => items[0].label,
+                        label: ctx => {
+                            if (ctx.raw === 0) return null;
+                            const prefix = ctx.datasetIndex === 0 ? '↑ ' : '↓ ';
+                            const sym = pfMode === 'sumatoria' ? '∑ ' : prefix;
+                            return sym + ctx.dataset.label + ': $' +
+                                   ctx.raw.toLocaleString('es-MX', {minimumFractionDigits:0, maximumFractionDigits:0});
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { maxTicksLimit: 12, font: { size: 10 }, color: '#9ca3af', maxRotation: 0 },
+                    border: { display: false },
+                },
+                y: {
+                    grid: { color: 'rgba(0,0,0,.04)' },
+                    ticks: {
+                        font: { size: 10 }, color: '#9ca3af', maxTicksLimit: 6,
+                        callback: v => v === 0 ? '$0' : (v >= 1000 ? '$'+(v/1000).toFixed(0)+'k' : '$'+v)
+                    },
+                    border: { display: false },
+                    beginAtZero: true,
+                }
+            }
+        }
+    });
+}
+
+// Inicializar la gráfica de portafolio al cargar
+document.addEventListener('DOMContentLoaded', function () {
+    // Defaults: últimos 90 días
+    const today = PF.dates[PF.dates.length - 1];
+    const from  = PF.dates[0];
+    document.getElementById('pf-desde').value = from;
+    document.getElementById('pf-hasta').value = today;
+    updatePortfolioChart();
+});
+
+// ════════════════════════════════════════════════════════════
+// PER-ADMIN CHARTS (donut + line por card)
+// ════════════════════════════════════════════════════════════
 const ownerCharts = {};
 
 // ── Toggle panel + lazy chart init ───────────────────────
