@@ -20,6 +20,7 @@ Route::post('/logout',[AuthController::class, 'logout'])->name('logout')->middle
 // ── Owner ────────────────────────────────────────────────────────────
 Route::middleware(['auth', 'role:owner'])->prefix('owner')->name('owner.')->group(function () {
     Route::get('/dashboard',                   [\App\Http\Controllers\OwnerController::class, 'index'])          ->name('dashboard');
+    Route::get('/rendimientos',                [\App\Http\Controllers\OwnerController::class, 'rendimientos'])   ->name('rendimientos');
     Route::get('/admins/crear',                [\App\Http\Controllers\OwnerController::class, 'create'])         ->name('admins.create');
     Route::post('/admins',                     [\App\Http\Controllers\OwnerController::class, 'store'])          ->name('admins.store');
     Route::post('/admins/{id}/toggle',         [\App\Http\Controllers\OwnerController::class, 'toggle'])         ->name('admins.toggle');
@@ -87,8 +88,9 @@ Route::middleware(['auth', 'role:admin,promo'])->group(function () {
 
 // ── Desembolsos: admin + promo + desembolso ──────────────────────────
 Route::middleware(['auth', 'role:admin,promo,desembolso'])->group(function () {
-    Route::get('/desembolsos',               [DesembolsoController::class, 'index'])->name('desembolsos.index');
-    Route::post('/desembolsos/confirmar',    [DesembolsoController::class, 'confirmar'])->name('desembolsos.confirmar');
+    Route::get('/desembolsos',                      [DesembolsoController::class, 'index'])->name('desembolsos.index');
+    Route::post('/desembolsos/{id}/asignar',        [DesembolsoController::class, 'asignar'])->name('desembolsos.asignar');
+    Route::post('/desembolsos/confirmar',           [DesembolsoController::class, 'confirmar'])->name('desembolsos.confirmar');
 });
 
 // ── Cobros: admin + promo + collector ────────────────────────────────

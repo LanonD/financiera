@@ -320,6 +320,7 @@
                         <th>Empleado</th>
                         <th>WhatsApp / Cel</th>
                         <th>Rango</th>
+                        <th>Promotor asignado</th>
                         <th>Capacidad</th>
                         <th style="text-align: right">Acciones</th>
                     </tr>
@@ -355,6 +356,16 @@
                         <td>
                             <span class="rango-badge rango-{{ $e->rango ?? 'Bronce' }}"><span class="status-dot"></span>{{ $e->rango ?? 'Bronce' }}</span>
                         </td>
+                        <td>
+                            @if($e->promotor)
+                                <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;background:#eff6ff;color:#2563eb;font-size:11px;font-weight:600">
+                                    <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:11px;height:11px"><circle cx="7" cy="4" r="2.5"/><path d="M1.5 13c0-3.038 2.462-5 5.5-5s5.5 1.962 5.5 5"/></svg>
+                                    {{ $e->promotor->nombre }}
+                                </span>
+                            @else
+                                <span style="font-size:11px;color:var(--text3)">— Admin directo</span>
+                            @endif
+                        </td>
                         <td><div style="font-weight: 600; color: var(--text2);">${{ number_format($e->capacidad_maxima ?? 0, 0) }}</div></td>
                         <td style="text-align: right">
                             <div style="display: flex; gap: 8px; justify-content: flex-end;">
@@ -362,7 +373,7 @@
                                     <svg viewBox="0 0 20 20" fill="currentColor" style="width:14px;height:14px"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/></svg>
                                 </a>
                                 <button class="btn btn-sm" onclick='openEditModal({!! json_encode([
-                                    "id" => $e->id, "nombre" => $e->nombre, "usuario" => $e->usuario?->usuario ?? "", "celular" => $e->celular, "email" => $e->email, "rango" => $e->rango, "capacidad" => $e->capacidad_maxima, "roles" => $roles
+                                    "id" => $e->id, "nombre" => $e->nombre, "usuario" => $e->usuario?->usuario ?? "", "celular" => $e->celular, "email" => $e->email, "rango" => $e->rango, "capacidad" => $e->capacidad_maxima, "roles" => $roles, "promotor_id" => $e->promotor_id
                                 ]) !!})' title="Editar">
                                     <svg viewBox="0 0 20 20" fill="currentColor" style="width:14px;height:14px"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>
                                 </button>
@@ -417,12 +428,24 @@
                     </div>
                     <div class="filter-group" style="grid-column: span 2">
                         <label>Roles / Funciones (Selecciona uno o varios)</label>
-                        <div class="role-checkbox-group">
-                            <label class="role-checkbox"><input type="checkbox" name="roles[]" value="promo" checked> Promotor</label>
-                            <label class="role-checkbox"><input type="checkbox" name="roles[]" value="collector"> Cobrador</label>
-                            <label class="role-checkbox"><input type="checkbox" name="roles[]" value="desembolso"> Desembolso</label>
+                        <div class="role-checkbox-group" id="create_role_checks">
+                            <label class="role-checkbox"><input type="checkbox" name="roles[]" value="promo" checked onchange="togglePromotorSelector('create')"> Promotor</label>
+                            <label class="role-checkbox"><input type="checkbox" name="roles[]" value="collector" onchange="togglePromotorSelector('create')"> Cobrador</label>
+                            <label class="role-checkbox"><input type="checkbox" name="roles[]" value="desembolso" onchange="togglePromotorSelector('create')"> Desembolso</label>
                         </div>
                     </div>
+                    {{-- Promotor assignment: only relevant for non-promo workers --}}
+                    @if($promotores->isNotEmpty())
+                    <div class="filter-group" id="create_promotor_wrap" style="grid-column: span 2; display:none">
+                        <label>Asignar al equipo del promotor <span style="font-weight:400;text-transform:none;color:var(--text3)">(opcional)</span></label>
+                        <select name="promotor_id" id="create_promotor_id" class="filter-input">
+                            <option value="">— Sin asignar (equipo directo del admin) —</option>
+                            @foreach($promotores as $p)
+                            <option value="{{ $p->id }}">{{ $p->nombre }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    @endif
                     <div class="filter-group">
                         <label>Rango</label>
                         <select name="rango" class="filter-input">
@@ -480,11 +503,22 @@
                     <div class="filter-group" style="grid-column: span 2">
                         <label>Roles / Funciones (Selecciona uno o varios)</label>
                         <div class="role-checkbox-group" id="edit_role_checks">
-                            <label class="role-checkbox"><input type="checkbox" name="roles[]" value="promo"> Promotor</label>
-                            <label class="role-checkbox"><input type="checkbox" name="roles[]" value="collector"> Cobrador</label>
-                            <label class="role-checkbox"><input type="checkbox" name="roles[]" value="desembolso"> Desembolso</label>
+                            <label class="role-checkbox"><input type="checkbox" name="roles[]" value="promo" onchange="togglePromotorSelector('edit')"> Promotor</label>
+                            <label class="role-checkbox"><input type="checkbox" name="roles[]" value="collector" onchange="togglePromotorSelector('edit')"> Cobrador</label>
+                            <label class="role-checkbox"><input type="checkbox" name="roles[]" value="desembolso" onchange="togglePromotorSelector('edit')"> Desembolso</label>
                         </div>
                     </div>
+                    @if($promotores->isNotEmpty())
+                    <div class="filter-group" id="edit_promotor_wrap" style="grid-column: span 2">
+                        <label>Asignar al equipo del promotor <span style="font-weight:400;text-transform:none;color:var(--text3)">(opcional)</span></label>
+                        <select name="promotor_id" id="edit_promotor_id" class="filter-input">
+                            <option value="">— Sin asignar (equipo directo del admin) —</option>
+                            @foreach($promotores as $p)
+                            <option value="{{ $p->id }}">{{ $p->nombre }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    @endif
                     <div class="filter-group">
                         <label>Rango</label>
                         <select name="rango" id="edit_rango" class="filter-input">
@@ -536,6 +570,14 @@
         });
     }
 
+    // Show/hide promotor selector based on selected roles
+    function togglePromotorSelector(prefix) {
+        var checks  = document.querySelectorAll('#' + prefix + '_role_checks input[type=checkbox]');
+        var hasPromo = Array.from(checks).some(function(c){ return c.value === 'promo' && c.checked; });
+        var wrap    = document.getElementById(prefix + '_promotor_wrap');
+        if (wrap) wrap.style.display = hasPromo ? 'none' : '';
+    }
+
     function openEditModal(e) {
         document.getElementById('edit_nombre').value   = e.nombre;
         document.getElementById('edit_usuario').value  = e.usuario || '';
@@ -545,6 +587,10 @@
         document.getElementById('edit_rango').value    = e.rango   || 'Bronce';
         document.getElementById('edit_capacidad').value = e.capacidad || 0;
 
+        // Set promotor
+        var selProm = document.getElementById('edit_promotor_id');
+        if (selProm) selProm.value = e.promotor_id || '';
+
         // Reset and check roles
         const checkGroup = document.getElementById('edit_role_checks');
         checkGroup.querySelectorAll('input').forEach(chk => {
@@ -553,6 +599,7 @@
         });
 
         document.getElementById('formEdit').action = `{{ url('empleados') }}/${e.id}`;
+        togglePromotorSelector('edit');
         openModal('modalEdit');
     }
 

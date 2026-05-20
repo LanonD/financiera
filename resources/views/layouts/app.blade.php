@@ -170,9 +170,13 @@
         {{-- ══ OWNER ══════════════════════════════════════════ --}}
         @if($isOwner)
             <span class="nav-section">Sistema</span>
-            <a href="{{ route('owner.dashboard') }}" class="nav-item {{ str_starts_with($uri,'owner') ? 'active' : '' }}">
+            <a href="{{ route('owner.dashboard') }}" class="nav-item {{ $uri === 'owner/dashboard' ? 'active' : '' }}">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>
-                Clientes del sistema
+                Administradores
+            </a>
+            <a href="{{ route('owner.rendimientos') }}" class="nav-item {{ str_starts_with($uri,'owner/rendimientos') ? 'active' : '' }}">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 12l3.5-4 3 2.5L12 5"/><path d="M10 5h2v2"/><rect x="1" y="1" width="14" height="14" rx="2"/></svg>
+                Rendimientos
             </a>
         @endif
 

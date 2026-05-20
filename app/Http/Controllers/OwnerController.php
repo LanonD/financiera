@@ -7,6 +7,8 @@ use App\Models\Empleado;
 use App\Models\Prestamo;
 use App\Models\Cliente;
 use App\Models\AdminNota;
+use App\Models\Pago;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -251,6 +253,145 @@ class OwnerController extends Controller
         return redirect()->route('owner.dashboard')
             ->with('success', 'Nota guardada.')
             ->with('open_notas_admin', $id);
+    }
+
+    /**
+     * Dashboard de rendimientos: métricas financieras por administrador.
+     */
+    public function rendimientos()
+    {
+        $deployedStatuses = ['Activo', 'Atrasado', 'Finalizado'];
+        $activeStatuses   = ['Activo', 'Atrasado'];
+
+        $admins   = User::where('puesto', 'admin')->orderBy('created_at', 'desc')->get();
+        $adminIds = $admins->pluck('id')->all();
+
+        // ── Chart: últimos 90 días de desembolsos y cobros por admin ──
+        $chartFrom = now()->subDays(89)->toDateString();
+
+        // Desembolsos diarios por admin
+        $desembolsosRaw = DB::table('prestamos')
+            ->selectRaw('admin_id, DATE(fecha_entrega) as fecha, SUM(monto_entregado) as total')
+            ->whereIn('admin_id', $adminIds)
+            ->whereNotNull('fecha_entrega')
+            ->where('fecha_entrega', '>=', $chartFrom)
+            ->groupBy('admin_id', DB::raw('DATE(fecha_entrega)'))
+            ->get()
+            ->groupBy('admin_id')
+            ->map(fn($rows) => $rows->keyBy('fecha'));
+
+        // Cobros diarios por admin
+        $cobrosRaw = DB::table('pagos')
+            ->join('prestamos', 'pagos.prestamo_id', '=', 'prestamos.id')
+            ->selectRaw('prestamos.admin_id, DATE(pagos.fecha_pago) as fecha, SUM(pagos.monto_cobrado) as total')
+            ->whereIn('prestamos.admin_id', $adminIds)
+            ->whereNotNull('pagos.fecha_pago')
+            ->where('pagos.fecha_pago', '>=', $chartFrom)
+            ->whereIn('pagos.estatus', ['Pagado', 'Parcial'])
+            ->groupBy('prestamos.admin_id', DB::raw('DATE(pagos.fecha_pago)'))
+            ->get()
+            ->groupBy('admin_id')
+            ->map(fn($rows) => $rows->keyBy('fecha'));
+
+        // Rango de 90 días
+        $dateRange = [];
+        $cur = \Carbon\Carbon::parse($chartFrom);
+        while ($cur->lte(now()->startOfDay())) {
+            $dateRange[] = $cur->toDateString();
+            $cur->addDay();
+        }
+
+        $stats = $admins->map(function (User $admin) use (
+            $deployedStatuses, $activeStatuses,
+            $desembolsosRaw, $cobrosRaw, $dateRange
+        ) {
+            $allPrestamos = Prestamo::where('admin_id', $admin->id)->get();
+            $byEstatus    = $allPrestamos->groupBy('estatus');
+
+            $deployed = $allPrestamos->filter(fn($p) => in_array($p->estatus, $deployedStatuses));
+            $activos  = $allPrestamos->filter(fn($p) => in_array($p->estatus, $activeStatuses));
+
+            $capital_desplegado = (float) $deployed->sum('monto_entregado');
+            $total_acordado     = (float) $deployed->sum('monto');
+            $interes_esperado   = max(0, round($total_acordado - $capital_desplegado, 2));
+            $saldo_pendiente    = (float) $activos->sum('saldo_actual');
+            $mora_pendiente     = (float) $activos->sum('interes_acumulado');
+
+            $pids = $deployed->pluck('id');
+            $total_cobrado = $pids->isNotEmpty()
+                ? (float) Pago::whereIn('prestamo_id', $pids)
+                    ->whereIn('estatus', ['Pagado', 'Parcial'])
+                    ->sum('monto_cobrado')
+                : 0.0;
+
+            $interes_cobrado = max(0.0, round($total_cobrado - $capital_desplegado, 2));
+            $recuperado_pct  = $total_acordado > 0
+                ? min(100, round($total_cobrado / $total_acordado * 100, 1)) : 0;
+            $rendimiento_pct = $capital_desplegado > 0
+                ? round($interes_cobrado / $capital_desplegado * 100, 2) : 0;
+
+            $n_activos   = $activos->count();
+            $n_atrasados = $byEstatus->get('Atrasado', collect())->count();
+            $par         = $n_activos > 0 ? round($n_atrasados / $n_activos * 100, 1) : 0;
+
+            // ── Series de tiempo para gráfica de línea ───────────────
+            $adminD = $desembolsosRaw->get($admin->id, collect());
+            $adminC = $cobrosRaw->get($admin->id, collect());
+
+            $chartLabels      = [];
+            $chartDesembolsos = [];
+            $chartCobros      = [];
+
+            foreach ($dateRange as $date) {
+                $chartLabels[]      = \Carbon\Carbon::parse($date)->format('d/m');
+                $chartDesembolsos[] = isset($adminD[$date]) ? (float) $adminD[$date]->total : 0;
+                $chartCobros[]      = isset($adminC[$date]) ? (float) $adminC[$date]->total : 0;
+            }
+
+            return [
+                'admin'              => $admin,
+                'total'              => $allPrestamos->count(),
+                'por_estatus'        => [
+                    'Pendiente'  => $byEstatus->get('Pendiente',  collect())->count(),
+                    'Activo'     => $byEstatus->get('Activo',     collect())->count(),
+                    'Atrasado'   => $byEstatus->get('Atrasado',   collect())->count(),
+                    'Finalizado' => $byEstatus->get('Finalizado', collect())->count(),
+                    'Retirado'   => $byEstatus->get('Retirado',   collect())->count(),
+                ],
+                'capital_desplegado' => $capital_desplegado,
+                'total_acordado'     => $total_acordado,
+                'interes_esperado'   => $interes_esperado,
+                'saldo_pendiente'    => $saldo_pendiente,
+                'mora_pendiente'     => $mora_pendiente,
+                'total_cobrado'      => $total_cobrado,
+                'interes_cobrado'    => $interes_cobrado,
+                'recuperado_pct'     => $recuperado_pct,
+                'rendimiento_pct'    => $rendimiento_pct,
+                'par'                => $par,
+                'chart_labels'       => $chartLabels,
+                'chart_desembolsos'  => $chartDesembolsos,
+                'chart_cobros'       => $chartCobros,
+            ];
+        });
+
+        $sumCapital = $stats->sum('capital_desplegado');
+        $sumCobrado = $stats->sum('total_cobrado');
+        $sumInteres = $stats->sum('interes_cobrado');
+
+        $globales = [
+            'capital_desplegado' => $sumCapital,
+            'total_acordado'     => $stats->sum('total_acordado'),
+            'total_cobrado'      => $sumCobrado,
+            'interes_cobrado'    => $sumInteres,
+            'saldo_pendiente'    => $stats->sum('saldo_pendiente'),
+            'mora_pendiente'     => $stats->sum('mora_pendiente'),
+            'total_prestamos'    => $stats->sum('total'),
+            'rendimiento_pct'    => $sumCapital > 0 ? round($sumInteres / $sumCapital * 100, 2) : 0,
+            'recuperado_pct'     => $stats->sum('total_acordado') > 0
+                ? min(100, round($sumCobrado / $stats->sum('total_acordado') * 100, 1)) : 0,
+        ];
+
+        return view('owner.rendimientos', compact('stats', 'globales'));
     }
 
     /**

@@ -12,7 +12,7 @@ class Empleado extends Model
     protected $table = 'empleados';
 
     protected $fillable = [
-        'admin_id', 'usuario_id', 'nombre', 'celular', 'email', 'fijo', 'direccion',
+        'admin_id', 'promotor_id', 'usuario_id', 'nombre', 'celular', 'email', 'fijo', 'direccion',
         'puesto', 'roles', 'rango', 'capacidad_maxima', 'monto_ocupado',
         'ine', 'pagare', 'contrato', 'comprobante',
         'latitud', 'longitud',
@@ -51,6 +51,18 @@ class Empleado extends Model
     public function usuario()
     {
         return $this->belongsTo(User::class, 'usuario_id');
+    }
+
+    /** El promotor al que pertenece este trabajador (cobrador/desembolsador) */
+    public function promotor()
+    {
+        return $this->belongsTo(Empleado::class, 'promotor_id');
+    }
+
+    /** Trabajadores (cobradores/desembolsadores) asignados a este promotor */
+    public function trabajadores()
+    {
+        return $this->hasMany(Empleado::class, 'promotor_id');
     }
 
     public function clientes()

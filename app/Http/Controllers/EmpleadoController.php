@@ -17,13 +17,14 @@ class EmpleadoController extends Controller
 
         $todos = Empleado::where('activo', true)
             ->where('admin_id', $adminId)
-            ->with('usuario')
+            ->with(['usuario', 'promotor'])
             ->get();
 
         $promotores = $todos->filter(fn($e) => $e->hasRole('promo'))->values();
         $cobradores = $todos->filter(fn($e) => $e->hasRole('collector'))->values();
         $desembolso = $todos->filter(fn($e) => $e->hasRole('desembolso'))->values();
 
+        // Pass promotors list so the create/edit modal can offer a selector
         return view('admin.empleados', compact('promotores', 'cobradores', 'desembolso'));
     }
 
@@ -99,17 +100,21 @@ class EmpleadoController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'usuario'   => 'required|string|max:60|unique:users,usuario',
-            'password'  => 'required|string|min:4',
-            'nombre'    => 'required|string|max:120',
-            'roles'     => 'required|array|min:1',
-            'roles.*'   => 'in:promo,collector,desembolso',
-            'rango'     => 'required|string',
-            'capacidad' => 'nullable|numeric|min:0',
+            'usuario'      => 'required|string|max:60|unique:users,usuario',
+            'password'     => 'required|string|min:4',
+            'nombre'       => 'required|string|max:120',
+            'roles'        => 'required|array|min:1',
+            'roles.*'      => 'in:promo,collector,desembolso',
+            'rango'        => 'required|string',
+            'capacidad'    => 'nullable|numeric|min:0',
+            'promotor_id'  => 'nullable|exists:empleados,id',
         ]);
 
         $roles       = $request->roles;
         $primaryRole = Empleado::primaryRole($roles);
+
+        // Promotor assignment only makes sense for non-promo workers
+        $promotorId = in_array('promo', $roles) ? null : ($request->promotor_id ?: null);
 
         $user = User::create([
             'usuario'  => $request->usuario,
@@ -120,6 +125,7 @@ class EmpleadoController extends Controller
 
         Empleado::create([
             'admin_id'         => auth()->user()->id,
+            'promotor_id'      => $promotorId,
             'usuario_id'       => $user->id,
             'nombre'           => $request->nombre,
             'celular'          => $request->celular,
@@ -140,12 +146,13 @@ class EmpleadoController extends Controller
         $empleado = Empleado::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
 
         $request->validate([
-            'nombre'    => 'required|string|max:120',
-            'roles'     => 'required|array|min:1',
-            'roles.*'   => 'in:promo,collector,desembolso',
-            'rango'     => 'required|string',
-            'capacidad' => 'nullable|numeric|min:0',
-            'password'  => 'nullable|string|min:4',
+            'nombre'      => 'required|string|max:120',
+            'roles'       => 'required|array|min:1',
+            'roles.*'     => 'in:promo,collector,desembolso',
+            'rango'       => 'required|string',
+            'capacidad'   => 'nullable|numeric|min:0',
+            'password'    => 'nullable|string|min:4',
+            'promotor_id' => 'nullable|exists:empleados,id',
         ]);
 
         $roles       = $request->roles;
@@ -170,7 +177,10 @@ class EmpleadoController extends Controller
             $empleado->usuario->update($updateUser);
         }
 
+        $promotorId = in_array('promo', $roles) ? null : ($request->promotor_id ?: null);
+
         $empleado->update([
+            'promotor_id'      => $promotorId,
             'nombre'           => $request->nombre,
             'celular'          => $request->celular,
             'email'            => $request->email,

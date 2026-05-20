@@ -20,10 +20,11 @@
 .ow-search::placeholder{color:var(--text3)}
 
 /* List table */
+:root{--ow-cols:2fr 1fr 1fr 1fr 1.1fr 0.8fr 228px}
 .ow-list-wrap{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
-.ow-list-header{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr auto;gap:0;padding:9px 18px;background:#f9fafb;border-bottom:1px solid var(--border)}
+.ow-list-header{display:grid;grid-template-columns:var(--ow-cols);gap:0;padding:9px 18px;background:#f9fafb;border-bottom:1px solid var(--border)}
 .ow-list-hcell{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)}
-.ow-list-row{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr auto;gap:0;padding:13px 18px;border-bottom:1px solid var(--border);align-items:center;transition:background .1s}
+.ow-list-row{display:grid;grid-template-columns:var(--ow-cols);gap:0;padding:13px 18px;border-bottom:1px solid var(--border);align-items:center;transition:background .1s}
 .ow-list-row:last-child{border-bottom:none}
 .ow-list-row:hover{background:#f9fafb}
 .ow-list-row.ow-inactive{opacity:.6}
@@ -69,7 +70,7 @@
     .ow-header .btn{width:100%;justify-content:center;}
     .ow-kpi-grid{grid-template-columns:1fr 1fr;}
     .ow-list-header{display:none}
-    .ow-list-row{grid-template-columns:1fr auto;gap:8px}
+    .ow-list-row{--ow-cols:1fr auto;gap:8px}
     .ow-list-row > .ow-row-cell:not(:first-child):not(:last-child){display:none}
     .ow-col-alias{display:none}
     .ow-modal{border-radius:14px!important;}
@@ -245,11 +246,15 @@
         {{-- Acciones --}}
         <div class="ow-row-actions" onclick="event.stopPropagation()">
             {{-- Notas --}}
+            @php $notasCount = $admin->notas ? count($admin->notas) : 0; @endphp
             <button type="button" class="btn btn-sm"
-                style="background:#faf5ff;color:#7c3aed"
-                title="Notas"
+                style="background:#faf5ff;color:#7c3aed;position:relative"
+                title="{{ $notasCount }} nota(s)"
                 onclick="abrirNotas({{ $admin->id }}, '{{ addslashes($admin->nombre ?: $admin->usuario) }}')">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:13px;height:13px"><path d="M13 2H3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h4l2 2 2-2h2a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1z"/><path d="M5 6h6M5 9h4"/></svg>
+                @if($notasCount > 0)
+                <span class="ow-nota-badge" style="position:absolute;top:-5px;right:-5px">{{ $notasCount }}</span>
+                @endif
             </button>
 
             {{-- Editar --}}

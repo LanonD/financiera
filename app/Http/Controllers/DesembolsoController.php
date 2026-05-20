@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Prestamo;
+use App\Models\Empleado;
 use App\Models\PrestamoActividad;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -35,9 +36,44 @@ class DesembolsoController extends Controller
             $query->where('promotor_id', $empleado->id);
         }
 
-        $prestamos_pendientes = $query->orderBy('created_at')->get();
+        $prestamos_pendientes = $query->with('desembolso')->orderBy('created_at')->get();
 
-        return view('desembolso.desembolsos', compact('prestamos_pendientes'));
+        $desembolsadores = Empleado::whereJsonContains('roles', 'desembolso')
+            ->where('admin_id', $adminId)
+            ->where('activo', true)
+            ->orderBy('nombre')
+            ->get();
+
+        return view('desembolso.desembolsos', compact('prestamos_pendientes', 'desembolsadores'));
+    }
+
+    public function asignar(Request $request, $id)
+    {
+        $adminId  = Auth::user()->adminId();
+        $prestamo = Prestamo::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
+
+        $data = $request->validate([
+            'desembolso_id' => 'nullable|exists:empleados,id',
+        ]);
+
+        $anteriorId = $prestamo->desembolso_id;
+        $prestamo->desembolso_id = $data['desembolso_id'] ?? null;
+        $prestamo->save();
+
+        $quien      = Auth::user()->empleado?->nombre ?? Auth::user()->usuario;
+        $nuevo      = $prestamo->desembolso_id
+            ? Empleado::find($prestamo->desembolso_id)?->nombre ?? 'ID '.$prestamo->desembolso_id
+            : 'Sin asignar';
+        $anterior   = $anteriorId
+            ? Empleado::find($anteriorId)?->nombre ?? 'ID '.$anteriorId
+            : 'Sin asignar';
+
+        PrestamoActividad::log($prestamo->id, 'configuracion',
+            "Desembolsador cambiado de «{$anterior}» a «{$nuevo}» por {$quien}.",
+            ['anterior' => $anteriorId, 'nuevo' => $prestamo->desembolso_id]
+        );
+
+        return response()->json(['ok' => true, 'nombre' => $nuevo]);
     }
 
     public function confirmar(Request $request)

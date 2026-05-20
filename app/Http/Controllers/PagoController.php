@@ -160,7 +160,13 @@ class PagoController extends Controller
      */
     public function asignar(Request $request)
     {
-        $adminId          = auth()->user()->adminId();
+        $user             = Auth::user();
+        $adminId          = $user->adminId();
+        $roles            = $user->getAllRoles();
+        $isAdmin          = in_array('admin', $roles);
+        $isPromo          = !$isAdmin && in_array('promo', $roles);
+        $empleado         = $user->empleado;
+
         $filtroDesde      = $request->query('desde', '');
         $filtroHasta      = $request->query('hasta', '');
         $filtroSinCobrador= (bool)$request->query('sin_cobrador', false);
@@ -169,6 +175,11 @@ class PagoController extends Controller
         $query = Prestamo::with(['cliente', 'cobrador'])
             ->where('admin_id', $adminId)
             ->whereIn('estatus', ['Activo', 'Atrasado']);
+
+        // Promo: only sees loans where they are the assigned promotor
+        if ($isPromo && $empleado) {
+            $query->where('promotor_id', $empleado->id);
+        }
 
         if ($filtroSinCobrador) {
             $query->whereNull('cobrador_id');
@@ -203,10 +214,16 @@ class PagoController extends Controller
             });
         }
 
-        // Include multi-role employees that have 'collector' among their roles (scoped to admin)
-        $cobradores = Empleado::where('activo', true)
-            ->where('admin_id', $adminId)
-            ->get()
+        // Cobradores disponibles:
+        // Admin → todos los cobradores del tenant
+        // Promo → solo cobradores asignados a su equipo (promotor_id = su empleado.id)
+        $cobradoresQuery = Empleado::where('activo', true)->where('admin_id', $adminId);
+
+        if ($isPromo && $empleado) {
+            $cobradoresQuery->where('promotor_id', $empleado->id);
+        }
+
+        $cobradores = $cobradoresQuery->get()
             ->filter(fn($e) => $e->hasRole('collector'))
             ->values();
 
@@ -218,15 +235,39 @@ class PagoController extends Controller
      */
     public function guardarAsignacion(Request $request)
     {
-        $adminId      = auth()->user()->adminId();
+        $user         = Auth::user();
+        $adminId      = $user->adminId();
+        $roles        = $user->getAllRoles();
+        $isAdmin      = in_array('admin', $roles);
+        $isPromo      = !$isAdmin && in_array('promo', $roles);
+        $empleado     = $user->empleado;
         $asignaciones = $request->input('asignacion', []);
         $guardados    = 0;
 
+        // Build allowed cobrador IDs for promo (their team only)
+        $cobradoresPermitidos = null;
+        if ($isPromo && $empleado) {
+            $cobradoresPermitidos = Empleado::where('promotor_id', $empleado->id)
+                ->where('activo', true)
+                ->pluck('id')
+                ->toArray();
+        }
+
         foreach ($asignaciones as $prestamoId => $cobradorId) {
-            $prestamo = Prestamo::where('id', $prestamoId)
-                ->where('admin_id', $adminId)
-                ->first();
+            $query = Prestamo::where('id', $prestamoId)->where('admin_id', $adminId);
+
+            // Promo: can only modify loans assigned to them
+            if ($isPromo && $empleado) {
+                $query->where('promotor_id', $empleado->id);
+            }
+
+            $prestamo = $query->first();
             if (!$prestamo) continue;
+
+            // Promo: can only assign cobradores from their team
+            if ($isPromo && $cobradoresPermitidos !== null && $cobradorId > 0) {
+                if (!in_array((int)$cobradorId, $cobradoresPermitidos)) continue;
+            }
             $anteriorCobradorId = $prestamo->cobrador_id;
             $prestamo->cobrador_id = $cobradorId > 0 ? $cobradorId : null;
             $prestamo->save();

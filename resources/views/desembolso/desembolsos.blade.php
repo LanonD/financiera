@@ -4,19 +4,23 @@
 
 @push('styles')
 <style>
+.dsb-select{padding:6px 10px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-size:12px;outline:none;cursor:pointer;color:var(--text1)}
+.dsb-select:focus{border-color:var(--accent)}
+.dsb-assign-btn{padding:5px 10px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;white-space:nowrap;transition:opacity .15s}
+.dsb-assign-btn:hover{opacity:.85}
+.dsb-assign-btn:disabled{opacity:.5;cursor:not-allowed}
+.dsb-assigned-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:600}
 @media(max-width:768px){
     .desemb-header{flex-direction:column!important;align-items:stretch!important;gap:10px!important;}
     .desemb-header .btn{width:100%!important;justify-content:center!important;}
-    /* Page header stacks */
     .desemb-page-header{flex-direction:column!important;align-items:flex-start!important;gap:8px!important;}
-    /* Modal responsive */
     #modalDesembolso > div{max-width:calc(100vw - 20px)!important;width:calc(100vw - 20px)!important;margin:10px auto!important;}
     .desemb-modal-grid{grid-template-columns:1fr!important;}
     .desemb-modal-footer{flex-direction:column!important;gap:8px!important;}
     .desemb-modal-footer .btn{width:100%!important;justify-content:center!important;}
-    /* File upload labels: stack vertically on mobile */
     #lbl_ine,#lbl_pagare,#lbl_comprobante,#lbl_foto{flex-direction:column!important;}
     #lbl_ine label,#lbl_pagare label,#lbl_comprobante label,#lbl_foto label{width:100%!important;}
+    .col-desembolsador{display:none}
 }
 @media(max-width:480px){
     #modalDesembolso > div{padding:0!important;}
@@ -63,13 +67,13 @@
                 <th style="text-align:right">Cuota</th>
                 <th>Frecuencia</th>
                 <th>Fecha inicio</th>
-                <th>Creado</th>
+                <th class="col-desembolsador">Desembolsador</th>
                 <th style="text-align:center">Acción</th>
             </tr>
         </thead>
         <tbody>
         @foreach($prestamos_pendientes as $p)
-        <tr>
+        <tr id="row-{{ $p->id }}">
             <td style="font-size:12px;font-weight:600;color:var(--text2)">#{{ $p->id }}</td>
             <td>
                 <div style="display:flex;align-items:center;gap:8px">
@@ -85,7 +89,40 @@
             <td style="text-align:right;font-family:monospace;font-size:13px">${{ number_format($p->cuota, 2, '.', ',') }}</td>
             <td style="font-size:13px">{{ $p->frecuencia }}</td>
             <td style="font-family:monospace;font-size:12px">{{ \Carbon\Carbon::parse($p->fecha_inicio)->format('d/m/Y') }}</td>
-            <td style="font-size:11px;color:var(--text2)">{{ $p->created_at?->format('d/m/Y H:i') ?? '—' }}</td>
+
+            {{-- Desembolsador column --}}
+            <td class="col-desembolsador">
+                @if($desembolsadores->isEmpty())
+                    <span style="font-size:11px;color:var(--text3)">Sin desembolsadores</span>
+                @else
+                <div style="display:flex;gap:6px;align-items:center;min-width:180px">
+                    <select class="dsb-select" id="sel-{{ $p->id }}" style="flex:1;min-width:0">
+                        <option value="">— Sin asignar —</option>
+                        @foreach($desembolsadores as $d)
+                        <option value="{{ $d->id }}" {{ $p->desembolso_id == $d->id ? 'selected' : '' }}>
+                            {{ $d->nombre }}
+                        </option>
+                        @endforeach
+                    </select>
+                    <button class="dsb-assign-btn" id="btn-asignar-{{ $p->id }}"
+                            onclick="asignarDesembolsador({{ $p->id }})">
+                        Asignar
+                    </button>
+                </div>
+                @if($p->desembolso)
+                <div id="chip-{{ $p->id }}" style="margin-top:4px">
+                    <span class="dsb-assigned-chip" style="background:#dcfce7;color:#166534">
+                        ✓ {{ $p->desembolso->nombre }}
+                    </span>
+                </div>
+                @else
+                <div id="chip-{{ $p->id }}" style="margin-top:4px;display:none">
+                    <span class="dsb-assigned-chip" style="background:#dcfce7;color:#166534"></span>
+                </div>
+                @endif
+                @endif
+            </td>
+
             <td style="text-align:center">
                 <button
                     class="btn btn-primary btn-sm"
@@ -249,6 +286,54 @@
 
 @push('scripts')
 <script>
+// ── Asignar desembolsador ────────────────────────────────────────────────────
+async function asignarDesembolsador(id) {
+    const sel = document.getElementById('sel-' + id);
+    const btn = document.getElementById('btn-asignar-' + id);
+    if (!sel || !btn) return;
+
+    btn.disabled = true;
+    btn.textContent = '…';
+
+    try {
+        const fd = new FormData();
+        fd.append('_token', '{{ csrf_token() }}');
+        fd.append('desembolso_id', sel.value);
+
+        const resp = await fetch(`{{ url('/desembolsos') }}/${id}/asignar`, {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+            body: fd,
+        });
+        const data = await resp.json();
+
+        if (data.ok) {
+            const chip = document.getElementById('chip-' + id);
+            if (chip) {
+                if (sel.value) {
+                    chip.style.display = '';
+                    const span = chip.querySelector('span');
+                    if (span) span.textContent = '✓ ' + data.nombre;
+                } else {
+                    chip.style.display = 'none';
+                }
+            }
+            btn.textContent = '✓';
+            btn.style.background = '#16a34a';
+            setTimeout(() => { btn.textContent = 'Asignar'; btn.style.background = ''; btn.disabled = false; }, 1500);
+        } else {
+            alert(data.error || 'No se pudo asignar.');
+            btn.textContent = 'Asignar';
+            btn.disabled = false;
+        }
+    } catch(e) {
+        alert('Error de red al asignar.');
+        btn.textContent = 'Asignar';
+        btn.disabled = false;
+    }
+}
+
+// ── Desembolso confirmation ──────────────────────────────────────────────────
 let dsbPrestamoId = null;
 let dsbMontoAcordado = 0;
 
