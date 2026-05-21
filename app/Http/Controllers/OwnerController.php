@@ -363,6 +363,7 @@ class OwnerController extends Controller
 
             $n_activos   = $activos->count();
             $n_atrasados = $byEstatus->get('Atrasado', collect())->count();
+            $par         = $n_activos > 0 ? round($n_atrasados / $n_activos * 100, 1) : 0;
 
             // ── Series de tiempo para gráfica de línea ───────────────
             $adminD = $desembolsosRaw->get($admin->id, collect());

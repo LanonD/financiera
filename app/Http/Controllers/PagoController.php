@@ -392,6 +392,26 @@ class PagoController extends Controller
                         $prestamo->estatus = 'Activo';
                     }
                 }
+
+                // ── 5. Parcial → diferencia se suma al siguiente pago pendiente ──
+                if ($tipo === 'Parcial') {
+                    $diferencia = round((float)$pago->monto_cuota - $montoRecibido, 2);
+                    if ($diferencia > 0) {
+                        $nextPago = Pago::where('prestamo_id', $prestamoId)
+                            ->whereIn('estatus', ['Pendiente', 'Atrasado'])
+                            ->orderBy('fecha_programada')
+                            ->orderBy('numero_pago')
+                            ->first();
+                        if ($nextPago) {
+                            $nextPago->monto_cuota = round((float)$nextPago->monto_cuota + $diferencia, 2);
+                            $nota_carry = 'Incluye $' . number_format($diferencia, 2) . ' diferido de cuota #' . $pago->numero_pago;
+                            $nextPago->nota_cobro  = $nextPago->nota_cobro
+                                ? $nextPago->nota_cobro . ' | ' . $nota_carry
+                                : $nota_carry;
+                            $nextPago->save();
+                        }
+                    }
+                }
             } elseif ($pagoMora > 0) {
                 // Payment covered only mora (nothing left for cuota)
                 // Note it on the pago without changing its estatus
@@ -403,9 +423,13 @@ class PagoController extends Controller
 
             // Log actividad
             $quien = $user->empleado?->nombre ?? $user->usuario;
-            $desc  = "Pago #{$pago->numero_pago} registrado por {$quien} — $" . number_format($montoRecibido + $pagoMora, 2) . " ({$tipo}).";
+            $tipoLog = isset($tipo) ? $tipo : 'Solo mora';
+            $desc  = "Pago #{$pago->numero_pago} registrado por {$quien} — $" . number_format($montoRecibido + $pagoMora, 2) . " ({$tipoLog}).";
             if ($pagoMora > 0) {
                 $desc .= " Mora cobrada: $" . number_format($pagoMora, 2) . '.';
+            }
+            if (isset($tipo) && $tipo === 'Parcial' && isset($diferencia) && $diferencia > 0 && isset($nextPago) && $nextPago) {
+                $desc .= " Diferencia de \$$diferencia pasó a cuota #{$nextPago->numero_pago}.";
             }
             if ($prestamo->estatus === 'Finalizado') {
                 $desc .= ' ✓ Préstamo finalizado.';
@@ -413,7 +437,7 @@ class PagoController extends Controller
             PrestamoActividad::log($prestamo->id, 'pago', $desc, [
                 'pago_id'    => $pago->id,
                 'monto'      => $montoRecibido + $pagoMora,
-                'tipo'       => $tipo,
+                'tipo'       => $tipoLog,
                 'mora'       => $pagoMora,
                 'cobrador_id'=> $empleado?->id,
             ]);

@@ -326,9 +326,13 @@ $cobrosFuturos= $prestamos->filter(fn($p) => $p->proximo_pago === null || $p->pr
                         style="width:100%;padding:9px 12px 9px 22px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-family:monospace;font-size:14px;outline:none">
                 </div>
             </div>
+            {{-- Aviso carry-forward (solo aparece cuando es pago parcial) --}}
+            <div id="carryForwardBox" style="display:none;background:#fefce8;border:1px solid #fde68a;border-radius:6px;padding:8px 14px;margin-bottom:12px;font-size:12px;color:#92400e">
+                <strong>Pago parcial:</strong> la diferencia de <strong id="carryAmt">$0</strong> se sumará automáticamente al siguiente cobro pendiente.
+            </div>
             <div>
                 <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);display:block;margin-bottom:5px">Nota (opcional)</label>
-                <textarea id="mNota" rows="3" placeholder="Observaciones del cobro…"
+                <textarea id="mNota" rows="2" placeholder="Observaciones del cobro…"
                     style="width:100%;padding:8px 12px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-family:var(--font);font-size:13px;resize:none;outline:none"></textarea>
             </div>
         </div>
@@ -389,7 +393,9 @@ function openModal(btn) {
     const ex = cobros[id];
     document.getElementById('mMonto').value = ex ? ex.monto : '';
     document.getElementById('mNota').value  = ex ? (ex.nota||'') : '';
+    document.getElementById('carryForwardBox').style.display = 'none';
     selectOpt(ex ? ex.tipo : null);
+    if (ex) onMontoChange();   // recalculate carry if reopening a partial
     document.getElementById('modalParcial').classList.add('open');
     setTimeout(() => document.getElementById('mMonto').focus(), 200);
 }
@@ -408,17 +414,34 @@ function selectOpt(tipo) {
     if (tipo === 'completo' && modalRow) {
         // Pre-fill with cuota + mora so collector collects the right total
         document.getElementById('mMonto').value = getModalTotal().toFixed(2);
+        document.getElementById('carryForwardBox').style.display = 'none';
     } else if (tipo === 'parcial') {
         document.getElementById('mMonto').value = '';
+        document.getElementById('carryForwardBox').style.display = 'none';
         document.getElementById('mMonto').focus();
     }
 }
 
 function onMontoChange() {
     const total = getModalTotal();
+    const cuota = modalRow ? parseFloat(modalRow.dataset.pago) : 0;
     const m     = parseFloat(document.getElementById('mMonto').value) || 0;
     document.getElementById('optCompleto').classList.toggle('opt-selected', Math.abs(m - total) < 0.01);
     document.getElementById('optParcial').classList.toggle('opt-selected',  m > 0 && Math.abs(m - total) >= 0.01);
+
+    // Show carry-forward notice when monto < cuota
+    const mora = modalRow ? parseFloat(modalRow.dataset.mora || '0') : 0;
+    const pagoMora = Math.min(m, mora);
+    const remanente = m - pagoMora;    // what's left for cuota after covering mora
+    const cfBox = document.getElementById('carryForwardBox');
+    const cfAmt = document.getElementById('carryAmt');
+    if (m > 0 && remanente < cuota - 0.01) {
+        const diff = Math.max(0, cuota - remanente).toFixed(2);
+        cfAmt.textContent = '$' + parseFloat(diff).toLocaleString('es-MX', {minimumFractionDigits:2});
+        cfBox.style.display = '';
+    } else {
+        cfBox.style.display = 'none';
+    }
 }
 
 function confirmarPago() {
