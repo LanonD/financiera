@@ -40,9 +40,11 @@
     $lblStyle         = 'display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:5px';
 
     // Valores calculados de lo que queda pendiente
-    $pagosEfectivos   = $prestamo->pagos->whereIn('estatus', ['Pagado','Parcial']);
-    $interesCobrado   = collect($pagosEfectivos)->sum('interes');
-    $interesRestante  = max(0, round($interesAcordado - $interesCobrado, 2));
+    $pagosEfectivos     = $prestamo->pagos->whereIn('estatus', ['Pagado','Parcial']);
+    $interesCobrado     = collect($pagosEfectivos)->sum('interes');
+    $interesRestante    = max(0, round($interesAcordado - $interesCobrado, 2));
+    // Principal pendiente = saldo total pendiente − interés pendiente del acuerdo
+    $principalPendiente = max(0, round((float)$prestamo->saldo_actual - $interesRestante, 2));
 @endphp
 
 {{-- ═══════════════════════════════════════════════════════════════ --}}
@@ -191,32 +193,59 @@
         </div>
 
         {{-- Saldos pendientes editables --}}
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:12px">Saldos pendientes actuales</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:6px">Saldos pendientes actuales</div>
+        <p style="font-size:12px;color:var(--text3);margin-bottom:14px">
+            El <strong>saldo total</strong> se calcula automáticamente: Principal + Interés + Mora.
+            Si los tres quedan en <strong>$0.00</strong> la cuenta se marcará como <strong>Finalizada</strong>.
+        </p>
 
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px">
+
+            {{-- Principal pendiente --}}
             <div>
-                <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#2563eb;margin-bottom:5px">Saldo pendiente ($)</label>
-                <input type="number" name="saldo_actual" step="0.01" min="0"
-                    value="{{ number_format((float)$prestamo->saldo_actual, 2, '.', '') }}"
+                <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#2563eb;margin-bottom:5px">Principal pendiente ($)</label>
+                <input type="number" name="principal_pendiente" id="pe_principal" step="0.01" min="0"
+                    value="{{ number_format($principalPendiente, 2, '.', '') }}"
+                    oninput="recalcTotal()"
                     style="{{ $inputStyle }};background:#eff6ff;border-color:#bfdbfe;color:#1e40af">
-                <p style="font-size:11px;color:#3b82f6;margin-top:4px">Deuda total que aún le queda al cliente.</p>
+                <p style="font-size:11px;color:#3b82f6;margin-top:4px">Capital entregado que aún no se ha recuperado.</p>
             </div>
 
+            {{-- Interés pendiente --}}
             <div>
                 <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#16a34a;margin-bottom:5px">Interés pendiente ($)</label>
-                <input type="number" name="interes_pendiente" step="0.01" min="0"
+                <input type="number" name="interes_pendiente" id="pe_interes" step="0.01" min="0"
                     value="{{ number_format($interesRestante, 2, '.', '') }}"
+                    oninput="recalcTotal()"
                     style="{{ $inputStyle }};background:#f0fdf4;border-color:#86efac;color:#166534">
                 <p style="font-size:11px;color:#16a34a;margin-top:4px">Interés del acuerdo que aún no se ha cobrado.</p>
             </div>
 
+            {{-- Mora pendiente --}}
             <div>
                 <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#d97706;margin-bottom:5px">Mora pendiente ($)</label>
-                <input type="number" name="interes_acumulado" step="0.01" min="0"
+                <input type="number" name="interes_acumulado" id="pe_mora" step="0.01" min="0"
                     value="{{ number_format((float)$prestamo->interes_acumulado, 2, '.', '') }}"
+                    oninput="recalcTotal()"
                     style="{{ $inputStyle }};background:#fffbeb;border-color:#fcd34d;color:#92400e">
                 <p style="font-size:11px;color:#92400e;margin-top:4px">Interés por mora que aún no se ha cobrado.</p>
             </div>
+        </div>
+
+        {{-- Total en vivo --}}
+        <div id="pe_total_box" style="display:flex;align-items:center;justify-content:space-between;background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px 16px;margin-bottom:18px">
+            <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">
+                Saldo total pendiente
+                <span style="font-size:10px;font-weight:400;color:var(--text3);margin-left:4px">(Principal + Interés + Mora)</span>
+            </div>
+            <div style="font-size:20px;font-weight:800;font-family:monospace;color:var(--text)" id="pe_total_val">
+                ${{ number_format((float)$prestamo->saldo_actual + (float)$prestamo->interes_acumulado, 2, '.', ',') }}
+            </div>
+        </div>
+
+        {{-- Aviso si los 3 quedan en 0 --}}
+        <div id="pe_finalizacion_box" style="display:none;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 16px;margin-bottom:18px;font-size:12px;color:#166534;font-weight:600">
+            ✅ Al guardar, el préstamo quedará <strong>Finalizado</strong> automáticamente y se detendrá el cálculo de intereses.
         </div>
 
         <button type="submit" class="btn btn-primary"
@@ -235,6 +264,25 @@ function calcInteresAcordado() {
     const interes = Math.max(0, monto - PE_PRINCIPAL);
     const el = document.getElementById('peInteresLabel');
     if (el) el.textContent = '$' + interes.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+
+function recalcTotal() {
+    const p = parseFloat(document.getElementById('pe_principal')?.value) || 0;
+    const i = parseFloat(document.getElementById('pe_interes')?.value)   || 0;
+    const m = parseFloat(document.getElementById('pe_mora')?.value)      || 0;
+    const total = p + i + m;
+
+    const totalEl = document.getElementById('pe_total_val');
+    if (totalEl) {
+        totalEl.textContent = '$' + total.toLocaleString('es-MX', {minimumFractionDigits:2, maximumFractionDigits:2});
+        totalEl.style.color = total === 0 ? '#16a34a' : 'var(--text)';
+    }
+
+    const finBox = document.getElementById('pe_finalizacion_box');
+    if (finBox) finBox.style.display = total === 0 ? '' : 'none';
+
+    const totalBox = document.getElementById('pe_total_box');
+    if (totalBox) totalBox.style.borderColor = total === 0 ? '#86efac' : 'var(--border)';
 }
 </script>
 @endpush

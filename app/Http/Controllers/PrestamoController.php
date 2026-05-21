@@ -459,11 +459,11 @@ class PrestamoController extends Controller
                 'num_pagos'          => 'required|integer|min:1',
             ]);
         } else {
-            // Activo / Atrasado — solo saldos pendientes
+            // Activo / Atrasado — saldos pendientes por componente
             $data = $request->validate([
-                'saldo_actual'       => 'required|numeric|min:0',
-                'interes_pendiente'  => 'nullable|numeric|min:0',
-                'interes_acumulado'  => 'required|numeric|min:0',
+                'principal_pendiente' => 'required|numeric|min:0',
+                'interes_pendiente'   => 'required|numeric|min:0',
+                'interes_acumulado'   => 'required|numeric|min:0',
             ]);
         }
 
@@ -538,60 +538,89 @@ class PrestamoController extends Controller
             $cambios[] = 'Fechas del plan recalculadas (1er cobro: ' . Carbon::parse($data['fecha_primer_cobro'])->format('d/m/Y') . ').';
 
         } else {
-            // ── Activo / Atrasado: solo saldos pendientes ─────────────────
-            if (round($prestamo->saldo_actual, 2) !== round((float)$data['saldo_actual'], 2))
-                $cambios[] = 'Saldo pendiente: $' . number_format($prestamo->saldo_actual, 2) . ' → $' . number_format($data['saldo_actual'], 2);
+            // ── Activo / Atrasado: saldos por componente ──────────────────
+            $principalPendiente = round((float)$data['principal_pendiente'], 2);
+            $interesPendiente   = round((float)$data['interes_pendiente'], 2);
+            $moraPendiente      = round((float)$data['interes_acumulado'], 2);
 
-            $prestamo->saldo_actual = round((float)$data['saldo_actual'], 2);
+            // saldo_actual = principal + interés (mora es aparte)
+            $nuevoSaldo = round($principalPendiente + $interesPendiente, 2);
+
+            if (round($prestamo->saldo_actual, 2) !== $nuevoSaldo)
+                $cambios[] = 'Saldo pendiente: $' . number_format($prestamo->saldo_actual, 2) . ' → $' . number_format($nuevoSaldo, 2) . ' (principal $' . number_format($principalPendiente, 2) . ' + interés $' . number_format($interesPendiente, 2) . ')';
+
+            $prestamo->saldo_actual = $nuevoSaldo;
 
             // ── Redistribuir interés pendiente en los pagos pendientes ────
-            if (isset($data['interes_pendiente']) && $data['interes_pendiente'] !== null) {
-                $nuevoInteres = round((float)$data['interes_pendiente'], 2);
+            $pendingPagos  = Pago::where('prestamo_id', $id)
+                ->whereIn('estatus', ['Pendiente', 'Atrasado'])
+                ->orderBy('numero_pago')
+                ->get();
 
-                // Interés actual en pagos pendientes (para log)
-                $pendingPagos = Pago::where('prestamo_id', $id)
-                    ->whereIn('estatus', ['Pendiente', 'Atrasado'])
-                    ->orderBy('numero_pago')
-                    ->get();
+            $interesActual = round($pendingPagos->sum('interes'), 2);
 
-                $interesActual = round($pendingPagos->sum('interes'), 2);
+            if ($pendingPagos->count() > 0 && $interesActual !== $interesPendiente) {
+                $cambios[] = 'Interés pendiente: $' . number_format($interesActual, 2) . ' → $' . number_format($interesPendiente, 2);
 
-                if ($pendingPagos->count() > 0 && round($interesActual, 2) !== $nuevoInteres) {
-                    $cambios[] = 'Interés pendiente: $' . number_format($interesActual, 2) . ' → $' . number_format($nuevoInteres, 2);
+                $n        = $pendingPagos->count();
+                $asignado = 0.0;
+                $saldoBase = $principalPendiente;
 
-                    $n         = $pendingPagos->count();
-                    $asignado  = 0.0;
-                    $capitalPagado = (float) Pago::where('prestamo_id', $id)
-                        ->whereIn('estatus', ['Pagado', 'Parcial'])
-                        ->sum('capital');
-                    $saldoBase = max(0, round((float)$prestamo->monto_entregado - $capitalPagado, 2));
+                foreach ($pendingPagos as $idx => $pago) {
+                    $isLast  = ($idx === $n - 1);
+                    $intPago = $isLast
+                        ? round($interesPendiente - $asignado, 2)
+                        : floor($interesPendiente / $n * 100) / 100;
 
-                    foreach ($pendingPagos as $idx => $pago) {
-                        $isLast  = ($idx === $n - 1);
-                        // Distribute: last pago absorbs rounding residual
-                        $intPago = $isLast
-                            ? round($nuevoInteres - $asignado, 2)
-                            : floor($nuevoInteres / $n * 100) / 100;
+                    $intPago   = max(0, min($intPago, $pago->monto_cuota));
+                    $capPago   = round($pago->monto_cuota - $intPago, 2);
+                    $saldoBase = max(0, round($saldoBase - $capPago, 2));
 
-                        $intPago = max(0, min($intPago, $pago->monto_cuota));
-                        $capPago = round($pago->monto_cuota - $intPago, 2);
-                        $saldoBase = max(0, round($saldoBase - $capPago, 2));
+                    $pago->interes        = $intPago;
+                    $pago->capital        = $capPago;
+                    $pago->saldo_restante = $saldoBase;
+                    $pago->save();
 
-                        $pago->interes         = $intPago;
-                        $pago->capital         = $capPago;
-                        $pago->saldo_restante  = $saldoBase;
-                        $pago->save();
-
-                        $asignado += $intPago;
-                    }
+                    $asignado += $intPago;
                 }
+            }
+
+            // ── Mora ──────────────────────────────────────────────────────
+            if (round($prestamo->interes_acumulado, 2) !== $moraPendiente)
+                $cambios[] = 'Mora: $' . number_format($prestamo->interes_acumulado, 2) . ' → $' . number_format($moraPendiente, 2);
+            $prestamo->interes_acumulado = $moraPendiente;
+
+            // ── Auto-finalizar si los tres componentes son 0 ─────────────
+            if ($principalPendiente <= 0 && $interesPendiente <= 0 && $moraPendiente <= 0) {
+                $prestamo->estatus             = 'Finalizado';
+                $prestamo->saldo_actual        = 0;
+                $prestamo->interes_acumulado   = 0;
+                $prestamo->interes_activo      = false;
+                $prestamo->interes_mora_activo = false;
+                $prestamo->interes_diario      = 0;
+
+                // Marcar todos los pagos pendientes como liquidados
+                Pago::where('prestamo_id', $id)
+                    ->whereIn('estatus', ['Pendiente', 'Atrasado'])
+                    ->update([
+                        'estatus'       => 'Pagado',
+                        'monto_cobrado' => 0,
+                        'tipo_cobro'    => 'completo',
+                        'tipo_pago'     => 'liquidado',
+                        'fecha_pago'    => now()->toDateString(),
+                        'nota_cobro'    => 'Liquidado por ajuste manual de saldos',
+                    ]);
+
+                $cambios[] = '✓ Préstamo finalizado por ajuste de saldos a $0.';
             }
         }
 
-        // Mora acumulada (both modes)
-        if (round($prestamo->interes_acumulado, 2) !== round((float)$data['interes_acumulado'], 2))
-            $cambios[] = 'Mora acumulada: $' . number_format($prestamo->interes_acumulado, 2) . ' → $' . number_format($data['interes_acumulado'], 2);
-        $prestamo->interes_acumulado = round((float)$data['interes_acumulado'], 2);
+        // Mora para préstamos Pendientes (también editable en ese formulario)
+        if ($esPendiente && isset($data['interes_acumulado'])) {
+            if (round($prestamo->interes_acumulado, 2) !== round((float)$data['interes_acumulado'], 2))
+                $cambios[] = 'Mora: $' . number_format($prestamo->interes_acumulado, 2) . ' → $' . number_format($data['interes_acumulado'], 2);
+            $prestamo->interes_acumulado = round((float)$data['interes_acumulado'], 2);
+        }
 
         $prestamo->save();
 

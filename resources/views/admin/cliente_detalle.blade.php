@@ -96,12 +96,25 @@ else                     { $scoreLabel = 'Riesgo';        $scoreColor = '#dc2626
 $onTimePct = $totalPagados > 0 ? round($enTiempo / $totalPagados * 100) : 0;
 
 // Totales históricos
-$totalCapitalEnviado = $prestamos->sum('monto_entregado');
-$totalAcordado       = $prestamos->sum('monto');
-$totalCobrado        = $prestamos->sum(fn($l) => $l->pagos->whereIn('estatus',['Pagado','Parcial'])->sum('monto_cobrado'));
-$gananciaBruta       = $totalCobrado - $totalCapitalEnviado;
-$numPrestamos        = $prestamos->count();
-$numFinalizados      = $prestamos->where('estatus','Finalizado')->count();
+$totalCapitalEnviado = (float) $prestamos->sum('monto_entregado');
+$totalAcordado       = (float) $prestamos->sum('monto');
+$interesAcordado     = max(0, round($totalAcordado - $totalCapitalEnviado, 2));
+
+// Sumar desde los registros reales de pago
+$allPagos        = $prestamos->flatMap(fn($l) => $l->pagos->whereIn('estatus', ['Pagado','Parcial']));
+$totalCobrado    = (float) $allPagos->sum('monto_cobrado');
+$capitalCobrado  = (float) $allPagos->sum('capital');
+$interesCobrado  = (float) $allPagos->sum('interes');
+
+// Pendiente de cobrar del total acordado
+$pendienteCobrar = max(0, round($totalAcordado - $totalCobrado, 2));
+
+// Balance neto = lo cobrado hasta ahora menos lo que se envió
+// Negativo → aún no se recupera el capital; positivo → ya hay ganancia
+$balanceNeto = round($totalCobrado - $totalCapitalEnviado, 2);
+
+$numPrestamos   = $prestamos->count();
+$numFinalizados = $prestamos->where('estatus','Finalizado')->count();
 @endphp
 
 <a class="btn btn-sm" style="background:#f3f4f6;color:var(--text);margin-bottom:16px;display:inline-flex" href="{{ $backUrl }}">
@@ -227,26 +240,45 @@ $numFinalizados      = $prestamos->where('estatus','Finalizado')->count();
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:13px;height:13px"><rect x="1" y="3" width="14" height="10" rx="1.5"/><path d="M1 6h14M5 10h2"/></svg>
         Historial financiero total
     </div>
-    <div class="cl-totales-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px">
+    <div class="cl-totales-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px">
 
+        {{-- Capital enviado --}}
         <div style="display:flex;flex-direction:column;gap:3px">
             <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Capital enviado</span>
             <span style="font-size:22px;font-weight:800;letter-spacing:-.02em;color:var(--text)">${{ number_format($totalCapitalEnviado,0,'.',',') }}</span>
-            <span style="font-size:11px;color:var(--text3)">en {{ $numPrestamos }} préstamo{{ $numPrestamos !== 1 ? 's' : '' }}</span>
+            <span style="font-size:11px;color:var(--text3)">en {{ $numPrestamos }} préstamo{{ $numPrestamos !== 1 ? 's' : '' }} · acordado ${{ number_format($totalAcordado,0,'.',',') }}</span>
         </div>
 
+        {{-- Total cobrado --}}
         <div style="display:flex;flex-direction:column;gap:3px">
             <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Total cobrado</span>
             <span style="font-size:22px;font-weight:800;letter-spacing:-.02em;color:#2563eb">${{ number_format($totalCobrado,0,'.',',') }}</span>
-            <span style="font-size:11px;color:var(--text3)">de ${{ number_format($totalAcordado,0,'.',',') }} acordado</span>
+            @php $pctCob = $totalAcordado > 0 ? round($totalCobrado / $totalAcordado * 100, 1) : 0; @endphp
+            <span style="font-size:11px;color:var(--text3)">{{ $pctCob }}% del total acordado · faltan ${{ number_format($pendienteCobrar,0,'.',',') }}</span>
         </div>
 
+        {{-- Interés cobrado (ganancia real) --}}
         <div style="display:flex;flex-direction:column;gap:3px">
-            <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Ganancia generada</span>
-            <span style="font-size:22px;font-weight:800;letter-spacing:-.02em;color:{{ $gananciaBruta >= 0 ? '#16a34a' : '#dc2626' }}">${{ number_format(abs($gananciaBruta),0,'.',',') }}</span>
-            <span style="font-size:11px;color:var(--text3)">{{ $gananciaBruta >= 0 ? 'sobre el capital enviado' : 'pendiente de recuperar' }}</span>
+            <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Interés cobrado</span>
+            <span style="font-size:22px;font-weight:800;letter-spacing:-.02em;color:{{ $interesCobrado > 0 ? '#16a34a' : 'var(--text2)' }}">${{ number_format($interesCobrado,0,'.',',') }}</span>
+            <span style="font-size:11px;color:var(--text3)">de ${{ number_format($interesAcordado,0,'.',',') }} acordado · capital rec. ${{ number_format($capitalCobrado,0,'.',',') }}</span>
         </div>
 
+        {{-- Balance neto (puede ser negativo) --}}
+        @php
+            $balanceColor = $balanceNeto > 0 ? '#16a34a' : ($balanceNeto < 0 ? '#dc2626' : 'var(--text2)');
+            $balanceLabel = $balanceNeto > 0
+                ? 'recuperado + ganancia sobre capital enviado'
+                : ($balanceNeto < 0 ? 'capital aún por recuperar' : 'capital enviado recuperado exactamente');
+            $balancePrefix = $balanceNeto < 0 ? '−' : ($balanceNeto > 0 ? '+' : '');
+        @endphp
+        <div style="display:flex;flex-direction:column;gap:3px">
+            <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Balance neto</span>
+            <span style="font-size:22px;font-weight:800;letter-spacing:-.02em;color:{{ $balanceColor }}">{{ $balancePrefix }}${{ number_format(abs($balanceNeto),0,'.',',') }}</span>
+            <span style="font-size:11px;color:var(--text3)">{{ $balanceLabel }}</span>
+        </div>
+
+        {{-- Préstamos finalizados --}}
         @if($numFinalizados > 0)
         <div style="display:flex;flex-direction:column;gap:3px">
             <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Finalizados</span>

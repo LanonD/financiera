@@ -61,10 +61,11 @@ tr.cobro-parcial{background:#fffbeb}
 @section('content')
 
 @php
-$hoy          = date('Y-m-d');
-$maxCobro     = $cobrador?->capacidad_maxima ?? 200000;
-$cobrosHoy    = $prestamos->filter(fn($p) => $p->proximo_pago !== null && $p->proximo_pago <= $hoy)->values();
-$cobrosFuturos= $prestamos->filter(fn($p) => $p->proximo_pago === null || $p->proximo_pago > $hoy)->values();
+$hoy           = date('Y-m-d');
+$cobrosHoy     = $prestamos->filter(fn($p) => $p->proximo_pago !== null && $p->proximo_pago <= $hoy)->values();
+$cobrosFuturos = $prestamos->filter(fn($p) => $p->proximo_pago === null || $p->proximo_pago > $hoy)->values();
+// Total a cobrar hoy = suma de cuotas + mora de todos los préstamos de hoy
+$totalHoy      = $cobrosHoy->sum(fn($p) => (float)($p->cuota ?? 0) + (float)($p->interes_acumulado ?? 0));
 @endphp
 
 <div class="cobros-page-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
@@ -88,13 +89,20 @@ $cobrosFuturos= $prestamos->filter(fn($p) => $p->proximo_pago === null || $p->pr
         <div class="cobrador-stat-value">{{ $cobrador?->rango ?? '—' }}</div>
     </div>
     <div class="cobrador-stat">
-        <div class="cobrador-stat-label">Máximo</div>
-        <div class="cobrador-stat-value" style="color:var(--accent)">${{ number_format($maxCobro,0,'.',',') }}</div>
+        <div class="cobrador-stat-label">Meta de hoy</div>
+        <div class="cobrador-stat-value" style="color:var(--accent)">${{ number_format($totalHoy,0,'.',',') }}</div>
     </div>
-    <div class="cobrador-stat" style="flex:1">
-        <div class="cobrador-stat-label">Cobrado hoy</div>
+    <div class="cobrador-stat" style="flex:1;min-width:140px">
+        <div style="display:flex;align-items:baseline;justify-content:space-between">
+            <div class="cobrador-stat-label">Cobrado hoy</div>
+            <div style="font-size:10px;font-weight:600;color:var(--text3)" id="pctLabel">0%</div>
+        </div>
         <div class="cobrador-stat-value" id="montoCobrado">$0</div>
-        <div class="range-wrap"><div class="range-track"><div class="range-fill" id="cobroFill" style="width:0%"></div></div></div>
+        <div class="range-wrap">
+            <div class="range-track">
+                <div class="range-fill" id="cobroFill" style="width:0%;transition:width .4s,background .4s"></div>
+            </div>
+        </div>
     </div>
     <div class="cobrador-stat">
         <div class="cobrador-stat-label">Completos</div>
@@ -103,6 +111,10 @@ $cobrosFuturos= $prestamos->filter(fn($p) => $p->proximo_pago === null || $p->pr
     <div class="cobrador-stat">
         <div class="cobrador-stat-label">Parciales</div>
         <div class="cobrador-stat-value" id="nParciales" style="color:#ca8a04">0</div>
+    </div>
+    <div class="cobrador-stat">
+        <div class="cobrador-stat-label">Pendientes</div>
+        <div class="cobrador-stat-value" id="nPendientes" style="color:#6b7280">{{ $cobrosHoy->count() }}</div>
     </div>
     <div class="cobrador-stat">
         <div class="cobrador-stat-label">Próximos</div>
@@ -345,8 +357,9 @@ $cobrosFuturos= $prestamos->filter(fn($p) => $p->proximo_pago === null || $p->pr
 
 @push('scripts')
 <script>
-const MAX  = {{ $maxCobro }};
-const cobros = {};
+const META_HOY = {{ $totalHoy > 0 ? $totalHoy : 1 }};   // total a cobrar hoy (cuotas + mora)
+const N_HOY    = {{ $cobrosHoy->count() }};              // cantidad de cobros de hoy
+const cobros   = {};
 let modalRow = null;
 
 function toggleCheck(btn) {
@@ -475,13 +488,24 @@ function setTag(id, monto, tipo) {
 function updateStats() {
     let total = 0, comp = 0, parc = 0;
     Object.values(cobros).forEach(c => { total += c.monto; c.tipo === 'completo' ? comp++ : parc++; });
-    document.getElementById('montoCobrado').textContent = '$' + total.toLocaleString('es-MX');
-    document.getElementById('cobroFill').style.width    = Math.min(100, total / MAX * 100).toFixed(1) + '%';
-    document.getElementById('nCompletos').textContent   = comp;
-    document.getElementById('nParciales').textContent   = parc;
-    document.getElementById('footerInfo').textContent   = `Cobrado hoy: $${total.toLocaleString('es-MX')} · ${comp} completos · ${parc} parciales`;
+
+    const pct     = Math.min(100, total / META_HOY * 100);
+    const pctText = pct.toFixed(0) + '%';
+    // Color: rojo→amarillo→verde según progreso
+    const fillColor = pct >= 100 ? '#16a34a' : pct >= 50 ? '#ca8a04' : '#3b82f6';
+    const pendientes = Math.max(0, N_HOY - comp - parc);
+
+    document.getElementById('montoCobrado').textContent  = '$' + total.toLocaleString('es-MX');
+    document.getElementById('cobroFill').style.width     = pct.toFixed(1) + '%';
+    document.getElementById('cobroFill').style.background = fillColor;
+    document.getElementById('pctLabel').textContent      = pctText;
+    document.getElementById('nCompletos').textContent    = comp;
+    document.getElementById('nParciales').textContent    = parc;
+    document.getElementById('nPendientes').textContent   = pendientes;
+    document.getElementById('footerInfo').textContent    = `Cobrado hoy: $${total.toLocaleString('es-MX')} de $${META_HOY.toLocaleString('es-MX')} (${pctText}) · ${comp} completos · ${parc} parciales · ${pendientes} pendientes`;
+
     const hay = Object.keys(cobros).length > 0;
-    document.getElementById('btnEnviar').disabled     = !hay;
+    document.getElementById('btnEnviar').disabled      = !hay;
     document.getElementById('btnEnviar').style.opacity = hay ? '1' : '.5';
 }
 

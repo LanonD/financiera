@@ -241,43 +241,59 @@ $puesto = auth()->user()->puesto;
 @if(in_array($prestamo->estatus, ['Activo','Atrasado']) && in_array($puesto, ['admin','promo']))
 <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
     <div style="padding:12px 18px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600">Acciones del préstamo</div>
-    <div style="padding:14px 18px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+    <div style="padding:16px 18px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">
 
         {{-- Cobro Inmediato --}}
-        <button onclick="document.getElementById('modal-cobro-extra').showModal()"
-            style="padding:8px 16px;border-radius:8px;border:1.5px solid #2563eb;background:rgba(37,99,235,.07);color:#2563eb;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">
-            + Cobro inmediato
-        </button>
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:140px">
+            <button onclick="document.getElementById('modal-cobro-extra').showModal()"
+                style="padding:8px 16px;border-radius:8px;border:1.5px solid #2563eb;background:rgba(37,99,235,.07);color:#2563eb;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap">
+                + Cobro inmediato
+            </button>
+            <span style="font-size:11px;color:var(--text3);padding:0 2px">Registra un abono extra fuera del plan de pagos. Se aplica primero a mora, luego a capital.</span>
+        </div>
 
         {{-- Agendar Cobro --}}
-        <button onclick="document.getElementById('modal-agendar').showModal()"
-            style="padding:8px 16px;border-radius:8px;border:1.5px solid #7c3aed;background:rgba(124,58,237,.07);color:#7c3aed;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">
-            📅 Agendar cobro
-        </button>
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:140px">
+            <button onclick="document.getElementById('modal-agendar').showModal()"
+                style="padding:8px 16px;border-radius:8px;border:1.5px solid #7c3aed;background:rgba(124,58,237,.07);color:#7c3aed;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap">
+                📅 Agendar cobro
+            </button>
+            <span style="font-size:11px;color:var(--text3);padding:0 2px">Programa un cobro acordado para una fecha futura específica.</span>
+        </div>
 
         {{-- Pago Diferido (Payment Hold) --}}
-        <form method="POST" action="{{ route('prestamos.paymentHold', $prestamo->id) }}" style="margin:0"
-            onsubmit="return confirm('{{ ($prestamo->payment_hold ?? false) ? '¿Cancelar el pago diferido y restaurar el plan?' : '¿Establecer pago diferido? El siguiente cobro se combinará con el siguiente y se pagará doble.' }}')">
-            @csrf
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:140px">
+            <form method="POST" action="{{ route('prestamos.paymentHold', $prestamo->id) }}" style="margin:0"
+                onsubmit="return confirm('{{ ($prestamo->payment_hold ?? false) ? '¿Cancelar el pago diferido y restaurar el plan?' : '¿Establecer pago diferido? El siguiente cobro se combinará con el siguiente y se pagará doble.' }}')">
+                @csrf
+                @if($prestamo->payment_hold ?? false)
+                <button type="submit"
+                    style="padding:8px 16px;border-radius:8px;border:1.5px solid #fb923c;background:rgba(251,146,60,.12);color:#c2410c;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap">
+                    ↩ Cancelar pago diferido
+                </button>
+                @else
+                <button type="submit"
+                    style="padding:8px 16px;border-radius:8px;border:1.5px solid #f59e0b;background:rgba(245,158,11,.07);color:#92400e;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap">
+                    ⏸ Establecer pago diferido
+                </button>
+                @endif
+            </form>
             @if($prestamo->payment_hold ?? false)
-            <button type="submit"
-                style="padding:8px 16px;border-radius:8px;border:1.5px solid #fb923c;background:rgba(251,146,60,.12);color:#c2410c;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">
-                ↩ Cancelar pago diferido
-            </button>
+            <span style="font-size:11px;color:#c2410c;padding:0 2px">Pago diferido activo. Cancela para restaurar el plan original.</span>
             @else
-            <button type="submit"
-                style="padding:8px 16px;border-radius:8px;border:1.5px solid #f59e0b;background:rgba(245,158,11,.07);color:#92400e;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">
-                ⏸ Establecer pago diferido
-            </button>
+            <span style="font-size:11px;color:var(--text3);padding:0 2px">Salta el próximo cobro; se combina con el siguiente (cuota doble).</span>
             @endif
-        </form>
+        </div>
 
         {{-- Cambiar Frecuencia (admin only) --}}
         @if($puesto === 'admin')
-        <button onclick="document.getElementById('modal-frecuencia').showModal()"
-            style="padding:8px 16px;border-radius:8px;border:1.5px solid #d1d5db;background:#f9fafb;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">
-            ⚙ Cambiar frecuencia
-        </button>
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:140px">
+            <button onclick="document.getElementById('modal-frecuencia').showModal()"
+                style="padding:8px 16px;border-radius:8px;border:1.5px solid #d1d5db;background:#f9fafb;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap">
+                ⚙ Cambiar frecuencia
+            </button>
+            <span style="font-size:11px;color:var(--text3);padding:0 2px">Reprograma todos los pagos pendientes con una nueva frecuencia y fecha de inicio.</span>
+        </div>
         @endif
 
     </div>
