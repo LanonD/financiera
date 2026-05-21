@@ -147,9 +147,9 @@
     </div>
     <div class="rnd-kpi">
         <div class="rnd-kpi-accent" style="background:#7c3aed"></div>
-        <div class="rnd-kpi-label">Interés ganado</div>
+        <div class="rnd-kpi-label">Interés cobrado</div>
         <div class="rnd-kpi-value" style="color:#7c3aed">${{ number_format($globales['interes_cobrado'], 0, '.', ',') }}</div>
-        <div class="rnd-kpi-sub">rendimiento {{ $globales['rendimiento_pct'] }}%</div>
+        <div class="rnd-kpi-sub">cobrado/capital: {{ $globales['rendimiento_pct'] }}%</div>
     </div>
     <div class="rnd-kpi">
         <div class="rnd-kpi-accent" style="background:#f59e0b"></div>
@@ -191,8 +191,8 @@
             <div style="font-size:16px;font-weight:800;color:#7c3aed">${{ number_format($globales['interes_cobrado'],0,'.',',') }}</div>
         </div>
         <div style="text-align:center">
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Rendimiento</div>
-            <div style="font-size:16px;font-weight:800;color:{{ $globales['rendimiento_pct']>0?'#16a34a':'#9ca3af' }}">{{ $globales['rendimiento_pct'] }}%</div>
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Cobrado/Capital</div>
+            <div style="font-size:16px;font-weight:800;color:{{ $globales['rendimiento_pct']>=100?'#16a34a':($globales['rendimiento_pct']>=75?'#2563eb':'#d97706') }}">{{ $globales['rendimiento_pct'] }}%</div>
         </div>
     </div>
 </div>
@@ -279,8 +279,8 @@
     <div class="rnd-list-hcell rnd-col-hide">Saldo activo</div>
     <div class="rnd-list-hcell rnd-col-hide">Préstamos</div>
     <div class="rnd-list-hcell rnd-col-hide" style="text-align:center">Mora</div>
-    <div class="rnd-list-hcell" style="text-align:center">PAR</div>
-    <div class="rnd-list-hcell" style="text-align:center">Rend.</div>
+    <div class="rnd-list-hcell" style="text-align:center">Rentab.</div>
+    <div class="rnd-list-hcell" style="text-align:center">Cobrado/Capital</div>
 </div>
 
 {{-- ── Admin cards ─────────────────────────────────────────── --}}
@@ -291,8 +291,12 @@
     $color    = $colors[crc32($admin->usuario) % count($colors)];
     $pct      = $s['recuperado_pct'];
     $barColor = $pct>=75?'#16a34a':($pct>=40?'#f59e0b':'#ef4444');
-    $parColor = $s['par']===0?'rnd-pct-green':($s['par']<=25?'rnd-pct-yellow':'rnd-pct-red');
-    $rndColor = $s['rendimiento_pct']<=0?'rnd-pct-gray':($s['rendimiento_pct']>=15?'rnd-pct-green':'rnd-pct-blue');
+    // Rentabilidad pactada: tasa de rendimiento acordada (interés/capital)
+    $rentab    = $s['rentabilidad_pct'] ?? 0;
+    $rentabColor = $rentab >= 40 ? 'rnd-pct-green' : ($rentab >= 20 ? 'rnd-pct-blue' : ($rentab > 0 ? 'rnd-pct-yellow' : 'rnd-pct-gray'));
+    // Rendimiento real: total cobrado / capital desplegado
+    $rndVal   = $s['rendimiento_pct'];
+    $rndColor = $rndVal >= 100 ? 'rnd-pct-green' : ($rndVal >= 75 ? 'rnd-pct-blue' : ($rndVal >= 50 ? 'rnd-pct-yellow' : 'rnd-pct-red'));
 
     // Pie chart data (only non-zero statuses)
     $pieLabels = []; $pieValues = []; $pieColors = [];
@@ -358,15 +362,15 @@
             <div style="font-size:13px;font-weight:700;color:{{ $s['mora_pendiente']>0?'#dc2626':'#16a34a' }}">${{ number_format($s['mora_pendiente'],0,'.',',') }}</div>
         </div>
 
-        {{-- PAR --}}
+        {{-- Rentabilidad pactada --}}
         <div style="text-align:center">
-            <span class="rnd-pct-badge {{ $parColor }}">{{ $s['par'] }}%</span>
-            <div style="font-size:10px;color:var(--text3);margin-top:3px">riesgo</div>
+            <span class="rnd-pct-badge {{ $rentabColor }}">{{ $rentab }}%</span>
+            <div style="font-size:10px;color:var(--text3);margin-top:3px">tasa pactada</div>
         </div>
 
-        {{-- Rendimiento + chevron --}}
+        {{-- Rendimiento real (cobrado/capital) + chevron --}}
         <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
-            <span class="rnd-pct-badge {{ $rndColor }}">{{ $s['rendimiento_pct'] }}%</span>
+            <span class="rnd-pct-badge {{ $rndColor }}">{{ $rndVal }}%</span>
             <svg class="rnd-chevron" id="chev-{{ $admin->id }}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:14px;height:14px">
                 <path d="M4 6l4 4 4-4"/>
             </svg>
@@ -440,15 +444,15 @@
                 <div class="rnd-stat-value" style="color:{{ $s['mora_pendiente']>0?'#dc2626':'#16a34a' }}">${{ number_format($s['mora_pendiente'],2,'.',',') }}</div>
                 <div class="rnd-stat-sub">interés moratorio sin cobrar</div>
             </div>
-            <div class="rnd-stat-box">
-                <div class="rnd-stat-label">Cartera en riesgo (PAR)</div>
-                <div class="rnd-stat-value" style="color:{{ $s['par']===0?'#16a34a':($s['par']<=25?'#d97706':'#dc2626') }}">{{ $s['par'] }}%</div>
-                <div class="rnd-stat-sub">{{ $s['por_estatus']['Atrasado'] }} atrasado(s) / {{ $s['por_estatus']['Activo']+$s['por_estatus']['Atrasado'] }} activo(s)</div>
+            <div class="rnd-stat-box" style="border-color:rgba(59,130,246,.2);background:rgba(59,130,246,.03)">
+                <div class="rnd-stat-label" style="color:#2563eb">Rentabilidad promedio</div>
+                <div class="rnd-stat-value" style="color:#2563eb">{{ $rentab }}%</div>
+                <div class="rnd-stat-sub">interés acordado / capital desplegado</div>
             </div>
             <div class="rnd-stat-box" style="border-color:rgba(124,58,237,.2);background:rgba(124,58,237,.03)">
                 <div class="rnd-stat-label" style="color:#7c3aed">Rendimiento real</div>
-                <div class="rnd-stat-value" style="color:#7c3aed">{{ $s['rendimiento_pct'] }}%</div>
-                <div class="rnd-stat-sub">interés cobrado / capital desplegado</div>
+                <div class="rnd-stat-value" style="color:#7c3aed">{{ $rndVal }}%</div>
+                <div class="rnd-stat-sub">total cobrado / capital desplegado</div>
             </div>
         </div>
     </div>
@@ -525,7 +529,7 @@ function setPfMode(btn) {
         legend.innerHTML = '<span class="pf-legend-item"><span class="pf-legend-dot" style="background:#ef4444"></span>Desembolsos</span>' +
                            '<span class="pf-legend-item"><span class="pf-legend-dot" style="background:#16a34a"></span>Cobros</span>';
     } else {
-        legend.innerHTML = '<span class="pf-legend-item"><span class="pf-legend-dot" style="background:#7c3aed"></span>Sumatoria (Desembolsos + Cobros)</span>';
+        legend.innerHTML = '<span class="pf-legend-item"><span class="pf-legend-dot" style="background:#7c3aed"></span>Flujo neto (Cobros − Desembolsos) · verde=positivo · rojo=negativo</span>';
     }
     updatePortfolioChart();
 }
@@ -600,16 +604,26 @@ function updatePortfolioChart() {
             }
         ];
     } else {
-        // Sumatoria: desembolsos + cobros como una sola línea
-        const sumData = filtDes.map((d, i) => d + filtCob[i]);
+        // Flujo neto: cobros - desembolsos (positivo = ganamos ese día, negativo = salió más dinero)
+        const netData = filtCob.map((c, i) => c - filtDes[i]);
+        // Color dinámico por punto: verde si >= 0, rojo si < 0
+        const pointColors = netData.map(v => v >= 0 ? '#16a34a' : '#ef4444');
         datasets = [
             {
-                label: 'Sumatoria',
-                data: sumData,
+                label: 'Flujo neto',
+                data: netData,
                 borderColor: '#7c3aed',
-                backgroundColor: 'rgba(124,58,237,.08)',
-                fill: true, tension: 0.38, pointRadius: 0, pointHoverRadius: 5,
-                pointHoverBackgroundColor: '#7c3aed', borderWidth: 2.5,
+                backgroundColor: netData.map(v => v >= 0 ? 'rgba(22,163,74,.06)' : 'rgba(239,68,68,.06)'),
+                fill: false,
+                tension: 0.35,
+                pointRadius: netData.map(v => v !== 0 ? 3 : 0),
+                pointBackgroundColor: pointColors,
+                pointBorderColor: pointColors,
+                pointHoverRadius: 6,
+                borderWidth: 2,
+                segment: {
+                    borderColor: ctx => ctx.p0.parsed.y >= 0 ? '#16a34a' : '#ef4444',
+                }
             }
         ];
     }
@@ -642,9 +656,13 @@ function updatePortfolioChart() {
                         title: items => items[0].label,
                         label: ctx => {
                             if (ctx.raw === 0) return null;
+                            if (pfMode === 'sumatoria') {
+                                const sign = ctx.raw >= 0 ? '▲ +' : '▼ ';
+                                const abs  = Math.abs(ctx.raw);
+                                return sign + '$' + abs.toLocaleString('es-MX', {minimumFractionDigits:0, maximumFractionDigits:0});
+                            }
                             const prefix = ctx.datasetIndex === 0 ? '↑ ' : '↓ ';
-                            const sym = pfMode === 'sumatoria' ? '∑ ' : prefix;
-                            return sym + ctx.dataset.label + ': $' +
+                            return prefix + ctx.dataset.label + ': $' +
                                    ctx.raw.toLocaleString('es-MX', {minimumFractionDigits:0, maximumFractionDigits:0});
                         }
                     }

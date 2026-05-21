@@ -350,12 +350,17 @@ class OwnerController extends Controller
             $interes_cobrado = max(0.0, round($total_cobrado - $capital_desplegado, 2));
             $recuperado_pct  = $total_acordado > 0
                 ? min(100, round($total_cobrado / $total_acordado * 100, 1)) : 0;
+
+            // Rendimiento real = total cobrado / capital desplegado
             $rendimiento_pct = $capital_desplegado > 0
-                ? round($interes_cobrado / $capital_desplegado * 100, 2) : 0;
+                ? round($total_cobrado / $capital_desplegado * 100, 1) : 0;
+
+            // Rentabilidad promedio = interés acordado / capital desplegado (tasa pactada)
+            $rentabilidad_pct = $capital_desplegado > 0
+                ? round($interes_esperado / $capital_desplegado * 100, 1) : 0;
 
             $n_activos   = $activos->count();
             $n_atrasados = $byEstatus->get('Atrasado', collect())->count();
-            $par         = $n_activos > 0 ? round($n_atrasados / $n_activos * 100, 1) : 0;
 
             // ── Series de tiempo para gráfica de línea ───────────────
             $adminD = $desembolsosRaw->get($admin->id, collect());
@@ -390,6 +395,7 @@ class OwnerController extends Controller
                 'interes_cobrado'    => $interes_cobrado,
                 'recuperado_pct'     => $recuperado_pct,
                 'rendimiento_pct'    => $rendimiento_pct,
+                'rentabilidad_pct'   => $rentabilidad_pct,
                 'par'                => $par,
                 'chart_labels'       => $chartLabels,
                 'chart_desembolsos'  => $chartDesembolsos,
@@ -419,7 +425,8 @@ class OwnerController extends Controller
             'saldo_pendiente'    => $stats->sum('saldo_pendiente'),
             'mora_pendiente'     => $stats->sum('mora_pendiente'),
             'total_prestamos'    => $stats->sum('total'),
-            'rendimiento_pct'    => $sumCapital > 0 ? round($sumInteres / $sumCapital * 100, 2) : 0,
+            // Rendimiento real global = total cobrado / capital desplegado
+            'rendimiento_pct'    => $sumCapital > 0 ? round($sumCobrado / $sumCapital * 100, 1) : 0,
             'recuperado_pct'     => $sumAcordado > 0
                 ? min(100, round($sumCobrado / $sumAcordado * 100, 1)) : 0,
             // Chart
