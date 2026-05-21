@@ -163,8 +163,9 @@ $puesto = auth()->user()->puesto;
     $balanceRestante = (float)$prestamo->saldo_actual + $interesPendiente;
 @endphp
 
-{{-- KPI cards — 4 cards en una sola fila --}}
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px">
+{{-- KPI cards — scroll horizontal en móvil --}}
+<div style="overflow-x:auto;margin-bottom:16px;-webkit-overflow-scrolling:touch;scrollbar-width:none">
+<div style="display:grid;grid-template-columns:repeat(4,minmax(160px,1fr));gap:12px;min-width:640px">
 
     {{-- 1. Estatus --}}
     <div class="card" style="padding:16px 18px">
@@ -220,7 +221,8 @@ $puesto = auth()->user()->puesto;
         @endif
     </div>
 
-</div>
+</div>{{-- fin grid --}}
+</div>{{-- fin scroll wrapper --}}
 
 @push('styles')
 <style>
