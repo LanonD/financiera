@@ -351,9 +351,11 @@ class OwnerController extends Controller
             $recuperado_pct  = $total_acordado > 0
                 ? min(100, round($total_cobrado / $total_acordado * 100, 1)) : 0;
 
-            // Rendimiento real = total cobrado / capital desplegado
+            // Rendimiento real = (total cobrado - capital desplegado) / capital desplegado
+            // Positivo: ya recuperaste el capital y estás ganando interés
+            // Negativo: aún no recuperas todo el capital invertido
             $rendimiento_pct = $capital_desplegado > 0
-                ? round($total_cobrado / $capital_desplegado * 100, 1) : 0;
+                ? round(($total_cobrado - $capital_desplegado) / $capital_desplegado * 100, 1) : 0;
 
             // Rentabilidad promedio = interés acordado / capital desplegado (tasa pactada)
             $rentabilidad_pct = $capital_desplegado > 0
@@ -425,8 +427,8 @@ class OwnerController extends Controller
             'saldo_pendiente'    => $stats->sum('saldo_pendiente'),
             'mora_pendiente'     => $stats->sum('mora_pendiente'),
             'total_prestamos'    => $stats->sum('total'),
-            // Rendimiento real global = total cobrado / capital desplegado
-            'rendimiento_pct'    => $sumCapital > 0 ? round($sumCobrado / $sumCapital * 100, 1) : 0,
+            // Rendimiento real global = (cobrado - capital) / capital
+            'rendimiento_pct'    => $sumCapital > 0 ? round(($sumCobrado - $sumCapital) / $sumCapital * 100, 1) : 0,
             'recuperado_pct'     => $sumAcordado > 0
                 ? min(100, round($sumCobrado / $sumAcordado * 100, 1)) : 0,
             // Chart

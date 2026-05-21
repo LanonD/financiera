@@ -191,8 +191,8 @@
             <div style="font-size:16px;font-weight:800;color:#7c3aed">${{ number_format($globales['interes_cobrado'],0,'.',',') }}</div>
         </div>
         <div style="text-align:center">
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Cobrado/Capital</div>
-            <div style="font-size:16px;font-weight:800;color:{{ $globales['rendimiento_pct']>=100?'#16a34a':($globales['rendimiento_pct']>=75?'#2563eb':'#d97706') }}">{{ $globales['rendimiento_pct'] }}%</div>
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Rendimiento real</div>
+            <div style="font-size:16px;font-weight:800;color:{{ $globales['rendimiento_pct']>0?'#16a34a':($globales['rendimiento_pct']===0.0?'#9ca3af':'#dc2626') }}">{{ $globales['rendimiento_pct'] > 0 ? '+' : '' }}{{ $globales['rendimiento_pct'] }}%</div>
         </div>
     </div>
 </div>
@@ -296,7 +296,8 @@
     $rentabColor = $rentab >= 40 ? 'rnd-pct-green' : ($rentab >= 20 ? 'rnd-pct-blue' : ($rentab > 0 ? 'rnd-pct-yellow' : 'rnd-pct-gray'));
     // Rendimiento real: total cobrado / capital desplegado
     $rndVal   = $s['rendimiento_pct'];
-    $rndColor = $rndVal >= 100 ? 'rnd-pct-green' : ($rndVal >= 75 ? 'rnd-pct-blue' : ($rndVal >= 50 ? 'rnd-pct-yellow' : 'rnd-pct-red'));
+    // Positivo = recuperaste capital + ganancia; negativo = aún en déficit
+    $rndColor = $rndVal > 0 ? 'rnd-pct-green' : ($rndVal === 0.0 ? 'rnd-pct-gray' : 'rnd-pct-red');
 
     // Pie chart data (only non-zero statuses)
     $pieLabels = []; $pieValues = []; $pieColors = [];
@@ -370,7 +371,7 @@
 
         {{-- Rendimiento real (cobrado/capital) + chevron --}}
         <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
-            <span class="rnd-pct-badge {{ $rndColor }}">{{ $rndVal }}%</span>
+            <span class="rnd-pct-badge {{ $rndColor }}">{{ $rndVal > 0 ? '+' : '' }}{{ $rndVal }}%</span>
             <svg class="rnd-chevron" id="chev-{{ $admin->id }}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:14px;height:14px">
                 <path d="M4 6l4 4 4-4"/>
             </svg>
@@ -451,8 +452,8 @@
             </div>
             <div class="rnd-stat-box" style="border-color:rgba(124,58,237,.2);background:rgba(124,58,237,.03)">
                 <div class="rnd-stat-label" style="color:#7c3aed">Rendimiento real</div>
-                <div class="rnd-stat-value" style="color:#7c3aed">{{ $rndVal }}%</div>
-                <div class="rnd-stat-sub">total cobrado / capital desplegado</div>
+                <div class="rnd-stat-value" style="color:{{ $rndVal > 0 ? '#16a34a' : ($rndVal < 0 ? '#dc2626' : '#9ca3af') }}">{{ $rndVal > 0 ? '+' : '' }}{{ $rndVal }}%</div>
+                <div class="rnd-stat-sub">(cobrado − capital) / capital</div>
             </div>
         </div>
     </div>
