@@ -399,7 +399,9 @@ class OwnerController extends Controller
                 'recuperado_pct'     => $recuperado_pct,
                 'rendimiento_pct'    => $rendimiento_pct,
                 'rentabilidad_pct'   => $rentabilidad_pct,
-                'par'                => $par,
+                'par'                => $activos->count() > 0
+    ? round($byEstatus->get('Atrasado', collect())->count() / $activos->count() * 100, 1)
+    : 0,
                 'chart_labels'       => $chartLabels,
                 'chart_desembolsos'  => $chartDesembolsos,
                 'chart_cobros'       => $chartCobros,
