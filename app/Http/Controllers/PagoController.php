@@ -100,29 +100,43 @@ class PagoController extends Controller
     }
 
     /**
-     * Admin: monitor cobros grouped by cobrador for today
+     * Admin + Promo: monitor cobros grouped by cobrador for today.
+     * Promo only sees cobradores from their own team (promotor_id = their empleado id).
      */
     public function monitor(Request $request)
     {
-        $adminId     = auth()->user()->adminId();
+        $user        = Auth::user();
+        $adminId     = $user->adminId();
+        $roles       = $user->getAllRoles();
+        $isAdmin     = in_array('admin', $roles);
+        $empleado    = $user->empleado;
         $hoy         = now()->toDateString();
         $cobradorSel = (int) $request->query('cobrador', 0);
 
-        // All active collectors scoped to this admin
-        $cobradores = Empleado::where('admin_id', $adminId)
-            ->where('activo', true)
-            ->get()
+        // Cobradores visibles: admin → todos; promo → solo su equipo
+        $cobradoresQuery = Empleado::where('admin_id', $adminId)->where('activo', true);
+        if (!$isAdmin && $empleado) {
+            $cobradoresQuery->where('promotor_id', $empleado->id);
+        }
+
+        $cobradores = $cobradoresQuery->get()
             ->filter(fn($e) => $e->hasRole('collector'))
             ->values();
 
         // Loans with a payment due today OR overdue, per cobrador
         $prestamosPorCobrador = collect();
         foreach ($cobradores as $cob) {
-            $loans = Prestamo::with(['cliente', 'pagos'])
+            $loansQuery = Prestamo::with(['cliente', 'pagos'])
                 ->where('admin_id', $adminId)
                 ->where('cobrador_id', $cob->id)
-                ->whereIn('estatus', ['Activo', 'Atrasado'])
-                ->get()
+                ->whereIn('estatus', ['Activo', 'Atrasado']);
+
+            // Promo: solo sus préstamos
+            if (!$isAdmin && $empleado) {
+                $loansQuery->where('promotor_id', $empleado->id);
+            }
+
+            $loans = $loansQuery->get()
                 ->map(function ($p) use ($hoy) {
                     $next = $p->pagos
                         ->whereIn('estatus', ['Pendiente', 'Atrasado'])

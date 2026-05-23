@@ -639,11 +639,22 @@ class PrestamoController extends Controller
      */
     public function cancelar($id)
     {
-        $adminId  = auth()->user()->adminId();
+        $user     = auth()->user();
+        $adminId  = $user->adminId();
+        $roles    = $user->getAllRoles();
+        $isAdmin  = in_array('admin', $roles);
         $prestamo = Prestamo::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
 
         if ($prestamo->estatus !== 'Pendiente') {
             return redirect()->back()->with('error', 'Solo se pueden cancelar préstamos en estado Pendiente.');
+        }
+
+        // Promotor solo puede cancelar sus propios préstamos
+        if (!$isAdmin && in_array('promo', $roles)) {
+            $empleado = $user->empleado;
+            if (!$empleado || (int)$prestamo->promotor_id !== (int)$empleado->id) {
+                return redirect()->back()->with('error', 'Solo puedes cancelar préstamos que tú mismo creaste.');
+            }
         }
 
         $prestamo->estatus = 'Retirado';

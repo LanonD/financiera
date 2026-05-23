@@ -30,10 +30,22 @@ class DesembolsoController extends Controller
             ->where('estatus', 'Pendiente')
             ->whereNull('fecha_entrega');
 
-        if (!$isAdmin && in_array('desembolso', $roles) && $empleado) {
-            $query->where('desembolso_id', $empleado->id);
-        } elseif (!$isAdmin && in_array('promo', $roles) && $empleado) {
-            $query->where('promotor_id', $empleado->id);
+        if (!$isAdmin && $empleado) {
+            $isPromo      = in_array('promo', $roles);
+            $isDesembolso = in_array('desembolso', $roles);
+
+            if ($isPromo && $isDesembolso) {
+                // Tiene ambos roles: ve sus préstamos como promotor O como desembolsador
+                $empId = $empleado->id;
+                $query->where(function ($q) use ($empId) {
+                    $q->where('promotor_id', $empId)
+                      ->orWhere('desembolso_id', $empId);
+                });
+            } elseif ($isDesembolso) {
+                $query->where('desembolso_id', $empleado->id);
+            } elseif ($isPromo) {
+                $query->where('promotor_id', $empleado->id);
+            }
         }
 
         $prestamos_pendientes = $query->with('desembolso')->orderBy('created_at')->get();

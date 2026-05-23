@@ -104,7 +104,11 @@ $estatusColor = match($prestamo->estatus) {
 };
 [$estatusBg, $estatusTx] = $estatusColor;
 
-$puesto = auth()->user()->puesto;
+$puesto         = auth()->user()->puesto;
+$rolesActuales  = auth()->user()->getAllRoles();
+$isPromoDetalle = in_array('promo', $rolesActuales);
+$empDetalle     = auth()->user()->empleado;
+$esMiPrestamo   = $empDetalle && $prestamo->promotor_id == $empDetalle->id;
 @endphp
 
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
@@ -133,6 +137,17 @@ $puesto = auth()->user()->puesto;
             Cancelar préstamo
         </button>
         @endif
+        @endif
+        {{-- Promotor: acciones sobre sus propios préstamos Pendiente --}}
+        @if($isPromoDetalle && $puesto !== 'admin' && $esMiPrestamo && $prestamo->estatus === 'Pendiente')
+        <a href="{{ route('desembolsos.index') }}" class="btn btn-sm btn-primary">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="margin-right:4px"><path d="M8 2v12M4 6l4-4 4 4"/></svg>
+            Confirmar desembolso
+        </a>
+        <button type="button" class="btn btn-sm" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5"
+            onclick="document.getElementById('modalCancelarPrestamo').style.display='flex'">
+            Cancelar préstamo
+        </button>
         @endif
     </div>
 </div>

@@ -99,8 +99,8 @@ Route::middleware(['auth', 'role:collector,admin,promo'])->group(function () {
     Route::post('/cobros/registrar',   [PagoController::class, 'registrar'])->name('cobros.registrar');
 });
 
-// ── Monitor de cobros por cobrador (solo admin) ───────────────────────
-Route::middleware(['auth', 'role:admin'])->group(function () {
+// ── Monitor de cobros por cobrador (admin y promo) ───────────────────
+Route::middleware(['auth', 'role:admin,promo'])->group(function () {
     Route::get('/cobros/monitor', [PagoController::class, 'monitor'])->name('cobros.monitor');
 });
 
