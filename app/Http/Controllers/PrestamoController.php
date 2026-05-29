@@ -9,6 +9,8 @@ use App\Models\Cliente;
 use App\Models\Empleado;
 use App\Models\PrestamoActividad;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+use App\Models\PrestamoArchivo;
 use Carbon\Carbon;
 
 class PrestamoController extends Controller
@@ -85,15 +87,29 @@ class PrestamoController extends Controller
 
         $clientes = $query->with('promotor')->orderBy('nombre')->get();
 
-        // Build map: client_id => promotor_nombre for active loans (to warn in the UI)
-        $clientesConPrestamo = Prestamo::whereIn('cliente_id', $clientes->pluck('id'))
-            ->whereIn('estatus', ['Activo', 'Atrasado', 'Pendiente'])
-            ->with('promotor')
-            ->get()
-            ->keyBy('cliente_id')
-            ->map(fn($p) => $p->promotor?->nombre ?? 'otro promotor');
+        // Map: client_id => promotor_nombre for clients with active loans (UI warning)
+        $clientesConPrestamo = Cache::remember("clientes_con_prestamo_{$adminId}", 60, fn() =>
+            Prestamo::whereIn('cliente_id', $clientes->pluck('id'))
+                ->whereIn('estatus', ['Activo', 'Atrasado', 'Pendiente'])
+                ->with('promotor')
+                ->get()
+                ->keyBy('cliente_id')
+                ->map(fn($p) => $p->promotor?->nombre ?? 'otro promotor')
+                ->toArray()
+        );
 
-        return view('admin.prestamo_nuevo', compact('clientes', 'clientesConPrestamo'));
+        // Map: client_id => {ine, comprobante} — to skip re-uploading docs for existing clients
+        $clientesConDocs = Prestamo::where('admin_id', $adminId)
+            ->where(fn($q) => $q->whereNotNull('doc_ine')->orWhereNotNull('doc_comprobante'))
+            ->get(['cliente_id', 'doc_ine', 'doc_comprobante'])
+            ->groupBy('cliente_id')
+            ->map(fn($loans) => [
+                'ine'         => $loans->whereNotNull('doc_ine')->isNotEmpty(),
+                'comprobante' => $loans->whereNotNull('doc_comprobante')->isNotEmpty(),
+            ])
+            ->toArray();
+
+        return view('admin.prestamo_nuevo', compact('clientes', 'clientesConPrestamo', 'clientesConDocs'));
     }
 
     public function store(Request $request)
@@ -112,10 +128,15 @@ class PrestamoController extends Controller
         ];
 
         if ($desembolsar) {
+            // INE y comprobante son opcionales si el cliente ya los tiene en un préstamo anterior
+            $clienteId        = (int)$request->input('cliente_id');
+            $tieneIne         = $clienteId && Prestamo::where('cliente_id', $clienteId)->whereNotNull('doc_ine')->exists();
+            $tieneComprobante = $clienteId && Prestamo::where('cliente_id', $clienteId)->whereNotNull('doc_comprobante')->exists();
+
             $rules += [
-                'doc_ine'           => 'required|file|mimes:jpg,jpeg,png,pdf|max:10240',
+                'doc_ine'           => ($tieneIne         ? 'nullable' : 'required') . '|file|mimes:jpg,jpeg,png,pdf|max:10240',
                 'doc_pagare'        => 'required|file|mimes:jpg,jpeg,png,pdf|max:10240',
-                'doc_comprobante'   => 'required|file|mimes:jpg,jpeg,png,pdf|max:10240',
+                'doc_comprobante'   => ($tieneComprobante ? 'nullable' : 'required') . '|file|mimes:jpg,jpeg,png,pdf|max:10240',
                 'doc_foto_domicilio'=> 'nullable|file|mimes:jpg,jpeg,png|max:10240',
             ];
         }
@@ -269,6 +290,11 @@ class PrestamoController extends Controller
             );
         }
 
+        $adminId = auth()->user()->adminId();
+        Cache::forget("dashboard_kpis_{$adminId}");
+        Cache::forget("dashboard_prestamos_{$adminId}");
+        Cache::forget("clientes_con_prestamo_{$adminId}");
+
         $msg = $desembolsar ? 'Préstamo creado y desembolsado correctamente.' : 'Préstamo creado correctamente.';
         return redirect()->route('prestamos.show', $prestamo->id)->with('success', $msg);
     }
@@ -324,8 +350,12 @@ class PrestamoController extends Controller
                            ->with('user')
                            ->orderByDesc('created_at')
                            ->get();
+        $archivos    = PrestamoArchivo::where('prestamo_id', $id)
+                           ->with('subidoPor')
+                           ->orderByDesc('created_at')
+                           ->get();
 
-        return view('admin.prestamo_detalle', compact('prestamo', 'pagos', 'interesInfo', 'actividad'));
+        return view('admin.prestamo_detalle', compact('prestamo', 'pagos', 'interesInfo', 'actividad', 'archivos'));
     }
 
     public function edit($id)
@@ -551,6 +581,24 @@ class PrestamoController extends Controller
 
             $prestamo->saldo_actual = $nuevoSaldo;
 
+            // ── Sincronizar monto y monto_entregado con los nuevos saldos ─
+            // Calculamos cuánto ya fue cobrado (plan-based) para derivar los nuevos totales acordados.
+            // Así: monto_entregado - cobradoCapital = principalPendiente
+            //       (monto - monto_entregado) - cobradoInteres = interesPendiente
+            $pagosYaCobrados = Pago::where('prestamo_id', $id)
+                ->whereIn('estatus', ['Pagado', 'Parcial'])
+                ->get()
+                ->filter(fn($p) => !in_array($p->tipo_pago ?? 'plan', ['congelado', 'liquidado']));
+
+            $capitalYaCobrado  = round($pagosYaCobrados->sum('capital'), 2);
+            $interesYaCobrado  = round($pagosYaCobrados->sum('interes'), 2);
+
+            $nuevoMtoEntregado = round($principalPendiente + $capitalYaCobrado, 2);
+            $nuevoMto          = round($nuevoMtoEntregado + $interesPendiente + $interesYaCobrado, 2);
+
+            $prestamo->monto_entregado = $nuevoMtoEntregado;
+            $prestamo->monto           = $nuevoMto;
+
             // ── Redistribuir interés pendiente en los pagos pendientes ────
             $pendingPagos  = Pago::where('prestamo_id', $id)
                 ->whereIn('estatus', ['Pendiente', 'Atrasado'])
@@ -632,6 +680,204 @@ class PrestamoController extends Controller
         }
 
         return redirect()->route('prestamos.show', $id)->with('success', 'Saldos actualizados correctamente.');
+    }
+
+    /**
+     * Refinance an active/atrasado loan.
+     *   capital (new) = remaining debt + nuevo_efectivo
+     *   monto   (new) = capital × (1 + rentabilidad/100)
+     * Saves the signed pagaré document. Promotor/cobrador are inherited from the old loan.
+     */
+    public function refinanciar(Request $request, $id)
+    {
+        $adminId  = auth()->user()->adminId();
+        $prestamo = Prestamo::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
+
+        if (!in_array($prestamo->estatus, ['Activo', 'Atrasado'])) {
+            return redirect()->route('prestamos.show', $id)
+                ->with('error', 'Solo se pueden refinanciar préstamos activos o atrasados.');
+        }
+
+        $data = $request->validate([
+            'nuevo_efectivo'     => 'required|numeric|min:0',
+            'rentabilidad'       => 'required|numeric|min:0',
+            'num_pagos'          => 'required|integer|min:1',
+            'frecuencia'         => 'required|in:Diario,Semanal,Quincenal,Mensual',
+            'fecha_inicio'       => 'required|date',
+            'fecha_primer_cobro' => 'required|date',
+            'doc_pagare'         => 'required|file|mimes:jpg,jpeg,png,pdf|max:10240',
+        ]);
+
+        // ── Cálculo de montos (capital e interés separados) ─────────────
+        // capital_viejo + capital_nuevo = nuevo monto_entregado
+        // interes_viejo + rendimiento_nuevo = nuevo interés acordado
+        // monto_total = monto_entregado + interés
+
+        // Reconstruir la separación capital/interés del préstamo anterior
+        // usando la misma lógica interés-primero que usa la vista
+        $interesAcordadoAnterior = max(0, round((float)$prestamo->monto - (float)$prestamo->monto_entregado, 2));
+        $interesPool = $interesAcordadoAnterior;
+        $capCobrado  = 0.0;
+        $intCobrado  = 0.0;
+        $pagosHist = Pago::where('prestamo_id', $id)
+            ->whereIn('estatus', ['Pagado', 'Parcial'])
+            ->get()
+            ->filter(fn($p) => !in_array($p->tipo_pago ?? 'plan', ['congelado', 'liquidado']))
+            ->sortBy('fecha_pago');
+        foreach ($pagosHist as $ph) {
+            $cobrado = (float)($ph->monto_cobrado ?? 0);
+            if ($cobrado > 0) {
+                $intPag  = min($cobrado, max(0, $interesPool));
+                $capPag  = $cobrado - $intPag;
+                $interesPool -= $intPag;
+                $capCobrado  += $capPag;
+                $intCobrado  += $intPag;
+            }
+        }
+        $capViejoPend  = round(max(0, (float)$prestamo->monto_entregado - $capCobrado), 2);
+        $intViejoPend  = round(max(0, $interesAcordadoAnterior - $intCobrado) + (float)$prestamo->interes_acumulado, 2);
+
+        $nuevoEfectivo    = round((float)$data['nuevo_efectivo'], 2);
+        $rentabilidad     = (float)$data['rentabilidad'];
+        $rendimientoMonto = round($nuevoEfectivo * $rentabilidad / 100, 2);
+
+        // Nuevo préstamo: capital = cap_viejo + nuevo_efectivo
+        //                 interés = int_viejo + rendimiento
+        $montoEntregado = round($capViejoPend + $nuevoEfectivo, 2);
+        $montoRetornar  = round($montoEntregado + $intViejoPend + $rendimientoMonto, 2);
+
+        $deudaTotal = round($capViejoPend + $intViejoPend, 2); // para el log
+        $numPagos       = (int)$data['num_pagos'];
+        $frecuencia     = $data['frecuencia'];
+        $fechaInicio    = $data['fecha_inicio'];
+        $fechaPrimer    = $data['fecha_primer_cobro'];
+
+        $diasMap    = ['Diario' => 1, 'Semanal' => 7, 'Quincenal' => 14, 'Mensual' => 30];
+        $dias       = $diasMap[$frecuencia];
+        $cuotaBase  = $numPagos > 1 ? (float)((int) round($montoRetornar / $numPagos / 5) * 5) : $montoRetornar;
+        $ultimoPago = $numPagos > 1 ? round($montoRetornar - $cuotaBase * ($numPagos - 1), 2) : $montoRetornar;
+
+        $user       = Auth::user();
+        $promotorId = $prestamo->promotor_id;
+        $cobradorId = $prestamo->cobrador_id;
+
+        // ── 1. Cerrar préstamo anterior ──────────────────────────────────
+        Pago::where('prestamo_id', $id)
+            ->whereIn('estatus', ['Pendiente', 'Atrasado'])
+            ->update([
+                'estatus'       => 'Pagado',
+                'monto_cobrado' => 0,
+                'tipo_cobro'    => 'completo',
+                'tipo_pago'     => 'liquidado',
+                'fecha_pago'    => now()->toDateString(),
+                'nota_cobro'    => 'Liquidado por refinanciamiento',
+            ]);
+
+        $prestamo->estatus             = 'Refinanciado';
+        $prestamo->saldo_actual        = 0;
+        $prestamo->interes_acumulado   = 0;
+        $prestamo->interes_activo      = false;
+        $prestamo->interes_mora_activo = false;
+        $prestamo->interes_diario      = 0;
+        $prestamo->save();
+
+        PrestamoActividad::log($id, 'refinanciado',
+            'Préstamo refinanciado por ' . $user->usuario . '. ' .
+            'Deuda trasladada: $' . number_format($deudaTotal, 2) .
+            ($nuevoEfectivo > 0 ? ' + $' . number_format($nuevoEfectivo, 2) . ' nuevo efectivo.' : '.'),
+            ['deuda_trasladada' => $deudaTotal, 'nuevo_efectivo' => $nuevoEfectivo]
+        );
+
+        // ── 2. Crear nuevo préstamo (ya desembolsado) ────────────────────
+        $nuevoPrestamo = Prestamo::create([
+            'admin_id'            => $adminId,
+            'cliente_id'          => $prestamo->cliente_id,
+            'promotor_id'         => $promotorId,
+            'cobrador_id'         => $cobradorId,
+            'monto'               => $montoRetornar,
+            'tasa_diaria'         => 0,
+            'num_pagos'           => $numPagos,
+            'frecuencia'          => $frecuencia,
+            'cuota'               => $cuotaBase,
+            'saldo_actual'        => $montoRetornar,
+            'interes_acumulado'   => 0,
+            'interes_activo'      => false,
+            'interes_diario'      => 0,
+            'interes_mora_activo' => false,
+            'fecha_inicio'        => $fechaInicio,
+            'fecha_fin'           => $frecuencia === 'Mensual'
+                ? Carbon::parse($fechaPrimer)->addMonths($numPagos - 1)->toDateString()
+                : Carbon::parse($fechaPrimer)->addDays($dias * ($numPagos - 1))->toDateString(),
+            'estatus'             => 'Activo',
+            'monto_entregado'     => $montoEntregado,
+            'forma_entrega'       => 'refinanciamiento',
+            'fecha_entrega'       => now()->toDateString(),
+            'nota_entrega'        => 'Refinanciamiento del préstamo #' . $id .
+                '. Deuda anterior: $' . number_format($deudaTotal, 2) .
+                ($nuevoEfectivo > 0 ? '. Nuevo efectivo: $' . number_format($nuevoEfectivo, 2) : '') . '.',
+            'refinanciado_por'    => $id,
+        ]);
+
+        // ── 3. Generar plan de pagos (interés-primero) ───────────────────
+        $interesRestante = round($montoRetornar - $montoEntregado, 2);
+        $saldo           = $montoEntregado;
+
+        for ($i = 1; $i <= $numPagos; $i++) {
+            $fecha = $frecuencia === 'Mensual'
+                ? Carbon::parse($fechaPrimer)->addMonths($i - 1)->toDateString()
+                : Carbon::parse($fechaPrimer)->addDays($dias * ($i - 1))->toDateString();
+
+            $cuota   = ($i === $numPagos) ? $ultimoPago : $cuotaBase;
+            $interes = min($cuota, max(0.0, $interesRestante));
+            $capital = round($cuota - $interes, 2);
+            $interesRestante = max(0.0, round($interesRestante - $interes, 2));
+            $saldo   = max(0.0, round($saldo - $capital, 2));
+
+            Pago::create([
+                'prestamo_id'      => $nuevoPrestamo->id,
+                'cobrador_id'      => null,
+                'numero_pago'      => $i,
+                'monto_cuota'      => $cuota,
+                'interes'          => $interes,
+                'capital'          => $capital,
+                'saldo_restante'   => $saldo,
+                'monto_cobrado'    => null,
+                'tipo_cobro'       => null,
+                'nota_cobro'       => null,
+                'fecha_programada' => $fecha,
+                'fecha_pago'       => null,
+                'estatus'          => 'Pendiente',
+            ]);
+        }
+
+        // ── 4. Guardar pagaré ────────────────────────────────────────────
+        $file    = $request->file('doc_pagare');
+        $carpeta = public_path('documentos/prestamo_' . $nuevoPrestamo->id);
+        if (!file_exists($carpeta)) mkdir($carpeta, 0775, true);
+        $nombre = 'pagare_' . time() . '_' . uniqid() . '.' . strtolower($file->getClientOriginalExtension());
+        $file->move($carpeta, $nombre);
+        $nuevoPrestamo->doc_pagare = 'documentos/prestamo_' . $nuevoPrestamo->id . '/' . $nombre;
+        $nuevoPrestamo->save();
+
+        PrestamoActividad::log($nuevoPrestamo->id, 'creado',
+            'Préstamo creado por refinanciamiento del #' . $id . ' por ' . $user->usuario . '. ' .
+            'Deuda traspasada: $' . number_format($deudaTotal, 2) .
+            ($nuevoEfectivo > 0
+                ? '. Nuevo efectivo: $' . number_format($nuevoEfectivo, 2) .
+                  ' + rendimiento (' . $rentabilidad . '%): $' . number_format($rendimientoMonto, 2)
+                : '') .
+            '. Total a retornar: $' . number_format($montoRetornar, 2) . ' en ' . $numPagos . ' pagos.',
+            ['prestamo_origen_id' => $id, 'deuda_anterior' => $deudaTotal,
+             'nuevo_efectivo' => $nuevoEfectivo, 'rendimiento' => $rendimientoMonto,
+             'rentabilidad_pct' => $rentabilidad]
+        );
+
+        Cache::forget("dashboard_kpis_{$adminId}");
+        Cache::forget("dashboard_prestamos_{$adminId}");
+        Cache::forget("clientes_con_prestamo_{$adminId}");
+
+        return redirect()->route('prestamos.show', $nuevoPrestamo->id)
+            ->with('success', 'Refinanciamiento completado. Nuevo préstamo #' . $nuevoPrestamo->id . ' activo.');
     }
 
     /**
@@ -754,6 +1000,63 @@ class PrestamoController extends Controller
         );
 
         return redirect()->back()->with('success', 'Frecuencia actualizada a ' . $request->frecuencia . '. ' . $pagosPendientes->count() . ' pagos reprogramados.');
+    }
+
+    public function subirArchivo(Request $request, $id)
+    {
+        $adminId  = auth()->user()->adminId();
+        $prestamo = Prestamo::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
+
+        $request->validate([
+            'archivo' => 'required|file|mimes:jpg,jpeg,png,pdf|max:10240',
+        ], [
+            'archivo.mimes' => 'Solo se permiten archivos PDF, JPG, JPEG o PNG.',
+            'archivo.max'   => 'El archivo no puede superar 10 MB.',
+        ]);
+
+        $file    = $request->file('archivo');
+        $carpeta = public_path('documentos/prestamo_' . $prestamo->id);
+        if (!file_exists($carpeta)) mkdir($carpeta, 0775, true);
+
+        $ext    = strtolower($file->getClientOriginalExtension());
+        $nombre = 'arch_' . time() . '_' . uniqid() . '.' . $ext;
+        $file->move($carpeta, $nombre);
+
+        PrestamoArchivo::create([
+            'prestamo_id'     => $prestamo->id,
+            'subido_por'      => auth()->id(),
+            'nombre_original' => $file->getClientOriginalName(),
+            'ruta'            => 'documentos/prestamo_' . $prestamo->id . '/' . $nombre,
+            'tipo_archivo'    => $ext,
+            'tamano'          => $file->getSize(),
+        ]);
+
+        PrestamoActividad::log($prestamo->id, 'configuracion',
+            'Archivo subido: ' . $file->getClientOriginalName() . ' por ' . Auth::user()->usuario . '.',
+            ['archivo' => $file->getClientOriginalName()]
+        );
+
+        return redirect()->route('prestamos.show', $id)->with('success', 'Archivo subido correctamente.');
+    }
+
+    public function eliminarArchivo($id, $archivoId)
+    {
+        $adminId  = auth()->user()->adminId();
+        $prestamo = Prestamo::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
+        $archivo  = PrestamoArchivo::where('id', $archivoId)->where('prestamo_id', $id)->firstOrFail();
+
+        $ruta = public_path($archivo->ruta);
+        if (file_exists($ruta)) unlink($ruta);
+
+        $nombreOriginal = $archivo->nombre_original;
+        $archivo->delete();
+
+        PrestamoActividad::log($prestamo->id, 'configuracion',
+            'Archivo eliminado: ' . $nombreOriginal . ' por ' . Auth::user()->usuario . '.',
+            ['archivo' => $nombreOriginal]
+        );
+
+        return redirect()->route('prestamos.show', $id)->with('success', 'Archivo eliminado.');
     }
 
     /**

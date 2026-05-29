@@ -39,12 +39,14 @@
     $inputReadStyle   = 'width:100%;padding:9px 12px;background:#f1f5f9;border:1px solid var(--border);border-radius:6px;font-size:14px;font-family:monospace;color:var(--text2);cursor:not-allowed;box-sizing:border-box';
     $lblStyle         = 'display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:5px';
 
-    // Valores calculados de lo que queda pendiente
-    $pagosEfectivos     = $prestamo->pagos->whereIn('estatus', ['Pagado','Parcial']);
-    $interesCobrado     = collect($pagosEfectivos)->sum('interes');
-    $interesRestante    = max(0, round($interesAcordado - $interesCobrado, 2));
-    // Principal pendiente = saldo total pendiente − interés pendiente del acuerdo
-    $principalPendiente = max(0, round((float)$prestamo->saldo_actual - $interesRestante, 2));
+    // Valores calculados de lo que queda pendiente (desde monto/monto_entregado, no desde saldo_actual)
+    $pagosEfectivos     = $prestamo->pagos
+        ->whereIn('estatus', ['Pagado','Parcial'])
+        ->filter(fn($p) => !in_array($p->tipo_pago ?? 'plan', ['congelado','liquidado']));
+    $capitalYaCobrado   = round($pagosEfectivos->sum('capital'), 2);
+    $interesYaCobrado   = round($pagosEfectivos->sum('interes'), 2);
+    $interesRestante    = max(0, round($interesAcordado - $interesYaCobrado, 2));
+    $principalPendiente = max(0, round((float)$prestamo->monto_entregado - $capitalYaCobrado, 2));
 @endphp
 
 {{-- ═══════════════════════════════════════════════════════════════ --}}
@@ -239,7 +241,7 @@
                 <span style="font-size:10px;font-weight:400;color:var(--text3);margin-left:4px">(Principal + Interés + Mora)</span>
             </div>
             <div style="font-size:20px;font-weight:800;font-family:monospace;color:var(--text)" id="pe_total_val">
-                ${{ number_format((float)$prestamo->saldo_actual + (float)$prestamo->interes_acumulado, 2, '.', ',') }}
+                ${{ number_format($principalPendiente + $interesRestante + (float)$prestamo->interes_acumulado, 2, '.', ',') }}
             </div>
         </div>
 

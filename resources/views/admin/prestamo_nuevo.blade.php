@@ -120,6 +120,7 @@
 
 @php
 $activoMap = $clientesConPrestamo->toArray();
+$docsMap   = $clientesConDocs ?? [];
 @endphp
 
 <form method="POST" action="{{ route('prestamos.store') }}" id="formNuevo" enctype="multipart/form-data" onsubmit="return manejarSubmit(event)">
@@ -157,12 +158,17 @@ $activoMap = $clientesConPrestamo->toArray();
                         @else
                          @foreach($clientes as $c)
                         @php $bloqueado = array_key_exists($c->id, $activoMap); @endphp
+                        @php
+                            $cDocs = $docsMap[$c->id] ?? ['ine'=>false,'comprobante'=>false];
+                        @endphp
                         <div class="cs-item {{ $bloqueado ? 'cs-item-bloqueado' : '' }}"
                              data-id="{{ $c->id }}"
                              data-nombre="{{ $c->nombre }}"
                              data-celular="{{ $c->celular ?? '' }}"
                              data-bloqueado="{{ $bloqueado ? '1' : '0' }}"
                              data-promotor="{{ $bloqueado ? $activoMap[$c->id] : '' }}"
+                             data-tiene-ine="{{ $cDocs['ine'] ? '1' : '0' }}"
+                             data-tiene-comprobante="{{ $cDocs['comprobante'] ? '1' : '0' }}"
                              onclick="csSelect(this)">
                             <div style="display:flex;align-items:center;justify-content:space-between">
                                 <div class="cs-item-name">{{ $c->nombre }}</div>
@@ -312,10 +318,10 @@ $activoMap = $clientesConPrestamo->toArray();
                         @endphp
 
                         @foreach($docs as [$key, $name, $label, $required, $accept, $camAccept])
-                        <div>
-                            <label class="np-label">
+                        <div id="np_{{ $key }}_wrap">
+                            <label class="np-label" id="np_{{ $key }}_label">
                                 {{ $label }}
-                                @if($required)<span style="color:#ef4444">*</span>@else<span style="font-weight:400;text-transform:none;color:var(--text3)"> (opcional)</span>@endif
+                                @if($required)<span id="np_{{ $key }}_req" style="color:#ef4444">*</span>@else<span style="font-weight:400;text-transform:none;color:var(--text3)"> (opcional)</span>@endif
                             </label>
                             <div style="display:flex;gap:6px">
                                 {{-- Subir archivo --}}
@@ -483,7 +489,44 @@ function csSelect(el) {
     }
     window._clienteBloqueado = bloqueado;
 
+    // Marcar INE y comprobante como opcionales si el cliente ya los tiene registrados
+    const tieneIne         = el.dataset.tieneIne === '1';
+    const tieneComprobante = el.dataset.tieneComprobante === '1';
+    _actualizarDocReq('ine',         tieneIne,         'INE / Identificación');
+    _actualizarDocReq('comprobante',  tieneComprobante,  'Comprobante de domicilio');
+
     checkCanSubmit();
+}
+
+function _actualizarDocReq(key, yaTiene, label) {
+    const reqSpan = document.getElementById('np_' + key + '_req');
+    const fileInp = document.getElementById('np_' + key + '_file');
+    const camInp  = document.getElementById('np_' + key + '_cam');
+    const wrap    = document.getElementById('np_' + key + '_wrap');
+    if (!wrap) return;
+
+    if (yaTiene) {
+        // Mostrar chip "Ya registrado" y hacer opcional
+        if (reqSpan) reqSpan.outerHTML = '<span id="np_' + key + '_req" style="font-size:10px;padding:1px 7px;border-radius:999px;background:#dcfce7;color:#166534;font-weight:600;text-transform:none;letter-spacing:0;margin-left:4px">✓ Ya registrado</span>';
+        if (fileInp) fileInp.removeAttribute('required');
+        if (camInp)  camInp.removeAttribute('required');
+        // Mostrar aviso debajo
+        let note = document.getElementById('np_' + key + '_ya_reg');
+        if (!note) {
+            note = document.createElement('div');
+            note.id = 'np_' + key + '_ya_reg';
+            note.style.cssText = 'font-size:11px;color:#16a34a;margin-top:4px';
+            note.textContent   = 'El cliente ya tiene ' + label + ' en un préstamo anterior. Puedes subir uno nuevo si cambió.';
+            wrap.appendChild(note);
+        }
+        note.style.display = '';
+    } else {
+        if (reqSpan) reqSpan.outerHTML = '<span id="np_' + key + '_req" style="color:#ef4444">*</span>';
+        if (fileInp) fileInp.setAttribute('required', '');
+        if (camInp)  camInp.setAttribute('required', '');
+        const note = document.getElementById('np_' + key + '_ya_reg');
+        if (note) note.style.display = 'none';
+    }
 }
 function csClear() {
     clienteSeleccionado = null;

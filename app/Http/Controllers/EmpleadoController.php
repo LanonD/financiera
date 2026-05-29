@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\Prestamo;
 use App\Models\Pago;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Cache;
 
 class EmpleadoController extends Controller
 {
@@ -137,6 +138,8 @@ class EmpleadoController extends Controller
             'activo'           => true,
         ]);
 
+        Cache::forget('empleados_activos_' . auth()->user()->adminId());
+        Cache::forget('dashboard_kpis_' . auth()->user()->adminId());
         return redirect()->route('empleados.index')->with('success', 'Empleado creado correctamente.');
     }
 
@@ -190,6 +193,8 @@ class EmpleadoController extends Controller
             'capacidad_maxima' => $request->capacidad ?? 0,
         ]);
 
+        Cache::forget('empleados_activos_' . $adminId);
+        Cache::forget('dashboard_kpis_' . $adminId);
         return redirect()->route('empleados.index')->with('success', 'Empleado actualizado correctamente.');
     }
 
@@ -203,6 +208,8 @@ class EmpleadoController extends Controller
             $empleado->usuario->update(['activo' => false]);
         }
 
+        Cache::forget('empleados_activos_' . $adminId);
+        Cache::forget('dashboard_kpis_' . $adminId);
         return redirect()->route('empleados.index')->with('success', 'Empleado desactivado correctamente.');
     }
 }

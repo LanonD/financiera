@@ -34,9 +34,6 @@ $totalCobrado    = $cobrosEfectivos->sum('monto_cobrado');
 // Mora interest accumulated (updated in controller on each page load)
 $interesPendiente = (float)($prestamo->interes_acumulado ?? 0);
 
-// Balance = remaining principal (saldo_actual) + mora. Reflects extra payments immediately.
-$totalAdeudadoKpi = (float)$prestamo->saldo_actual + $interesPendiente;
-
 // ── Distribución REAL de cada cobro (interés-primero) ──────────────────────────
 // El pool de interés acordado = monto_retornar - monto_entregado.
 // Cada cobro efectivo va primero a reducir ese pool; lo que sobra es capital.
@@ -67,6 +64,9 @@ $capitalCobrado      = round(array_sum($capitalDisplay), 2);
 $interesCobrado      = round(array_sum($interesDisplay), 2);
 $interesRestante     = max(0, round($interesAcordadoTotal - $interesCobrado, 2));
 
+// KPI de adeudo total: calculado desde pagos reales para ser siempre coherente con saldo_actual
+$totalAdeudadoKpi = max(0, (float)$prestamo->monto_entregado - $capitalCobrado) + $interesRestante + $interesPendiente;
+
 // Progress: collected vs total agreed (monto = total to return)
 $montoTotal = max((float)$prestamo->monto, $totalCobrado);
 $pctCapital = $montoTotal > 0 ? min(100, round($capitalCobrado / $montoTotal * 100, 1)) : 0;
@@ -87,20 +87,22 @@ $ultimaFechaPago = $pagos
 $fechaCompletado = ($prestamo->estatus === 'Finalizado') ? $ultimaFechaPago : null;
 
 $badgeClass = match($prestamo->estatus) {
-    'Activo'     => 'badge-green',
-    'Atrasado'   => 'badge-red',
-    'Finalizado' => 'badge-gray',
-    'Retirado'   => 'badge-gray',
-    default      => 'badge-yellow',
+    'Activo'        => 'badge-green',
+    'Atrasado'      => 'badge-red',
+    'Finalizado'    => 'badge-gray',
+    'Retirado'      => 'badge-gray',
+    'Refinanciado'  => 'badge-gray',
+    default         => 'badge-yellow',
 };
 
 $estatusColor = match($prestamo->estatus) {
-    'Activo'     => ['#dcfce7','#166534'],
-    'Atrasado'   => ['#fee2e2','#991b1b'],
-    'Finalizado' => ['#f1f5f9','#475569'],
-    'Retirado'   => ['#f1f5f9','#64748b'],
-    'Pendiente'  => ['#fef9c3','#854d0e'],
-    default      => ['#f1f5f9','#64748b'],
+    'Activo'        => ['#dcfce7','#166534'],
+    'Atrasado'      => ['#fee2e2','#991b1b'],
+    'Finalizado'    => ['#f1f5f9','#475569'],
+    'Retirado'      => ['#f1f5f9','#64748b'],
+    'Refinanciado'  => ['#e0f2fe','#0369a1'],
+    'Pendiente'     => ['#fef9c3','#854d0e'],
+    default         => ['#f1f5f9','#64748b'],
 };
 [$estatusBg, $estatusTx] = $estatusColor;
 
@@ -173,9 +175,10 @@ $esMiPrestamo   = $empDetalle && $prestamo->promotor_id == $empDetalle->id;
     $proximoPago  = $pagos->whereIn('estatus', ['Pendiente','Atrasado'])->sortBy('numero_pago')->first();
     $proximaCuota = $proximoPago ? (float)$proximoPago->monto_cuota : 0;
     $proximaFecha = $proximoPago?->fecha_programada?->format('d/m/Y') ?? null;
-    // Balance restante = saldo_actual (principal+interés pendiente) + mora pendiente
-    // Se recalcula en cada visita automáticamente
-    $balanceRestante = (float)$prestamo->saldo_actual + $interesPendiente;
+    // Balance restante calculado desde los registros de pago reales, igual que los sub-labels.
+    // Evita que saldo_actual desincronizado muestre un número diferente a lo que desglosa abajo.
+    $principalRestante = max(0, (float)$prestamo->monto_entregado - $capitalCobrado);
+    $balanceRestante   = $principalRestante + $interesRestante + $interesPendiente;
 @endphp
 
 {{-- KPI cards — scroll horizontal en móvil --}}
@@ -308,6 +311,17 @@ $esMiPrestamo   = $empDetalle && $prestamo->promotor_id == $empDetalle->id;
                 ⚙ Cambiar frecuencia
             </button>
             <span style="font-size:11px;color:var(--text3);padding:0 2px">Reprograma todos los pagos pendientes con una nueva frecuencia y fecha de inicio.</span>
+        </div>
+        @endif
+
+        {{-- Refinanciar (admin only) --}}
+        @if($puesto === 'admin')
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:140px">
+            <button onclick="abrirModalRefinanciar()"
+                style="padding:8px 16px;border-radius:8px;border:1.5px solid #0891b2;background:rgba(8,145,178,.07);color:#0e7490;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap">
+                ↺ Refinanciar
+            </button>
+            <span style="font-size:11px;color:var(--text3);padding:0 2px">Consolida la deuda actual en un nuevo préstamo con nuevos términos.</span>
         </div>
         @endif
 
@@ -801,6 +815,369 @@ $esMiPrestamo   = $empDetalle && $prestamo->promotor_id == $empDetalle->id;
 </dialog>
 @endif
 
+{{-- ══════════════════════════════════════════════════════════════════════ --}}
+{{-- Modal: Refinanciar préstamo (admin only)                             --}}
+{{-- Lógica: deuda actual traspasada sin nuevo interés +                  --}}
+{{--          nuevo efectivo × (1 + rendimiento%) = total a retornar      --}}
+{{-- ══════════════════════════════════════════════════════════════════════ --}}
+@if($puesto === 'admin' && in_array($prestamo->estatus, ['Activo','Atrasado']))
+@php
+    // Separar capital pendiente e interés pendiente del préstamo actual
+    // usando la misma distribución interés-primero que ya calculó la vista arriba
+    $refi_principal_pend = max(0, round((float)$prestamo->monto_entregado - $capitalCobrado, 2));
+    $refi_interes_pend   = max(0, $interesRestante);                      // interés acordado no cobrado
+    $refi_mora           = round((float)$prestamo->interes_acumulado, 2); // mora
+    $refi_interes_total  = round($refi_interes_pend + $refi_mora, 2);
+    $refi_deuda          = round($refi_principal_pend + $refi_interes_total, 2);
+@endphp
+{{-- Estilos del modal de refinanciamiento (responsive + fix cierre) --}}
+@push('styles')
+<style>
+/* Fix cierre: display:flex SOLO cuando el dialog está abierto */
+#modal-refinanciar { border:none;border-radius:16px;padding:0;box-shadow:0 12px 48px rgba(0,0,0,.22);max-width:590px;width:calc(100% - 24px);max-height:94svh;flex-direction:column;overflow:hidden }
+#modal-refinanciar[open] { display:flex }
+/* Backdrop */
+#modal-refinanciar::backdrop { background:rgba(0,0,0,.45) }
+/* Scroll area */
+.refi-scroll { overflow-y:auto;flex:1;display:flex;flex-direction:column }
+.refi-body   { padding:18px 22px;display:flex;flex-direction:column;gap:16px }
+/* Grids responsive */
+.refi-g3 { display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px }
+.refi-g2 { display:grid;grid-template-columns:1fr 1fr;gap:12px }
+.refi-desglose-cols { display:grid;grid-template-columns:1fr 1fr }
+/* Tabla: ocultar Capital/Interés/Saldo en móvil pequeño */
+@media(max-width:480px){
+    #modal-refinanciar { width:100%;max-width:100%;border-radius:16px 16px 0 0;max-height:92svh;position:fixed;bottom:0;margin:0;left:0 }
+    .refi-g3 { grid-template-columns:1fr 1fr }
+    .refi-g2 { grid-template-columns:1fr }
+    .refi-desglose-cols { grid-template-columns:1fr }
+    .refi-desglose-cols > div:first-child { border-right:none!important;border-bottom:1px solid var(--border) }
+    .refi-body { padding:14px 16px;gap:14px }
+    .refi-col-cap,.refi-col-int,.refi-col-saldo { display:none }
+}
+@media(min-width:481px) and (max-width:600px){
+    #modal-refinanciar { width:calc(100% - 16px) }
+    .refi-g3 { grid-template-columns:1fr 1fr }
+    .refi-g2 { grid-template-columns:1fr 1fr }
+}
+</style>
+@endpush
+
+<dialog id="modal-refinanciar">
+
+    {{-- Header --}}
+    <div style="padding:15px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+        <div>
+            <div style="font-size:15px;font-weight:700;color:#0e7490">↺ Refinanciar préstamo #{{ $prestamo->id }}</div>
+            <div style="font-size:12px;color:var(--text2);margin-top:1px">{{ $prestamo->cliente?->nombre }}</div>
+        </div>
+        <button type="button" id="refi-close-btn"
+            style="background:#f1f5f9;border:none;width:32px;height:32px;border-radius:50%;font-size:20px;cursor:pointer;color:var(--text3);display:flex;align-items:center;justify-content:center;flex-shrink:0;line-height:1">&times;</button>
+    </div>
+
+    <form method="POST" action="{{ route('prestamos.refinanciar', $prestamo->id) }}"
+          id="form-refinanciar" enctype="multipart/form-data"
+          onsubmit="return confirmarRefinanciar()"
+          class="refi-scroll">
+        @csrf
+        <input type="hidden" name="fecha_inicio" value="{{ now()->toDateString() }}">
+
+        <div class="refi-body">
+
+            {{-- 1. Deuda actual --}}
+            <div style="background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:10px;padding:13px 16px">
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#0369a1;margin-bottom:9px">Deuda actual (se traslada sin nuevo cargo)</div>
+                <div class="refi-g3">
+                    <div>
+                        <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;margin-bottom:2px">Capital pendiente</div>
+                        <div style="font-size:17px;font-weight:800;font-family:monospace;color:#0369a1">${{ number_format($refi_principal_pend,2,'.',',') }}</div>
+                    </div>
+                    <div>
+                        <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;margin-bottom:2px">Interés@if($refi_mora>0)+mora@endif</div>
+                        <div style="font-size:17px;font-weight:800;font-family:monospace;color:#8b5cf6">${{ number_format($refi_interes_total,2,'.',',') }}</div>
+                    </div>
+                    <div>
+                        <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;margin-bottom:2px">Total deuda</div>
+                        <div style="font-size:17px;font-weight:800;font-family:monospace;color:#0e7490">${{ number_format($refi_deuda,2,'.',',') }}</div>
+                    </div>
+                </div>
+            </div>
+
+            {{-- 2. Inputs --}}
+            <div class="refi-g2">
+                <div>
+                    <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);display:block;margin-bottom:5px">Nuevo efectivo ($)</label>
+                    <input type="number" name="nuevo_efectivo" id="refi-nuevo-efectivo"
+                        step="0.01" min="0" value="0" required oninput="recalcRefi()"
+                        style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:15px;font-family:monospace;outline:none;box-sizing:border-box">
+                    <div style="font-size:10px;color:var(--text3);margin-top:3px">Dinero adicional a entregar (puede ser $0)</div>
+                </div>
+                <div>
+                    <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);display:block;margin-bottom:5px">% Rendimiento (sobre efectivo)</label>
+                    <input type="number" name="rentabilidad" id="refi-rentabilidad"
+                        step="0.1" min="0" value="30" required oninput="recalcRefi()"
+                        style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:15px;font-family:monospace;outline:none;box-sizing:border-box">
+                    <div style="font-size:10px;color:var(--text3);margin-top:3px">Solo aplica al nuevo dinero entregado</div>
+                </div>
+            </div>
+
+            {{-- 3. Desglose --}}
+            <div style="border:1.5px solid var(--border);border-radius:10px;overflow:hidden">
+                <div style="padding:8px 14px;background:#f8fafc;border-bottom:1px solid var(--border);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3)">Nuevo préstamo — desglose</div>
+                <div class="refi-desglose-cols">
+                    <div style="padding:12px 16px;border-right:1px solid var(--border)">
+                        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#0369a1;margin-bottom:5px">Capital total</div>
+                        <div style="display:flex;align-items:center;gap:5px;font-family:monospace;font-size:12px;margin-bottom:3px;flex-wrap:wrap">
+                            <span style="color:#64748b">${{ number_format($refi_principal_pend,2,'.',',') }}</span>
+                            <span style="color:#94a3b8">+</span>
+                            <span style="color:#64748b" id="refi-ef-disp2">$0.00</span>
+                            <span style="color:#94a3b8">=</span>
+                        </div>
+                        <div style="font-size:20px;font-weight:800;font-family:monospace;color:#0369a1" id="refi-nuevo-principal">$0.00</div>
+                        <div style="font-size:10px;color:#94a3b8;margin-top:2px">capital viejo + nuevo efectivo</div>
+                    </div>
+                    <div style="padding:12px 16px">
+                        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#8b5cf6;margin-bottom:5px">Interés total</div>
+                        <div style="display:flex;align-items:center;gap:5px;font-family:monospace;font-size:12px;margin-bottom:3px;flex-wrap:wrap">
+                            <span style="color:#64748b">${{ number_format($refi_interes_total,2,'.',',') }}</span>
+                            <span style="color:#94a3b8">+</span>
+                            <span style="color:#64748b" id="refi-rend-disp">$0.00</span>
+                            <span style="color:#94a3b8">=</span>
+                        </div>
+                        <div style="font-size:20px;font-weight:800;font-family:monospace;color:#8b5cf6" id="refi-nuevo-interes">$0.00</div>
+                        <div style="font-size:10px;color:#94a3b8;margin-top:2px">interés viejo + rendimiento</div>
+                    </div>
+                </div>
+                <div style="padding:10px 16px;background:#f0fdf4;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+                    <span style="font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.06em">Total a retornar</span>
+                    <span style="font-size:20px;font-weight:800;font-family:monospace;color:#15803d" id="refi-total">$0.00</span>
+                </div>
+            </div>
+
+            {{-- 4. Plan --}}
+            <div class="refi-g3">
+                <div>
+                    <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);display:block;margin-bottom:5px">Total de pagos</label>
+                    <input type="number" name="num_pagos" id="refi-num-pagos"
+                        step="1" min="1" value="{{ $prestamo->num_pagos }}" required oninput="recalcRefi()"
+                        style="width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:monospace;outline:none;box-sizing:border-box">
+                </div>
+                <div>
+                    <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);display:block;margin-bottom:5px">Frecuencia</label>
+                    <select name="frecuencia" id="refi-frecuencia" required onchange="autoFechaRefi();recalcRefi()"
+                        style="width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;box-sizing:border-box;background:#fff;font-family:var(--font)">
+                        @foreach(['Diario','Semanal','Quincenal','Mensual'] as $f)
+                        <option value="{{ $f }}" {{ $prestamo->frecuencia === $f ? 'selected' : '' }}>{{ $f }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);display:block;margin-bottom:5px">Siguiente cobro</label>
+                    <input type="date" name="fecha_primer_cobro" id="refi-fecha-primer" required
+                        value="{{ now()->addDay()->toDateString() }}" oninput="recalcRefi()"
+                        style="width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;outline:none;box-sizing:border-box;font-family:var(--font)">
+                </div>
+            </div>
+
+            {{-- 5. Cuota --}}
+            <div style="display:flex;align-items:center;justify-content:space-between;background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:10px 16px">
+                <span style="font-size:12px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.06em">Cuota por pago</span>
+                <span style="font-size:22px;font-weight:800;font-family:monospace;color:#15803d" id="refi-cuota-est">—</span>
+            </div>
+
+            {{-- 6. Tabla --}}
+            <div>
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:6px">Plan de pagos</div>
+                <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;max-height:180px;overflow-y:auto">
+                    <table style="width:100%;border-collapse:collapse;font-size:12px">
+                        <thead style="background:#f8fafc;position:sticky;top:0;z-index:1">
+                            <tr>
+                                <th style="padding:7px 8px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text3)">#</th>
+                                <th style="padding:7px 8px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text3)">Fecha</th>
+                                <th style="padding:7px 8px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text3)">Cuota</th>
+                                <th class="refi-col-cap" style="padding:7px 8px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#16a34a">Capital</th>
+                                <th class="refi-col-int" style="padding:7px 8px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#8b5cf6">Interés</th>
+                                <th class="refi-col-saldo" style="padding:7px 8px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text3)">Saldo</th>
+                            </tr>
+                        </thead>
+                        <tbody id="refi-tabla-body">
+                            <tr><td colspan="6" style="padding:18px;text-align:center;color:var(--text3);font-size:12px">Ingresa los datos para generar el plan</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {{-- 7. Pagaré --}}
+            <div style="border-top:1px solid var(--border);padding-top:14px">
+                <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);display:block;margin-bottom:6px">
+                    Pagaré firmado <span style="color:#ef4444">*</span>
+                    <span style="font-size:10px;font-weight:400;text-transform:none;color:#16a34a"> — INE y domicilio ya registrados</span>
+                </label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <label style="flex:1;min-width:130px;display:flex;align-items:center;gap:8px;padding:9px 14px;background:#f9fafb;border:1.5px dashed var(--border);border-radius:8px;cursor:pointer;font-size:13px;color:var(--text2)" onmouseover="this.style.borderColor='#0891b2'" onmouseout="this.style.borderColor='var(--border)'">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        Subir archivo
+                        <input type="file" name="doc_pagare" id="refi-pagare-file" required accept=".jpg,.jpeg,.png,.pdf" style="display:none" onchange="refiPagareSeleccionado(this)">
+                    </label>
+                    <label style="flex:1;min-width:130px;display:flex;align-items:center;gap:8px;padding:9px 14px;background:#f9fafb;border:1.5px dashed var(--border);border-radius:8px;cursor:pointer;font-size:13px;color:var(--text2)" onmouseover="this.style.borderColor='#0891b2'" onmouseout="this.style.borderColor='var(--border)'">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                        Tomar foto
+                        <input type="file" accept="image/*" capture="environment" style="display:none" onchange="refiPagareSeleccionado(this)">
+                    </label>
+                </div>
+                <div id="refi-pagare-txt" style="display:none;margin-top:6px;font-size:11px;color:#166534;padding:5px 10px;background:rgba(22,163,74,.07);border-radius:6px"></div>
+                <div style="font-size:10px;color:var(--text3);margin-top:4px">JPG, PNG o PDF — máx. 10 MB</div>
+            </div>
+
+        </div>{{-- /refi-body --}}
+
+        <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end;flex-shrink:0;background:var(--card)">
+            <button type="button" id="refi-cancel-btn"
+                style="padding:9px 18px;border-radius:8px;border:1px solid var(--border);background:#f9fafb;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">
+                Cancelar
+            </button>
+            <button type="submit"
+                style="padding:9px 18px;border-radius:8px;border:none;background:#0891b2;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">
+                ↺ Confirmar
+            </button>
+        </div>
+    </form>
+</dialog>
+
+@push('scripts')
+<script>
+// Valores del préstamo actual (capital e interés separados)
+const REFI_CAP_VIEJO  = {{ $refi_principal_pend }};
+const REFI_INT_VIEJO  = {{ $refi_interes_total }};
+const REFI_DIAS       = { Diario:1, Semanal:7, Quincenal:14, Mensual:30 };
+
+// Botones de cierre (por ID, no onclick inline — más robusto)
+document.addEventListener('DOMContentLoaded', function() {
+    const dlg = document.getElementById('modal-refinanciar');
+    document.getElementById('refi-close-btn')?.addEventListener('click',  () => dlg.close());
+    document.getElementById('refi-cancel-btn')?.addEventListener('click', () => dlg.close());
+    // Cerrar al hacer clic en el backdrop
+    dlg?.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
+});
+
+function abrirModalRefinanciar() {
+    recalcRefi();
+    document.getElementById('modal-refinanciar').showModal();
+}
+
+function autoFechaRefi() {
+    const freq = document.getElementById('refi-frecuencia')?.value || 'Diario';
+    const dias = REFI_DIAS[freq] || 1;
+    const d    = new Date('{{ now()->toDateString() }}T12:00:00');
+    if (freq === 'Mensual') d.setMonth(d.getMonth() + 1);
+    else d.setDate(d.getDate() + dias);
+    const inp = document.getElementById('refi-fecha-primer');
+    if (inp) { inp.value = d.toISOString().split('T')[0]; recalcRefi(); }
+}
+
+function refiPagareSeleccionado(input) {
+    const realInput = document.getElementById('refi-pagare-file');
+    if (input !== realInput && input.files[0]) {
+        try { const dt = new DataTransfer(); dt.items.add(input.files[0]); realInput.files = dt.files; } catch(e){}
+    }
+    const file = (realInput.files && realInput.files[0]) || input.files[0];
+    const txt  = document.getElementById('refi-pagare-txt');
+    if (file && txt) {
+        txt.textContent = '✓ ' + (file.name.length > 45 ? '…'+file.name.slice(-42) : file.name)
+            + ' · ' + (file.size/1048576).toFixed(1) + ' MB';
+        txt.style.display = '';
+    }
+}
+
+function recalcRefi() {
+    const fmt  = n => '$' + Math.abs(n).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const fmtD = s => { if(!s) return '—'; const [y,m,d]=s.split('-'); return d+'/'+m+'/'+y; };
+    const set  = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+
+    const efectivo = Math.round((parseFloat(document.getElementById('refi-nuevo-efectivo')?.value)||0)*100)/100;
+    const rentPct  = parseFloat(document.getElementById('refi-rentabilidad')?.value)||0;
+
+    // Rendimiento SOLO sobre el nuevo efectivo
+    const rendimiento   = Math.round(efectivo * rentPct / 100 * 100) / 100;
+
+    // Nuevo préstamo: capital = cap_viejo + efectivo | interés = int_viejo + rendimiento
+    const nuevoPrincipal = Math.round((REFI_CAP_VIEJO + efectivo) * 100) / 100;
+    const nuevoInteres   = Math.round((REFI_INT_VIEJO + rendimiento) * 100) / 100;
+    const total          = Math.round((nuevoPrincipal + nuevoInteres) * 100) / 100;
+
+    const numPagos   = parseInt(document.getElementById('refi-num-pagos')?.value)||1;
+    const freq       = document.getElementById('refi-frecuencia')?.value||'Diario';
+    const fechaPrimer= document.getElementById('refi-fecha-primer')?.value;
+    const dias       = REFI_DIAS[freq]||1;
+
+    // Actualizar display
+    set('refi-ef-disp2',      fmt(efectivo));
+    set('refi-nuevo-principal', fmt(nuevoPrincipal));
+    set('refi-rend-disp',     fmt(rendimiento));
+    set('refi-nuevo-interes', fmt(nuevoInteres));
+    set('refi-total',         fmt(total));
+
+    const cuotaBase  = numPagos > 1 ? Math.round(total/numPagos/5)*5 : total;
+    const ultimoPago = numPagos > 1 ? Math.round((total-cuotaBase*(numPagos-1))*100)/100 : total;
+    set('refi-cuota-est', fmt(cuotaBase));
+
+    // Tabla: interés-primero sobre el interés total (nuevoInteres)
+    const tbody = document.getElementById('refi-tabla-body');
+    if (!tbody || !fechaPrimer || total <= 0) return;
+
+    let interesRest = nuevoInteres;
+    let saldo       = nuevoPrincipal;
+    let rows        = '';
+
+    for (let i = 1; i <= numPagos; i++) {
+        let d = new Date(fechaPrimer + 'T12:00:00');
+        if (freq === 'Mensual') d.setMonth(d.getMonth()+(i-1));
+        else d.setDate(d.getDate()+dias*(i-1));
+
+        const cuota  = (i===numPagos) ? Math.round(ultimoPago*100)/100 : cuotaBase;
+        const int_   = Math.min(cuota, Math.max(0, interesRest));
+        const cap_   = Math.round((cuota-int_)*100)/100;
+        interesRest  = Math.max(0, Math.round((interesRest-int_)*100)/100);
+        saldo        = Math.max(0, Math.round((saldo-cap_)*100)/100);
+
+        rows += `<tr style="border-bottom:1px solid #f3f4f6">
+            <td style="padding:6px 8px;font-family:monospace;color:var(--text3);font-size:11px">${i}</td>
+            <td style="padding:6px 8px;font-size:11px">${fmtD(d.toISOString().split('T')[0])}</td>
+            <td style="padding:6px 8px;text-align:right;font-family:monospace;font-weight:600;font-size:12px">${fmt(cuota)}</td>
+            <td class="refi-col-cap" style="padding:6px 8px;text-align:right;font-family:monospace;color:#16a34a;font-size:11px">${fmt(cap_)}</td>
+            <td class="refi-col-int" style="padding:6px 8px;text-align:right;font-family:monospace;color:#8b5cf6;font-size:11px">${fmt(int_)}</td>
+            <td class="refi-col-saldo" style="padding:6px 8px;text-align:right;font-family:monospace;color:var(--text3);font-size:11px">${fmt(saldo)}</td>
+        </tr>`;
+    }
+    tbody.innerHTML = rows;
+}
+
+function confirmarRefinanciar() {
+    const efectivo      = parseFloat(document.getElementById('refi-nuevo-efectivo')?.value)||0;
+    const rentPct       = parseFloat(document.getElementById('refi-rentabilidad')?.value)||0;
+    const rendimiento   = Math.round(efectivo*rentPct/100*100)/100;
+    const nuevoPrincipal= Math.round((REFI_CAP_VIEJO+efectivo)*100)/100;
+    const nuevoInteres  = Math.round((REFI_INT_VIEJO+rendimiento)*100)/100;
+    const total         = nuevoPrincipal + nuevoInteres;
+    const numPagos      = parseInt(document.getElementById('refi-num-pagos')?.value)||1;
+    const cuota         = numPagos>1 ? Math.round(total/numPagos/5)*5 : total;
+    const fmt           = n=>'$'+n.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
+    return confirm(
+        '¿Confirmar refinanciamiento?\n\n'+
+        '  Préstamo #{{ $prestamo->id }} → REFINANCIADO\n\n'+
+        '  Capital nuevo:  '+fmt(nuevoPrincipal)+
+            ' ('+fmt(REFI_CAP_VIEJO)+(efectivo>0?' + '+fmt(efectivo):'')+')'+'\n'+
+        '  Interés nuevo:  '+fmt(nuevoInteres)+
+            ' ('+fmt(REFI_INT_VIEJO)+(rendimiento>0?' + '+fmt(rendimiento)+' ('+rentPct+'%)':'')+')'+'\n'+
+        '  Total:          '+fmt(total)+'\n'+
+        '  Cuota aprox.:   '+fmt(cuota)+' × '+numPagos+'\n\n'+
+        'Esta acción no se puede deshacer.'
+    );
+}
+</script>
+@endpush
+@endif
+
 {{-- Modal: Cobrar cuota específica --}}
 <dialog id="modal-pagar-cuota" style="border:none;border-radius:16px;padding:0;box-shadow:0 12px 48px rgba(0,0,0,.2);max-width:420px;width:100%">
     <div style="padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
@@ -988,6 +1365,173 @@ function calcDiferencia() {
 </script>
 
 @endif
+
+{{-- ── Archivos adjuntos ───────────────────────────────────────────── --}}
+<div class="card" style="padding:0;overflow:hidden;margin-top:20px">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:8px">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:14px;height:14px;color:var(--accent)"><path d="M13.5 9.5v3a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 12.5v-3"/><polyline points="5 6 8 3 11 6"/><line x1="8" y1="3" x2="8" y2="10"/></svg>
+            <span style="font-size:13px;font-weight:600">Archivos adjuntos</span>
+            <span style="font-size:11px;color:var(--text3);margin-left:2px">{{ $archivos->count() }} archivo(s)</span>
+        </div>
+        <button type="button" onclick="document.getElementById('panel-subir-archivo').classList.toggle('hidden-panel')"
+            style="padding:5px 14px;border-radius:8px;border:1.5px solid var(--accent);background:rgba(59,130,246,.07);color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)">
+            + Subir archivo
+        </button>
+    </div>
+
+    {{-- Panel de subida --}}
+    <div id="panel-subir-archivo" class="hidden-panel" style="border-bottom:1px solid var(--border);padding:16px 18px;background:#f8fafc">
+        <form method="POST" action="{{ route('prestamos.archivos.subir', $prestamo->id) }}" enctype="multipart/form-data"
+              onsubmit="return submitOnceArchivo(this)" id="form-subir-archivo">
+            @csrf
+            <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
+                <div style="flex:1;min-width:220px">
+                    <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:5px">
+                        Selecciona un archivo (PDF, JPG, JPEG, PNG — máx. 10 MB)
+                    </label>
+                    <input type="file" name="archivo" id="input-archivo" accept=".pdf,.jpg,.jpeg,.png"
+                           required onchange="previewArchivo(this)"
+                           style="width:100%;padding:7px 10px;border:1.5px dashed var(--border);border-radius:8px;font-size:13px;background:#fff;cursor:pointer;box-sizing:border-box">
+                </div>
+                <button type="submit" id="btn-subir-archivo"
+                    style="padding:8px 18px;border-radius:8px;border:none;background:#2563eb;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap">
+                    Subir
+                </button>
+                <button type="button" onclick="document.getElementById('panel-subir-archivo').classList.add('hidden-panel')"
+                    style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:#f9fafb;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">
+                    Cancelar
+                </button>
+            </div>
+            <div id="archivo-preview" style="display:none;margin-top:10px"></div>
+        </form>
+        @error('archivo')
+        <div style="margin-top:8px;padding:8px 12px;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;font-size:12px;color:#dc2626">{{ $message }}</div>
+        @enderror
+    </div>
+
+    {{-- Lista de archivos --}}
+    @if($archivos->isEmpty())
+    <div style="padding:28px;text-align:center;color:var(--text3);font-size:13px">
+        No hay archivos adjuntos. Sube PDFs o imágenes relacionadas con este préstamo.
+    </div>
+    @else
+    <div style="padding:14px 18px;display:flex;flex-direction:column;gap:10px">
+        @foreach($archivos as $arch)
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:#f8fafc;border:1px solid var(--border);border-radius:10px;flex-wrap:wrap">
+
+            {{-- Icono según tipo --}}
+            <div style="width:38px;height:38px;border-radius:8px;background:{{ $arch->esImagen() ? '#dbeafe' : '#fee2e2' }};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                @if($arch->esImagen())
+                <svg viewBox="0 0 16 16" fill="none" stroke="#2563eb" stroke-width="1.5" stroke-linecap="round" style="width:18px;height:18px"><rect x="1.5" y="1.5" width="13" height="13" rx="1.5"/><path d="M1.5 10.5l3-3 2.5 2.5L10 7l4.5 4.5"/><circle cx="5" cy="5" r="1"/></svg>
+                @else
+                <svg viewBox="0 0 16 16" fill="none" stroke="#dc2626" stroke-width="1.5" stroke-linecap="round" style="width:18px;height:18px"><path d="M9.5 1.5H4A1.5 1.5 0 0 0 2.5 3v10A1.5 1.5 0 0 0 4 14.5h8A1.5 1.5 0 0 0 13.5 13V5.5L9.5 1.5z"/><polyline points="9.5 1.5 9.5 5.5 13.5 5.5"/></svg>
+                @endif
+            </div>
+
+            {{-- Info --}}
+            <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ $arch->nombre_original }}</div>
+                <div style="font-size:11px;color:var(--text3);margin-top:2px">
+                    {{ strtoupper($arch->tipo_archivo) }} · {{ $arch->tamanoFormateado() }}
+                    @if($arch->subidoPor)
+                    · subido por <strong>{{ $arch->subidoPor->usuario ?? '—' }}</strong>
+                    @endif
+                    · {{ $arch->created_at->format('d/m/Y H:i') }}
+                </div>
+            </div>
+
+            {{-- Acciones --}}
+            <div style="display:flex;gap:6px;flex-shrink:0">
+                @if($arch->esImagen())
+                <button type="button"
+                    onclick="verImagen('{{ asset($arch->ruta) }}', '{{ $arch->nombre_original }}')"
+                    style="padding:5px 12px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font)">
+                    Ver
+                </button>
+                @else
+                <a href="{{ asset($arch->ruta) }}" target="_blank"
+                    style="padding:5px 12px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font);text-decoration:none;display:inline-flex;align-items:center">
+                    Abrir
+                </a>
+                @endif
+                <a href="{{ asset($arch->ruta) }}" download="{{ $arch->nombre_original }}"
+                    style="padding:5px 12px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font);text-decoration:none;display:inline-flex;align-items:center">
+                    Descargar
+                </a>
+                @if(in_array($puesto, ['admin','promo']))
+                <form method="POST" action="{{ route('prestamos.archivos.eliminar', [$prestamo->id, $arch->id]) }}" style="margin:0"
+                      onsubmit="return confirm('¿Eliminar este archivo permanentemente?')">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit"
+                        style="padding:5px 12px;border-radius:7px;border:1px solid #fca5a5;background:#fff;color:#dc2626;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font)">
+                        Eliminar
+                    </button>
+                </form>
+                @endif
+            </div>
+        </div>
+        @endforeach
+    </div>
+    @endif
+</div>
+
+{{-- Modal visor de imagen --}}
+<div id="modal-visor-imagen" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:600;align-items:center;justify-content:center;padding:20px"
+     onclick="if(event.target===this)cerrarVisor()">
+    <div style="max-width:90vw;max-height:90vh;position:relative;display:flex;flex-direction:column;align-items:center;gap:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;width:100%;padding:0 4px">
+            <span id="visor-nombre" style="font-size:13px;color:#e2e8f0;font-weight:600"></span>
+            <button onclick="cerrarVisor()" style="background:rgba(255,255,255,.15);border:none;color:#fff;font-size:20px;cursor:pointer;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center">&times;</button>
+        </div>
+        <img id="visor-img" src="" alt="" style="max-width:100%;max-height:80vh;border-radius:10px;object-fit:contain;box-shadow:0 8px 40px rgba(0,0,0,.5)">
+    </div>
+</div>
+
+@push('styles')
+<style>
+.hidden-panel { display: none !important; }
+</style>
+@endpush
+
+@push('scripts')
+<script>
+function verImagen(src, nombre) {
+    document.getElementById('visor-img').src = src;
+    document.getElementById('visor-nombre').textContent = nombre;
+    document.getElementById('modal-visor-imagen').style.display = 'flex';
+}
+function cerrarVisor() {
+    document.getElementById('modal-visor-imagen').style.display = 'none';
+    document.getElementById('visor-img').src = '';
+}
+function previewArchivo(input) {
+    const prev = document.getElementById('archivo-preview');
+    if (!input.files.length) { prev.style.display = 'none'; return; }
+    const file = input.files[0];
+    const isImg = file.type.startsWith('image/');
+    if (isImg) {
+        const reader = new FileReader();
+        reader.onload = e => {
+            prev.innerHTML = '<img src="' + e.target.result + '" style="max-height:160px;border-radius:8px;border:1px solid var(--border)">';
+            prev.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+    } else {
+        prev.innerHTML = '<div style="padding:8px 12px;background:#fff;border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text2)">📄 ' + file.name + ' (' + (file.size > 1048576 ? (file.size/1048576).toFixed(1)+' MB' : Math.round(file.size/1024)+' KB') + ')</div>';
+        prev.style.display = 'block';
+    }
+}
+function submitOnceArchivo(form) {
+    const btn = document.getElementById('btn-subir-archivo');
+    if (btn.disabled) return false;
+    btn.disabled = true;
+    btn.textContent = 'Subiendo...';
+    return true;
+}
+</script>
+@endpush
 
 {{-- ── Actividad / línea de tiempo ────────────────────────────────── --}}
 <div class="card" style="padding:0;overflow:hidden;margin-top:20px">

@@ -69,12 +69,15 @@ Route::middleware(['auth', 'role:admin,promo'])->group(function () {
     Route::post('/prestamos/{id}/set-mora',                      [PrestamoController::class, 'setMora'])->name('prestamos.setMora');
     Route::post('/prestamos/{id}/campos',                        [PrestamoController::class, 'updateCampos'])->name('prestamos.campos');
     Route::post('/prestamos/{id}/cancelar',                      [PrestamoController::class, 'cancelar'])->name('prestamos.cancelar');
+    Route::post('/prestamos/{id}/refinanciar',                   [PrestamoController::class, 'refinanciar'])->name('prestamos.refinanciar');
     Route::post('/prestamos/{id}/cobro-extra',                   [PagoController::class, 'registrarExtra'])->name('prestamos.cobroExtra');
     Route::post('/prestamos/{id}/pagar-cuota',                   [PagoController::class, 'pagarCuota'])->name('prestamos.pagarCuota');
     Route::post('/prestamos/{id}/agendar-cobro',                 [PagoController::class, 'agendarCobro'])->name('prestamos.agendarCobro');
     Route::post('/prestamos/{id}/payment-hold',                  [PagoController::class, 'togglePaymentHold'])->name('prestamos.paymentHold');
     Route::post('/prestamos/{id}/actualizar-frecuencia',         [PrestamoController::class, 'actualizarFrecuencia'])->name('prestamos.actualizarFrecuencia');
     Route::post('/prestamos/{id}/asignarme',                     [PagoController::class, 'asignarme'])->name('prestamos.asignarme');
+    Route::post('/prestamos/{id}/archivos',                      [PrestamoController::class, 'subirArchivo'])->name('prestamos.archivos.subir');
+    Route::delete('/prestamos/{id}/archivos/{archivoId}',        [PrestamoController::class, 'eliminarArchivo'])->name('prestamos.archivos.eliminar');
     Route::post('/prestamos/calcular',                           [PrestamoController::class, 'calcular'])->name('prestamos.calcular');
     Route::post('/prestamos/calcular2',                          [PrestamoController::class, 'calcular2'])->name('prestamos.calcular2');
 

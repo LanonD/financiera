@@ -33,25 +33,24 @@ class AuthController extends Controller
             ]);
         }
 
-        $credentials = [
-            'usuario'  => $request->usuario,
-            'password' => $request->password,
-        ];
+        // Buscar usuario primero para verificar activo antes de hacer login
+        $user = \App\Models\User::where('usuario', $request->usuario)->first();
 
-        if (!Auth::attempt($credentials, $request->boolean('remember'))) {
-            RateLimiter::hit($throttleKey, 300); // 5 minutos de bloqueo
+        if (!$user || !\Illuminate\Support\Facades\Hash::check($request->password, $user->password)) {
+            RateLimiter::hit($throttleKey, 300);
             throw ValidationException::withMessages([
                 'usuario' => 'Usuario o contraseña incorrectos.',
             ]);
         }
 
-        // Verificar que esté activo
-        if (!Auth::user()->activo) {
-            Auth::logout();
+        if (!$user->activo) {
+            RateLimiter::hit($throttleKey, 300);
             throw ValidationException::withMessages([
                 'usuario' => 'Tu cuenta está desactivada.',
             ]);
         }
+
+        Auth::login($user, $request->boolean('remember'));
 
         RateLimiter::clear($throttleKey);
         $request->session()->regenerate();

@@ -216,13 +216,14 @@ $listaCobradoresP = $prestamos->pluck('cobrador.nombre')->filter()->unique()->so
             <td>
                 @php
                     $badgeStyle = match($row->estatus) {
-                        'Activo'     => 'background:#dcfce7;color:#16a34a',
-                        'Atrasado'   => 'background:#fee2e2;color:#dc2626',
-                        'Pendiente'  => 'background:#fef9c3;color:#ca8a04',
-                        'Finalizado' => 'background:#f3f4f6;color:#6b7280',
-                        'Cancelado'  => 'background:#f3f4f6;color:#9ca3af',
-                        'Retirado'   => 'background:#f3f4f6;color:#9ca3af',
-                        default      => 'background:#f3f4f6;color:#6b7280',
+                        'Activo'        => 'background:#dcfce7;color:#16a34a',
+                        'Atrasado'      => 'background:#fee2e2;color:#dc2626',
+                        'Pendiente'     => 'background:#fef9c3;color:#ca8a04',
+                        'Finalizado'    => 'background:#f3f4f6;color:#6b7280',
+                        'Cancelado'     => 'background:#f3f4f6;color:#9ca3af',
+                        'Retirado'      => 'background:#f3f4f6;color:#9ca3af',
+                        'Refinanciado'  => 'background:#e0f2fe;color:#0369a1',
+                        default         => 'background:#f3f4f6;color:#6b7280',
                     };
                 @endphp
                 <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;{{ $badgeStyle }}">

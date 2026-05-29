@@ -19,7 +19,7 @@ class Prestamo extends Model
         'fecha_inicio', 'fecha_fin', 'estatus',
         'monto_entregado', 'forma_entrega', 'fecha_entrega', 'nota_entrega',
         'doc_ine', 'doc_pagare', 'doc_comprobante', 'doc_foto_domicilio',
-        'payment_hold',
+        'payment_hold', 'refinanciado_por',
     ];
 
     protected $casts = [
