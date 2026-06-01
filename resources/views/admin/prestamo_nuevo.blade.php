@@ -123,7 +123,7 @@ $activoMap = $clientesConPrestamo;
 $docsMap   = $clientesConDocs ?? [];
 @endphp
 
-<form method="POST" action="{{ route('prestamos.store') }}" id="formNuevo" enctype="multipart/form-data" onsubmit="return manejarSubmit(event)">
+<form method="POST" action="{{ route('prestamos.store') }}" id="formNuevo" enctype="multipart/form-data" novalidate onsubmit="return manejarSubmit(event)">
 @csrf
 
 @if($errors->has('cliente_id'))
@@ -542,7 +542,7 @@ function _actualizarDocReq(key, yaTiene, label) {
     } else {
         if (reqSpan) reqSpan.outerHTML = '<span id="np_' + key + '_req" style="color:#ef4444">*</span>';
         if (fileInp) fileInp.setAttribute('required', '');
-        if (camInp)  camInp.setAttribute('required', '');
+        // El input de cámara NO lleva required: no tiene name, no se envía al server
         const note = document.getElementById('np_' + key + '_ya_reg');
         if (note) note.style.display = 'none';
     }
@@ -672,13 +672,20 @@ function npSelDoc(key, srcInput) {
     const file = srcInput.files[0];
     npActiveDoc[key] = srcInput; // guardar cuál input tiene el archivo
 
-    // Transferir al input con name="" para el submit del formulario
+    // Transferir al input principal (el que tiene name=) para el submit
     const mainInput = document.getElementById('np_' + key + '_file');
     if (mainInput && srcInput !== mainInput) {
-        const dt = new DataTransfer();
-        dt.items.add(file);
-        mainInput.files = dt.files;
+        try {
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            mainInput.files = dt.files;
+        } catch(e) { /* DataTransfer no soportado en este entorno */ }
     }
+
+    // Quitar required de ambos inputs ya que el documento fue seleccionado
+    if (mainInput) mainInput.removeAttribute('required');
+    const camInput = document.getElementById('np_' + key + '_cam');
+    if (camInput)  camInput.removeAttribute('required');
 
     // Mostrar nombre del archivo
     const txt = document.getElementById('np_' + key + '_txt');
@@ -733,6 +740,32 @@ function manejarSubmit(e) {
     if (!document.getElementById('csClienteId').value) {
         alert('Selecciona un cliente para continuar.');
         return false;
+    }
+
+    // Validar documentos requeridos si desembolso está activo
+    const desembolsando = document.getElementById('togDesembolso')?.checked;
+    if (desembolsando) {
+        const requeridos = [
+            { key: 'ine',         label: 'INE / Identificación' },
+            { key: 'pagare',      label: 'Pagaré' },
+            { key: 'comprobante', label: 'Comprobante de domicilio' },
+        ];
+        for (const doc of requeridos) {
+            const inp  = document.getElementById('np_' + doc.key + '_file');
+            const cam  = document.getElementById('np_' + doc.key + '_cam');
+            const req  = document.getElementById('np_' + doc.key + '_req');
+            // Pasar si el campo ya fue marcado como "Ya registrado" (req tiene color verde)
+            if (req && req.style && req.style.background === 'rgb(220, 252, 231)') continue;
+            const tieneArchivo = (inp && inp.files && inp.files.length > 0)
+                              || (cam && cam.files && cam.files.length > 0);
+            if (!tieneArchivo) {
+                alert('Falta el documento: ' + doc.label);
+                // Resaltar el campo faltante
+                const wrap = document.getElementById('np_' + doc.key + '_wrap');
+                if (wrap) { wrap.style.outline = '2px solid #ef4444'; wrap.style.borderRadius = '6px'; }
+                return false;
+            }
+        }
     }
 
     // ── Offline: save locally ─────────────────────────────────────────────────
