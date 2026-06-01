@@ -22,6 +22,7 @@ Route::middleware(['auth', 'role:owner'])->prefix('owner')->name('owner.')->grou
     Route::get('/dashboard',                   [\App\Http\Controllers\OwnerController::class, 'index'])          ->name('dashboard');
     Route::get('/rendimientos',                [\App\Http\Controllers\OwnerController::class, 'rendimientos'])   ->name('rendimientos');
     Route::get('/admins/crear',                [\App\Http\Controllers\OwnerController::class, 'create'])         ->name('admins.create');
+    Route::get('/admins/{id}',                 [\App\Http\Controllers\OwnerController::class, 'show'])            ->name('admins.show');
     Route::post('/admins',                     [\App\Http\Controllers\OwnerController::class, 'store'])          ->name('admins.store');
     Route::post('/admins/{id}/toggle',         [\App\Http\Controllers\OwnerController::class, 'toggle'])         ->name('admins.toggle');
     Route::post('/admins/{id}/reset-password', [\App\Http\Controllers\OwnerController::class, 'resetPassword'])  ->name('admins.resetPassword');

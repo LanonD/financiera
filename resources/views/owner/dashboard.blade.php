@@ -165,7 +165,7 @@
         $fechaAlta = $admin->created_at?->format('d/m/Y') ?? '—';
     @endphp
     <div class="ow-list-row {{ !$admin->activo ? 'ow-inactive' : '' }}"
-     onclick="abrirDetalleAdmin({{ $admin->id }})"
+     onclick="window.location='{{ route('owner.admins.show', $admin->id) }}'"
      style="cursor:pointer"
          data-search="{{ strtolower($admin->usuario . ' ' . ($admin->nombre ?? '') . ' ' . ($admin->alias ?? '') . ' ' . ($admin->celular ?? '')) }}">
 

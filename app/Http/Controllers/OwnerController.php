@@ -94,6 +94,198 @@ class OwnerController extends Controller
     }
 
     /**
+     * Dashboard detallado de un administrador individual.
+     */
+    public function show(int $id)
+    {
+        $admin = User::where('id', $id)->where('puesto', 'admin')->firstOrFail();
+
+        $deployedStatuses = ['Activo', 'Atrasado', 'Finalizado'];
+        $activeStatuses   = ['Activo', 'Atrasado'];
+
+        $allPrestamos = Prestamo::with(['cliente', 'promotor'])
+            ->where('admin_id', $id)
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        $deployed   = $allPrestamos->filter(fn($p) => in_array($p->estatus, $deployedStatuses));
+        $activos    = $allPrestamos->filter(fn($p) => in_array($p->estatus, $activeStatuses));
+        $atrasados  = $allPrestamos->where('estatus', 'Atrasado');
+        $finalizados = $allPrestamos->where('estatus', 'Finalizado');
+        $pendientes = $allPrestamos->where('estatus', 'Pendiente');
+        $retirados  = $allPrestamos->where('estatus', 'Retirado');
+
+        $capitalDesplegado = (float) $deployed->sum('monto_entregado');
+        $totalAcordado     = (float) $deployed->sum('monto');
+        $interesEsperado   = max(0.0, round($totalAcordado - $capitalDesplegado, 2));
+        $capitalPendiente  = (float) $activos->sum('saldo_actual');
+        $moraPendiente     = (float) $activos->sum('interes_acumulado');
+        $capitalRiesgo     = (float) $atrasados->sum('saldo_actual');
+
+        $deployedIds = $deployed->pluck('id');
+        $activeIds   = $activos->pluck('id');
+
+        $totalCobrado = $deployedIds->isNotEmpty()
+            ? (float) Pago::whereIn('prestamo_id', $deployedIds)
+                ->whereIn('estatus', ['Pagado', 'Parcial'])->sum('monto_cobrado')
+            : 0.0;
+
+        $capitalRecuperado = $deployedIds->isNotEmpty()
+            ? (float) Pago::whereIn('prestamo_id', $deployedIds)
+                ->whereIn('estatus', ['Pagado', 'Parcial'])->sum('capital')
+            : 0.0;
+
+        $interesCobranzaReal = max(0.0, round($totalCobrado - $capitalRecuperado, 2));
+        $gananciaNetaAprox   = max(0.0, round($totalCobrado - $capitalDesplegado, 2));
+        $roi = $capitalDesplegado > 0
+            ? round($gananciaNetaAprox / $capitalDesplegado * 100, 2) : 0;
+
+        // ── PAR (Portfolio at Risk) ───────────────────────────────
+        $date30 = now()->subDays(30)->toDateString();
+        $date60 = now()->subDays(60)->toDateString();
+        $date90 = now()->subDays(90)->toDateString();
+
+        $overdueIds30 = $overdueIds60 = $overdueIds90 = collect();
+        if ($activeIds->isNotEmpty()) {
+            $overdueIds30 = Pago::whereIn('prestamo_id', $activeIds)
+                ->whereIn('estatus', ['Pendiente', 'Atrasado', 'Parcial'])
+                ->where('fecha_programada', '<=', $date30)
+                ->distinct()->pluck('prestamo_id');
+            $overdueIds60 = Pago::whereIn('prestamo_id', $activeIds)
+                ->whereIn('estatus', ['Pendiente', 'Atrasado', 'Parcial'])
+                ->where('fecha_programada', '<=', $date60)
+                ->distinct()->pluck('prestamo_id');
+            $overdueIds90 = Pago::whereIn('prestamo_id', $activeIds)
+                ->whereIn('estatus', ['Pendiente', 'Atrasado', 'Parcial'])
+                ->where('fecha_programada', '<=', $date90)
+                ->distinct()->pluck('prestamo_id');
+        }
+
+        $saldoActivo = $capitalPendiente;
+        $par30Saldo  = (float) $activos->whereIn('id', $overdueIds30->toArray())->sum('saldo_actual');
+        $par60Saldo  = (float) $activos->whereIn('id', $overdueIds60->toArray())->sum('saldo_actual');
+        $par90Saldo  = (float) $activos->whereIn('id', $overdueIds90->toArray())->sum('saldo_actual');
+        $par30 = $saldoActivo > 0 ? round($par30Saldo / $saldoActivo * 100, 1) : 0;
+        $par60 = $saldoActivo > 0 ? round($par60Saldo / $saldoActivo * 100, 1) : 0;
+        $par90 = $saldoActivo > 0 ? round($par90Saldo / $saldoActivo * 100, 1) : 0;
+
+        $nActivos   = $activos->count();
+        $nAtrasados = $atrasados->count();
+        $npl = $nActivos > 0 ? round($nAtrasados / $nActivos * 100, 1) : 0;
+
+        // ── Gráfica mensual (12 meses) ─────────────────────────────
+        $chartLabels = $chartDesembolsos = $chartCobros = [];
+
+        $cobrosRaw = DB::table('pagos')
+            ->join('prestamos', 'pagos.prestamo_id', '=', 'prestamos.id')
+            ->selectRaw('DATE_FORMAT(pagos.fecha_pago, "%Y-%m") as mes, SUM(pagos.monto_cobrado) as total')
+            ->where('prestamos.admin_id', $id)
+            ->whereIn('pagos.estatus', ['Pagado', 'Parcial'])
+            ->whereNotNull('pagos.fecha_pago')
+            ->where('pagos.fecha_pago', '>=', now()->subMonths(11)->startOfMonth()->toDateString())
+            ->groupBy('mes')->pluck('total', 'mes');
+
+        for ($i = 11; $i >= 0; $i--) {
+            $fecha  = now()->subMonths($i);
+            $mesKey = $fecha->format('Y-m');
+            $des = $allPrestamos
+                ->filter(fn($p) => $p->fecha_entrega && $p->fecha_entrega->format('Y-m') === $mesKey)
+                ->sum('monto_entregado');
+            $chartLabels[]      = $fecha->locale('es')->isoFormat('MMM YY');
+            $chartDesembolsos[] = (float) $des;
+            $chartCobros[]      = (float) ($cobrosRaw[$mesKey] ?? 0);
+        }
+
+        // ── Distribución por estatus ──────────────────────────────
+        $porEstatus = [
+            'Activo'     => $allPrestamos->where('estatus', 'Activo')->count(),
+            'Atrasado'   => $nAtrasados,
+            'Pendiente'  => $pendientes->count(),
+            'Finalizado' => $finalizados->count(),
+            'Retirado'   => $retirados->count(),
+        ];
+
+        // ── Métricas de cartera ───────────────────────────────────
+        $totalPrestamos  = $allPrestamos->count();
+        $ticketPromedio  = $deployed->count() > 0 ? round($deployed->avg('monto_entregado'), 0) : 0;
+        $montoMax        = $deployed->isNotEmpty() ? (float) $deployed->max('monto_entregado') : 0;
+        $montoMin        = $deployed->isNotEmpty() ? (float) $deployed->min('monto_entregado') : 0;
+        $duracionPromedio = $deployed->count() > 0 ? round($deployed->avg('num_pagos'), 0) : 0;
+
+        // ── Próximos cobros (30 días) ─────────────────────────────
+        $proximosPagos = collect();
+        if ($activeIds->isNotEmpty()) {
+            $proximosPagos = Pago::with(['prestamo.cliente'])
+                ->whereIn('prestamo_id', $activeIds)
+                ->whereIn('estatus', ['Pendiente', 'Parcial'])
+                ->whereBetween('fecha_programada', [now()->toDateString(), now()->addDays(30)->toDateString()])
+                ->orderBy('fecha_programada')
+                ->limit(60)
+                ->get();
+        }
+
+        // ── Tabla de clientes ─────────────────────────────────────
+        $clientesConPrestamo = $activos->keyBy('cliente_id');
+        $clientesActivos     = Cliente::where('admin_id', $id)->where('activo', true)->orderBy('nombre')->get();
+
+        $proximoPorPrestamo = collect();
+        if ($activeIds->isNotEmpty()) {
+            $proximoPorPrestamo = Pago::whereIn('prestamo_id', $activeIds)
+                ->whereIn('estatus', ['Pendiente', 'Atrasado', 'Parcial'])
+                ->orderBy('fecha_programada')
+                ->get()
+                ->groupBy('prestamo_id')
+                ->map->first();
+        }
+
+        // ── Notas / auditoría ─────────────────────────────────────
+        $notas = AdminNota::where('admin_id', $id)->orderBy('created_at', 'desc')->limit(30)->get();
+
+        // ── Empleados ─────────────────────────────────────────────
+        $empleados = Empleado::where('admin_id', $id)->where('activo', true)->orderBy('nombre')->get();
+
+        // ── Alertas inteligentes ──────────────────────────────────
+        $alertas = [];
+        if ($par30 > 20)
+            $alertas[] = ['tipo' => 'danger', 'icon' => '🚨', 'titulo' => 'PAR30 crítico',
+                'msg' => "El {$par30}% de la cartera tiene pagos con más de 30 días de atraso."];
+        if ($npl > 30)
+            $alertas[] = ['tipo' => 'danger', 'icon' => '⚠️', 'titulo' => 'NPL elevado',
+                'msg' => "El {$npl}% de los préstamos activos están en estatus Atrasado."];
+        if ($capitalDesplegado > 0 && $saldoActivo > 0 && ($capitalRiesgo / $saldoActivo * 100) > 40)
+            $alertas[] = ['tipo' => 'warning', 'icon' => '🔶', 'titulo' => 'Alta concentración de riesgo',
+                'msg' => 'Más del 40% del saldo activo corresponde a préstamos atrasados.'];
+        if ($nActivos > 0 && $nAtrasados / $nActivos > 0.5)
+            $alertas[] = ['tipo' => 'warning', 'icon' => '📉', 'titulo' => 'Alta mora en cartera',
+                'msg' => 'Más de la mitad de los préstamos activos presentan atraso de pago.'];
+        if (empty($alertas) && $nActivos > 0)
+            $alertas[] = ['tipo' => 'success', 'icon' => '✅', 'titulo' => 'Cartera saludable',
+                'msg' => 'No se detectaron alertas críticas en la cartera activa.'];
+
+        $montoCobradoUlt30 = $deployedIds->isNotEmpty()
+            ? (float) Pago::whereIn('prestamo_id', $deployedIds)
+                ->whereIn('estatus', ['Pagado', 'Parcial'])
+                ->where('fecha_pago', '>=', now()->subDays(30)->toDateString())
+                ->sum('monto_cobrado')
+            : 0.0;
+
+        return view('owner.admin_detalle', compact(
+            'admin', 'allPrestamos', 'activos', 'atrasados', 'finalizados', 'pendientes', 'retirados',
+            'capitalDesplegado', 'totalAcordado', 'interesEsperado',
+            'capitalPendiente', 'moraPendiente', 'capitalRiesgo',
+            'capitalRecuperado', 'interesCobranzaReal',
+            'totalCobrado', 'gananciaNetaAprox', 'roi',
+            'par30', 'par60', 'par90', 'npl',
+            'par30Saldo', 'par60Saldo', 'par90Saldo', 'saldoActivo',
+            'nActivos', 'nAtrasados',
+            'chartLabels', 'chartDesembolsos', 'chartCobros',
+            'porEstatus', 'totalPrestamos', 'ticketPromedio', 'montoMax', 'montoMin', 'duracionPromedio',
+            'proximosPagos', 'clientesActivos', 'clientesConPrestamo', 'proximoPorPrestamo',
+            'notas', 'empleados', 'alertas', 'montoCobradoUlt30'
+        ));
+    }
+
+    /**
      * Mostrar el formulario para crear un nuevo admin.
      */
     public function create()
