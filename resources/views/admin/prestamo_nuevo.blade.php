@@ -704,6 +704,15 @@ function toggleDesembolso() {
         ? 'El préstamo quedará en estatus Activo al guardar'
         : 'Activa para entregar el dinero al crear el préstamo';
     lbl.textContent   = on ? 'Crear y desembolsar' : 'Crear préstamo';
+
+    // IMPORTANTE: evitar required en inputs ocultos
+    ['ine', 'pagare', 'comprobante'].forEach(key => {
+        const file = document.getElementById(`np_${key}_file`);
+        const cam  = document.getElementById(`np_${key}_cam`);
+
+        if (file) file.required = on;
+        if (cam) cam.required = false;
+    });
 }
 
 function checkCanSubmit() {
