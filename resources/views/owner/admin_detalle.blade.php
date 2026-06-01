@@ -341,7 +341,7 @@ $parBarColor = fn($v) => $v < 5 ? '#16a34a' : ($v < 15 ? '#d97706' : '#dc2626');
                 <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:3px;background:#10b981;border-radius:2px;display:inline-block"></span>Cobrado</span>
             </div>
         </div>
-        <canvas id="chartFlujo" height="260"></canvas>
+        <div style="position:relative;height:260px"><canvas id="chartFlujo"></canvas></div>
     </div>
 
     {{-- Donut distribución --}}
