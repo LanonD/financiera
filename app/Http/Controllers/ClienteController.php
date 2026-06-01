@@ -9,6 +9,7 @@ use App\Models\Prestamo;
 use App\Models\Pago;
 use App\Models\PrestamoActividad;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 use Carbon\Carbon;
 
 class ClienteController extends Controller
@@ -56,18 +57,21 @@ class ClienteController extends Controller
         $isAdmin = in_array('admin', $user->getAllRoles());
         $isPromo = in_array('promo', $user->getAllRoles()) && !$isAdmin;
 
+        $adminId = auth()->user()->adminId();
+
         $data = $request->validate([
             'nombre'      => 'required|string|max:255',
             'celular'     => 'nullable|string|max:20',
             'email'       => 'nullable|email|max:255',
-            'curp'        => 'nullable|string|max:18|unique:clientes,curp',
+            'curp'        => ['nullable', 'string', 'max:18',
+                                Rule::unique('clientes', 'curp')->where('admin_id', $adminId)],
             'direccion'   => 'nullable|string|max:500',
             'latitud'     => 'nullable|numeric',
             'longitud'    => 'nullable|numeric',
             'ocupacion'   => 'nullable|in:Empleado,Negocio propio,Independiente,Otro',
             'promotor_id' => 'nullable|exists:empleados,id',
         ], [
-            'curp.unique' => 'Este CURP ya está registrado en el sistema. El cliente ya existe.',
+            'curp.unique' => 'Este CURP ya está registrado para uno de tus clientes.',
         ]);
 
         // If promo, assign to themselves
@@ -80,11 +84,23 @@ class ClienteController extends Controller
         }
 
         $data['activo']   = true;
-        $data['admin_id'] = auth()->user()->adminId();
+        $data['admin_id'] = $adminId;
 
-        Cliente::create($data);
+        $cliente = Cliente::create($data);
 
-        return redirect()->route('clientes.index')->with('success', 'Cliente registrado correctamente.');
+        // Inform if this CURP is already registered by another admin
+        $avisoOtroAdmin = '';
+        if (!empty($data['curp'])) {
+            $otroAdmin = Cliente::where('curp', $data['curp'])
+                ->where('admin_id', '!=', $adminId)
+                ->exists();
+            if ($otroAdmin) {
+                $avisoOtroAdmin = ' Nota: este cliente ya existe con otro administrador. Verifica que no tenga un préstamo activo antes de otorgar uno nuevo.';
+            }
+        }
+
+        return redirect()->route('clientes.index')
+            ->with('success', 'Cliente registrado correctamente.' . $avisoOtroAdmin);
     }
 
     public function show($id)
@@ -140,14 +156,15 @@ class ClienteController extends Controller
             'nombre'      => 'required|string|max:255',
             'celular'     => 'nullable|string|max:20',
             'email'       => 'nullable|email|max:255',
-            'curp'        => 'nullable|string|max:18|unique:clientes,curp,' . $id,
+            'curp'        => ['nullable', 'string', 'max:18',
+                                Rule::unique('clientes', 'curp')->where('admin_id', $adminId)->ignore($id)],
             'direccion'   => 'nullable|string|max:500',
             'latitud'     => 'nullable|numeric',
             'longitud'    => 'nullable|numeric',
             'ocupacion'   => 'nullable|in:Empleado,Negocio propio,Independiente,Otro',
             'promotor_id' => 'nullable|exists:empleados,id',
         ], [
-            'curp.unique' => 'Este CURP ya está registrado para otro cliente.',
+            'curp.unique' => 'Este CURP ya está registrado para otro cliente tuyo.',
         ]);
 
         $cliente->update($data);
@@ -180,11 +197,14 @@ class ClienteController extends Controller
         $desembolsar  = $request->boolean('desembolsar');
 
         // ── Validation ──────────────────────────────────────────────────────
+        $adminId = auth()->user()->adminId();
+
         $rules = [
             'nombre'      => 'required|string|max:255',
             'celular'     => 'nullable|string|max:20',
             'email'       => 'nullable|email|max:255',
-            'curp'        => 'nullable|string|max:18|unique:clientes,curp',
+            'curp'        => ['nullable', 'string', 'max:18',
+                                Rule::unique('clientes', 'curp')->where('admin_id', $adminId)],
             'ocupacion'   => 'nullable|in:Empleado,Negocio propio,Independiente,Otro',
             'direccion'   => 'nullable|string|max:500',
             'latitud'     => 'nullable|numeric',
@@ -215,12 +235,11 @@ class ClienteController extends Controller
         }
 
         $data = $request->validate($rules, [
-            'curp.unique' => 'Este CURP ya está registrado en el sistema. El cliente ya existe.',
+            'curp.unique' => 'Este CURP ya está registrado para uno de tus clientes.',
         ]);
 
         // ── Create client ────────────────────────────────────────────────────
         $user     = Auth::user();
-        $adminId  = $user->adminId();
         $empleado = $user->empleado;
 
         $promotorId = $data['promotor_id'] ?? null;
@@ -242,9 +261,36 @@ class ClienteController extends Controller
             'activo'      => true,
         ]);
 
+        // Inform if CURP already exists with another admin
+        $avisoOtroAdmin = '';
+        if (!empty($cliente->curp)) {
+            $otroAdmin = Cliente::where('curp', $cliente->curp)
+                ->where('admin_id', '!=', $adminId)
+                ->exists();
+            if ($otroAdmin) {
+                $avisoOtroAdmin = ' Nota: este cliente ya existe con otro administrador.';
+            }
+        }
+
         if (!$withPrestamo) {
             return redirect()->route('clientes.show', $cliente->id)
-                ->with('success', 'Cliente registrado correctamente.');
+                ->with('success', 'Cliente registrado correctamente.' . $avisoOtroAdmin);
+        }
+
+        // ── Cross-admin active loan block ─────────────────────────────────────
+        if (!empty($cliente->curp)) {
+            $prestamoCruzado = Prestamo::whereHas('cliente', function ($q) use ($cliente, $adminId) {
+                $q->where('curp', $cliente->curp)->where('admin_id', '!=', $adminId);
+            })->whereIn('estatus', ['Activo', 'Atrasado', 'Pendiente'])->first();
+
+            if ($prestamoCruzado) {
+                $adminNombre = \App\Models\User::find($prestamoCruzado->admin_id)?->nombre
+                    ?? \App\Models\User::find($prestamoCruzado->admin_id)?->usuario
+                    ?? 'otro administrador';
+                return redirect()->route('clientes.show', $cliente->id)
+                    ->with('success', 'Cliente registrado correctamente.')
+                    ->with('warning', "No se creó el préstamo: este cliente ya tiene un préstamo activo con el administrador \"{$adminNombre}\". La deuda debe ser pagada antes de otorgar uno nuevo.");
+            }
         }
 
         // ── Create loan ──────────────────────────────────────────────────────

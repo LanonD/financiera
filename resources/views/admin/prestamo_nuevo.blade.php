@@ -157,16 +157,19 @@ $docsMap   = $clientesConDocs ?? [];
                         <div class="cs-empty">No hay clientes registrados. <a href="{{ route('clientes.create') }}" style="color:var(--accent)">Crear cliente</a></div>
                         @else
                          @foreach($clientes as $c)
-                        @php $bloqueado = array_key_exists($c->id, $activoMap); @endphp
                         @php
-                            $cDocs = $docsMap[$c->id] ?? ['ine'=>false,'comprobante'=>false];
+                            $bloqueado = array_key_exists($c->id, $activoMap);
+                            $cruzado   = !$bloqueado && array_key_exists($c->id, $clientesConPrestamoCruzado ?? []);
+                            $cDocs     = $docsMap[$c->id] ?? ['ine'=>false,'comprobante'=>false];
                         @endphp
-                        <div class="cs-item {{ $bloqueado ? 'cs-item-bloqueado' : '' }}"
+                        <div class="cs-item {{ ($bloqueado || $cruzado) ? 'cs-item-bloqueado' : '' }}"
                              data-id="{{ $c->id }}"
                              data-nombre="{{ $c->nombre }}"
                              data-celular="{{ $c->celular ?? '' }}"
                              data-bloqueado="{{ $bloqueado ? '1' : '0' }}"
                              data-promotor="{{ $bloqueado ? $activoMap[$c->id] : '' }}"
+                             data-cruzado="{{ $cruzado ? '1' : '0' }}"
+                             data-admin-cruzado="{{ $cruzado ? ($clientesConPrestamoCruzado[$c->id] ?? '') : '' }}"
                              data-tiene-ine="{{ $cDocs['ine'] ? '1' : '0' }}"
                              data-tiene-comprobante="{{ $cDocs['comprobante'] ? '1' : '0' }}"
                              onclick="csSelect(this)">
@@ -174,6 +177,8 @@ $docsMap   = $clientesConDocs ?? [];
                                 <div class="cs-item-name">{{ $c->nombre }}</div>
                                 @if($bloqueado)
                                 <span style="font-size:10px;background:#fee2e2;color:#991b1b;border-radius:4px;padding:1px 6px;font-weight:700">Activo</span>
+                                @elseif($cruzado)
+                                <span style="font-size:10px;background:#fff3cd;color:#856404;border-radius:4px;padding:1px 6px;font-weight:700">Deuda activa</span>
                                 @endif
                             </div>
                             <div class="cs-item-sub">{{ $c->celular ?? '—' }} · {{ $c->promotor?->nombre ?? '—' }}</div>
@@ -479,15 +484,29 @@ function csSelect(el) {
 
     // Show/hide active loan warning
     const bloqueado = el.dataset.bloqueado === '1';
+    const cruzado   = el.dataset.cruzado   === '1';
     const warn = document.getElementById('activeLoanWarning');
     const msg  = document.getElementById('activeLoanMsg');
     if (bloqueado) {
+        warn.style.background = '#fef2f2';
+        warn.style.borderColor = '#fca5a5';
+        warn.querySelector('div').style.color = '#991b1b';
+        warn.querySelector('div').textContent = '⚠ Cliente con préstamo activo';
+        msg.style.color = '#7f1d1d';
         msg.textContent = `Este cliente ya tiene un préstamo activo con el promotor "${el.dataset.promotor}". No se puede crear otro mientras haya uno en curso.`;
+        warn.style.display = '';
+    } else if (cruzado) {
+        warn.style.background = '#fffbeb';
+        warn.style.borderColor = '#fbbf24';
+        warn.querySelector('div').style.color = '#92400e';
+        warn.querySelector('div').textContent = '⚠ Deuda activa con otro administrador';
+        msg.style.color = '#78350f';
+        msg.textContent = `Este cliente ya tiene un préstamo activo con el administrador "${el.dataset.adminCruzado}". La deuda debe ser pagada antes de otorgar un nuevo préstamo.`;
         warn.style.display = '';
     } else {
         warn.style.display = 'none';
     }
-    window._clienteBloqueado = bloqueado;
+    window._clienteBloqueado = bloqueado || cruzado;
 
     // Marcar INE y comprobante como opcionales si el cliente ya los tiene registrados
     const tieneIne         = el.dataset.tieneIne === '1';

@@ -246,6 +246,30 @@
     </div>
 </div>
 
+{{-- ── Posición neta acumulada ─────────────────────────────── --}}
+<div class="pf-section">
+    <div class="pf-section-head">
+        <div>
+            <div class="pf-title">Posición neta acumulada</div>
+            <div class="pf-subtitle">Suma corrida de (cobros − desembolsos) · usa los mismos filtros de arriba · verde = zona positiva · rojo = zona negativa</div>
+        </div>
+        {{-- KPI chip: valor actual --}}
+        <div id="accumKpi" style="display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:9px;background:#f0fdf4;border:1.5px solid #bbf7d0;min-width:160px;justify-content:center">
+            <div>
+                <div id="accumKpiLabel" style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#15803d">Posición actual</div>
+                <div id="accumKpiValue" style="font-size:18px;font-weight:800;color:#15803d;letter-spacing:-.02em">$0</div>
+            </div>
+        </div>
+    </div>
+    <div class="pf-legend">
+        <span class="pf-legend-item"><span class="pf-legend-dot" style="background:#16a34a"></span>Zona positiva (cobros &gt; desembolsos)</span>
+        <span class="pf-legend-item"><span class="pf-legend-dot" style="background:#ef4444"></span>Zona negativa (desembolsos &gt; cobros)</span>
+    </div>
+    <div class="pf-chart-wrap">
+        <canvas id="accumChart"></canvas>
+    </div>
+</div>
+
 {{-- ── Buscador de administradores ─────────────────────────── --}}
 @if(!$stats->isEmpty())
 <div style="position:relative;margin-bottom:14px">
@@ -630,6 +654,9 @@ function updatePortfolioChart() {
         ];
     }
 
+    // Actualizar gráfica acumulada (usa los mismos datos filtrados)
+    updateAccumChart(filtLabels, filtDes, filtCob);
+
     // Reusar o crear
     if (portfolioChart) {
         portfolioChart.data.labels   = filtLabels;
@@ -684,6 +711,130 @@ function updatePortfolioChart() {
                     },
                     border: { display: false },
                     beginAtZero: true,
+                }
+            }
+        }
+    });
+}
+
+// ════════════════════════════════════════════════════════════
+// CUMULATIVE NET CHART
+// ════════════════════════════════════════════════════════════
+let accumChart = null;
+
+function updateAccumChart(labels, rawDes, rawCob) {
+    // Calcular suma corrida: accum[i] = Σ(cobros[0..i]) - Σ(desembolsos[0..i])
+    let running = 0;
+    const accumData = rawCob.map((c, i) => {
+        running += c - rawDes[i];
+        return running;
+    });
+
+    // Valor final (posición actual)
+    const lastVal = accumData.length > 0 ? accumData[accumData.length - 1] : 0;
+    const isPos   = lastVal >= 0;
+
+    // Actualizar KPI chip — usar IDs directos, sin firstChild
+    const kpiEl    = document.getElementById('accumKpi');
+    const kpiLabel = document.getElementById('accumKpiLabel');
+    const kpiVal   = document.getElementById('accumKpiValue');
+    const color    = isPos ? '#15803d' : '#b91c1c';
+    const bg       = isPos ? '#f0fdf4' : '#fef2f2';
+    const border   = isPos ? '#bbf7d0' : '#fca5a5';
+    kpiEl.style.background  = bg;
+    kpiEl.style.borderColor = border;
+    kpiLabel.style.color    = color;
+    kpiVal.style.color      = color;
+    const sign = lastVal > 0 ? '+' : '';
+    kpiVal.textContent = sign + '$' + Math.abs(lastVal).toLocaleString('es-MX', {minimumFractionDigits:0, maximumFractionDigits:0});
+    if (lastVal > 0) {
+        kpiLabel.textContent = '✅ Posición actual (positiva)';
+    } else if (lastVal < 0) {
+        kpiLabel.textContent = '🔴 Posición actual (negativa)';
+    } else {
+        kpiLabel.textContent = 'Posición actual (en cero)';
+    }
+
+    // Colores por punto
+    const ptColors = accumData.map(v => v >= 0 ? '#16a34a' : '#ef4444');
+
+    const dataset = {
+        label: 'Posición acumulada',
+        data: accumData,
+        fill: {
+            target: 'origin',
+            above: 'rgba(22,163,74,.13)',
+            below: 'rgba(239,68,68,.13)',
+        },
+        segment: {
+            borderColor: ctx => ctx.p0.parsed.y >= 0 ? '#16a34a' : '#ef4444',
+        },
+        tension: 0.35,
+        pointRadius: accumData.map(v => v !== 0 ? 3 : 0),
+        pointBackgroundColor: ptColors,
+        pointBorderColor: ptColors,
+        pointHoverRadius: 6,
+        borderWidth: 2.5,
+        borderColor: '#16a34a', // fallback; segment overrides per-segment
+    };
+
+    if (accumChart) {
+        accumChart.data.labels      = labels;
+        accumChart.data.datasets[0] = dataset;
+        accumChart.update('active');
+        return;
+    }
+
+    const ctx2 = document.getElementById('accumChart').getContext('2d');
+    accumChart = new Chart(ctx2, {
+        type: 'line',
+        data: { labels, datasets: [dataset] },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(15,23,42,.92)',
+                    titleColor: '#e2e8f0',
+                    bodyColor: '#94a3b8',
+                    padding: 12,
+                    cornerRadius: 8,
+                    callbacks: {
+                        title: items => items[0].label,
+                        label: ctx => {
+                            const v   = ctx.raw;
+                            const abs = Math.abs(v);
+                            const formatted = '$' + abs.toLocaleString('es-MX', {minimumFractionDigits:0, maximumFractionDigits:0});
+                            if (v > 0)  return '▲ Positivo: +' + formatted;
+                            if (v < 0)  return '▼ Negativo: −' + formatted;
+                            return 'En cero: $0';
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { maxTicksLimit: 12, font: { size: 10 }, color: '#9ca3af', maxRotation: 0 },
+                    border: { display: false },
+                },
+                y: {
+                    grid: {
+                        color: ctx => ctx.tick.value === 0 ? 'rgba(0,0,0,.25)' : 'rgba(0,0,0,.04)',
+                        lineWidth: ctx => ctx.tick.value === 0 ? 1.5 : 1,
+                    },
+                    ticks: {
+                        font: { size: 10 }, color: '#9ca3af', maxTicksLimit: 6,
+                        callback: v => {
+                            if (v === 0) return '$0';
+                            const abs = Math.abs(v);
+                            const fmt = abs >= 1000 ? '$'+(abs/1000).toFixed(0)+'k' : '$'+abs;
+                            return v < 0 ? '−'+fmt : '+'+fmt;
+                        }
+                    },
+                    border: { display: false },
                 }
             }
         }
