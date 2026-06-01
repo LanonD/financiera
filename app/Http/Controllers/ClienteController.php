@@ -344,24 +344,33 @@ class ClienteController extends Controller
         ]);
 
         // ── Save uploaded documents (only when desembolsar = true) ────────────
-        if ($desembolsar && $request->hasFile('doc_ine')) {
-            $carpeta = public_path('documentos/prestamo_' . $prestamo->id);
-            if (!file_exists($carpeta)) mkdir($carpeta, 0775, true);
+        // Guarda cualquier documento que venga — no requiere que todos estén presentes,
+        // ya que el cliente podría tener INE/comprobante de un préstamo anterior.
+        if ($desembolsar) {
+            $hayArchivo = $request->hasFile('doc_ine')
+                       || $request->hasFile('doc_pagare')
+                       || $request->hasFile('doc_comprobante')
+                       || $request->hasFile('doc_foto_domicilio');
 
-            $guardar = function (string $campo, string $prefijo) use ($request, $carpeta, $prestamo): ?string {
-                if (!$request->hasFile($campo)) return null;
-                $file = $request->file($campo);
-                if (!$file->isValid()) return null;
-                $nombre = $prefijo . '_' . time() . '_' . uniqid() . '.' . strtolower($file->getClientOriginalExtension());
-                $file->move($carpeta, $nombre);
-                return 'documentos/prestamo_' . $prestamo->id . '/' . $nombre;
-            };
+            if ($hayArchivo) {
+                $carpeta = public_path('documentos/prestamo_' . $prestamo->id);
+                if (!file_exists($carpeta)) mkdir($carpeta, 0775, true);
 
-            $prestamo->doc_ine            = $guardar('doc_ine', 'ine');
-            $prestamo->doc_pagare         = $guardar('doc_pagare', 'pagare');
-            $prestamo->doc_comprobante    = $guardar('doc_comprobante', 'comprobante');
-            $prestamo->doc_foto_domicilio = $guardar('doc_foto_domicilio', 'foto_domicilio');
-            $prestamo->save();
+                $guardar = function (string $campo, string $prefijo) use ($request, $carpeta, $prestamo): ?string {
+                    if (!$request->hasFile($campo)) return null;
+                    $file = $request->file($campo);
+                    if (!$file->isValid()) return null;
+                    $nombre = $prefijo . '_' . time() . '_' . uniqid() . '.' . strtolower($file->getClientOriginalExtension());
+                    $file->move($carpeta, $nombre);
+                    return 'documentos/prestamo_' . $prestamo->id . '/' . $nombre;
+                };
+
+                $prestamo->doc_ine            = $guardar('doc_ine', 'ine');
+                $prestamo->doc_pagare         = $guardar('doc_pagare', 'pagare');
+                $prestamo->doc_comprobante    = $guardar('doc_comprobante', 'comprobante');
+                $prestamo->doc_foto_domicilio = $guardar('doc_foto_domicilio', 'foto_domicilio');
+                $prestamo->save();
+            }
         }
 
         // ── Payment schedule (interest-first) ────────────────────────────────
