@@ -725,7 +725,7 @@ function recalcStats(adminId, chart, byEstatus) {
         intCob   += d.intCob;
     });
 
-    var fmt  = function(n) { return '$' + Math.round(n * 100) / 100 .toLocaleString('es-MX', {minimumFractionDigits:2, maximumFractionDigits:2}); };
+    var fmt  = function(n) { return '$' + (Math.round(n * 100) / 100).toLocaleString('es-MX', {minimumFractionDigits:2, maximumFractionDigits:2}); };
     var ip   = intEsp > 0 ? Math.round(intCob / intEsp * 1000) / 10 : 0;
     var pct  = capAcord > 0 ? Math.round(cobrado / capAcord * 1000) / 10 : 0;
     var rentab = capDes > 0 ? Math.round(intEsp / capDes * 1000) / 10 : 0;

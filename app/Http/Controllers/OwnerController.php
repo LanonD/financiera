@@ -555,7 +555,7 @@ class OwnerController extends Controller
                     ->join('prestamos', 'pagos.prestamo_id', '=', 'prestamos.id')
                     ->whereIn('pagos.prestamo_id', $pids)
                     ->whereIn('pagos.estatus', ['Pagado', 'Parcial'])
-                    ->selectRaw('prestamos.estatus as est, SUM(pagos.monto_cobrado) as cobrado, SUM(pagos.capital) as cap_cobrado')
+                    ->selectRaw('prestamos.estatus as est, SUM(pagos.monto_cobrado) as cobrado')
                     ->groupBy('prestamos.estatus')
                     ->get()->keyBy('est');
             }
@@ -582,8 +582,8 @@ class OwnerController extends Controller
                 $_mora  = in_array($_est, ['Activo','Atrasado']) ? (float) $g->sum('interes_acumulado') : 0.0;
                 $_row   = $pagosXEstatus->get($_est);
                 $_cob   = $_row ? (float) $_row->cobrado : 0.0;
-                $_capC  = $_row ? (float) $_row->cap_cobrado : 0.0;
-                $_iCob  = max(0.0, round($_cob - $_capC, 2));
+                // Mismo criterio que el cálculo global: interés cobrado = cobrado - capital desplegado
+                $_iCob  = max(0.0, round($_cob - $_cap, 2));
                 $estatusData[$_est] = [
                     'capDes'  => $_cap,
                     'capAcord'=> $_acord,
