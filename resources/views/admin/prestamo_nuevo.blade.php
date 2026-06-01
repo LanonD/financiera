@@ -119,7 +119,7 @@
 </div>
 
 @php
-$activoMap = $clientesConPrestamo->toArray();
+$activoMap = $clientesConPrestamo;
 $docsMap   = $clientesConDocs ?? [];
 @endphp
 
