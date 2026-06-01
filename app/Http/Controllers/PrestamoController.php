@@ -110,33 +110,39 @@ class PrestamoController extends Controller
             ->toArray();
 
         // Map: client_id => admin_nombre for clients whose CURP has an active loan with another admin
+        // Map: client_id => admin_nombre for cross-admin active loans (wrapped in try/catch for safety)
         $clientesConPrestamoCruzado = [];
-        $curpMap = $clientes->whereNotNull('curp')->pluck('curp', 'id')->toArray(); // id => curp
-        if (!empty($curpMap)) {
-            $activosCruzados = Prestamo::whereIn('estatus', ['Activo', 'Atrasado', 'Pendiente'])
-                ->whereHas('cliente', function ($q) use ($adminId, $curpMap) {
-                    $q->whereIn('curp', array_values($curpMap))->where('admin_id', '!=', $adminId);
-                })
-                ->with('cliente:id,curp,admin_id')
-                ->get();
+        try {
+            $curpMap = $clientes->whereNotNull('curp')->pluck('curp', 'id')->toArray(); // id => curp
+            if (!empty($curpMap)) {
+                $activosCruzados = Prestamo::whereIn('estatus', ['Activo', 'Atrasado', 'Pendiente'])
+                    ->whereHas('cliente', function ($q) use ($adminId, $curpMap) {
+                        $q->whereIn('curp', array_values($curpMap))->where('admin_id', '!=', $adminId);
+                    })
+                    ->with(['cliente' => fn($q) => $q->select('id', 'curp', 'admin_id')])
+                    ->get();
 
-            if ($activosCruzados->isNotEmpty()) {
-                $adminIds   = $activosCruzados->map(fn($p) => $p->cliente?->admin_id)->filter()->unique()->toArray();
-                $adminNombres = \App\Models\User::whereIn('id', $adminIds)->pluck('nombre', 'id');
+                if ($activosCruzados->isNotEmpty()) {
+                    $adminIds     = $activosCruzados->map(fn($p) => $p->cliente?->admin_id)->filter()->unique()->toArray();
+                    $adminNombres = \App\Models\User::whereIn('id', $adminIds)->pluck('nombre', 'id');
 
-                $curpToAdmin = [];
-                foreach ($activosCruzados as $p) {
-                    $curp = $p->cliente?->curp;
-                    if ($curp && !isset($curpToAdmin[$curp])) {
-                        $curpToAdmin[$curp] = $adminNombres[$p->cliente->admin_id] ?? 'otro administrador';
+                    $curpToAdmin = [];
+                    foreach ($activosCruzados as $p) {
+                        $curp = $p->cliente?->curp;
+                        if ($curp && !isset($curpToAdmin[$curp])) {
+                            $curpToAdmin[$curp] = $adminNombres[$p->cliente->admin_id] ?? 'otro administrador';
+                        }
                     }
-                }
-                foreach ($curpMap as $clienteId => $curp) {
-                    if (isset($curpToAdmin[$curp])) {
-                        $clientesConPrestamoCruzado[$clienteId] = $curpToAdmin[$curp];
+                    foreach ($curpMap as $clienteId => $curp) {
+                        if (isset($curpToAdmin[$curp])) {
+                            $clientesConPrestamoCruzado[$clienteId] = $curpToAdmin[$curp];
+                        }
                     }
                 }
             }
+        } catch (\Throwable $e) {
+            // Si falla la verificación cruzada, no bloqueamos la página
+            $clientesConPrestamoCruzado = [];
         }
 
         return view('admin.prestamo_nuevo', compact('clientes', 'clientesConPrestamo', 'clientesConDocs', 'clientesConPrestamoCruzado'));
@@ -195,23 +201,26 @@ class PrestamoController extends Controller
         // ────────────────────────────────────────────────────────────────────
 
         // Block: Active loan with a DIFFERENT admin (cross-admin check)
-        $clienteX = Cliente::find($data["cliente_id"]);
-        if ($clienteX && $clienteX->curp) {
-            $prestamoCruzado = Prestamo::whereHas("cliente", function ($q) use ($clienteX) {
-                $q->where("curp", $clienteX->curp)->where("admin_id", "!=", $clienteX->admin_id);
-            })->whereIn("estatus", ["Activo", "Atrasado", "Pendiente"])->first();
+        try {
+            $clienteX = Cliente::find($data['cliente_id']);
+            if ($clienteX && $clienteX->curp) {
+                $prestamoCruzado = Prestamo::whereHas('cliente', function ($q) use ($clienteX) {
+                    $q->where('curp', $clienteX->curp)->where('admin_id', '!=', $clienteX->admin_id);
+                })->whereIn('estatus', ['Activo', 'Atrasado', 'Pendiente'])->first();
 
-            if ($prestamoCruzado) {
-                $adminNombre = \App\Models\User::find($prestamoCruzado->admin_id)?->nombre
-                    ?? \App\Models\User::find($prestamoCruzado->admin_id)?->usuario
-                    ?? "otro administrador";
-                return redirect()->back()
-                    ->withInput()
-                    ->withErrors(["cliente_id" =>
-                        "⚠ Este cliente ya tiene un préstamo activo con el administrador “{$adminNombre}”. "
-                      . "La deuda debe ser pagada antes de otorgar un nuevo préstamo."
-                    ]);
+                if ($prestamoCruzado) {
+                    $adminUser   = \App\Models\User::find($prestamoCruzado->admin_id);
+                    $adminNombre = $adminUser?->nombre ?? $adminUser?->usuario ?? 'otro administrador';
+                    return redirect()->back()
+                        ->withInput()
+                        ->withErrors(['cliente_id' =>
+                            "⚠ Este cliente ya tiene un préstamo activo con el administrador \"{$adminNombre}\". "
+                          . 'La deuda debe ser pagada antes de otorgar un nuevo préstamo.'
+                        ]);
+                }
             }
+        } catch (\Throwable $e) {
+            // Si falla la verificación cruzada, continuamos sin bloquear
         }
 
         $monto_entregado    = (float)$data['monto_entregado'];
