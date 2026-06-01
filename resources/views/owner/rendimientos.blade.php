@@ -411,48 +411,48 @@
         </div>
 
         {{-- Métricas --}}
-        <div class="rnd-detail-grid">
+        @php $ip = $s['interes_esperado']>0?round($s['interes_cobrado']/$s['interes_esperado']*100,1):0; @endphp
+        <div class="rnd-detail-grid" id="stats-{{ $admin->id }}">
             <div class="rnd-stat-box">
                 <div class="rnd-stat-label">Capital desplegado</div>
-                <div class="rnd-stat-value" style="color:#2563eb">${{ number_format($s['capital_desplegado'],2,'.',',') }}</div>
+                <div class="rnd-stat-value" style="color:#2563eb" id="sv-{{ $admin->id }}-capdes">${{ number_format($s['capital_desplegado'],2,'.',',') }}</div>
                 <div class="rnd-stat-sub">dinero entregado a clientes</div>
             </div>
             <div class="rnd-stat-box">
                 <div class="rnd-stat-label">Interés acordado</div>
-                <div class="rnd-stat-value" style="color:#7c3aed">${{ number_format($s['interes_esperado'],2,'.',',') }}</div>
+                <div class="rnd-stat-value" style="color:#7c3aed" id="sv-{{ $admin->id }}-intesp">${{ number_format($s['interes_esperado'],2,'.',',') }}</div>
                 <div class="rnd-stat-sub">ganancia proyectada total</div>
             </div>
             <div class="rnd-stat-box">
                 <div class="rnd-stat-label">Interés cobrado</div>
-                <div class="rnd-stat-value" style="color:#16a34a">${{ number_format($s['interes_cobrado'],2,'.',',') }}</div>
-                @php $ip = $s['interes_esperado']>0?round($s['interes_cobrado']/$s['interes_esperado']*100,1):0; @endphp
-                <div class="rnd-stat-sub">{{ $ip }}% del interés acordado</div>
-                <div class="rnd-bar-wrap" style="margin-top:7px"><div class="rnd-bar-fill" style="width:{{ min(100,$ip) }}%;background:#16a34a"></div></div>
+                <div class="rnd-stat-value" style="color:#16a34a" id="sv-{{ $admin->id }}-intcob">${{ number_format($s['interes_cobrado'],2,'.',',') }}</div>
+                <div class="rnd-stat-sub" id="sv-{{ $admin->id }}-intcob-sub">{{ $ip }}% del interés acordado</div>
+                <div class="rnd-bar-wrap" style="margin-top:7px"><div class="rnd-bar-fill" id="sv-{{ $admin->id }}-intcob-bar" style="width:{{ min(100,$ip) }}%;background:#16a34a"></div></div>
             </div>
             <div class="rnd-stat-box">
                 <div class="rnd-stat-label">Total cobrado</div>
-                <div class="rnd-stat-value">${{ number_format($s['total_cobrado'],2,'.',',') }}</div>
-                <div class="rnd-stat-sub">{{ $pct }}% del total acordado</div>
-                <div class="rnd-bar-wrap" style="margin-top:7px"><div class="rnd-bar-fill" style="width:{{ $pct }}%;background:{{ $barColor }}"></div></div>
+                <div class="rnd-stat-value" id="sv-{{ $admin->id }}-totcob">${{ number_format($s['total_cobrado'],2,'.',',') }}</div>
+                <div class="rnd-stat-sub" id="sv-{{ $admin->id }}-totcob-sub">{{ $pct }}% del total acordado</div>
+                <div class="rnd-bar-wrap" style="margin-top:7px"><div class="rnd-bar-fill" id="sv-{{ $admin->id }}-totcob-bar" style="width:{{ $pct }}%;background:{{ $barColor }}"></div></div>
             </div>
             <div class="rnd-stat-box">
                 <div class="rnd-stat-label">Saldo pendiente</div>
-                <div class="rnd-stat-value" style="color:#d97706">${{ number_format($s['saldo_pendiente'],2,'.',',') }}</div>
+                <div class="rnd-stat-value" style="color:#d97706" id="sv-{{ $admin->id }}-saldo">${{ number_format($s['saldo_pendiente'],2,'.',',') }}</div>
                 <div class="rnd-stat-sub">en préstamos activos/atrasados</div>
             </div>
             <div class="rnd-stat-box">
                 <div class="rnd-stat-label">Mora acumulada</div>
-                <div class="rnd-stat-value" style="color:{{ $s['mora_pendiente']>0?'#dc2626':'#16a34a' }}">${{ number_format($s['mora_pendiente'],2,'.',',') }}</div>
+                <div class="rnd-stat-value" id="sv-{{ $admin->id }}-mora" style="color:{{ $s['mora_pendiente']>0?'#dc2626':'#16a34a' }}">${{ number_format($s['mora_pendiente'],2,'.',',') }}</div>
                 <div class="rnd-stat-sub">interés moratorio sin cobrar</div>
             </div>
             <div class="rnd-stat-box" style="border-color:rgba(59,130,246,.2);background:rgba(59,130,246,.03)">
                 <div class="rnd-stat-label" style="color:#2563eb">Rentabilidad promedio</div>
-                <div class="rnd-stat-value" style="color:#2563eb">{{ $rentab }}%</div>
+                <div class="rnd-stat-value" style="color:#2563eb" id="sv-{{ $admin->id }}-rentab">{{ $rentab }}%</div>
                 <div class="rnd-stat-sub">interés acordado / capital desplegado</div>
             </div>
             <div class="rnd-stat-box" style="border-color:rgba(124,58,237,.2);background:rgba(124,58,237,.03)">
                 <div class="rnd-stat-label" style="color:#7c3aed">Rendimiento real</div>
-                <div class="rnd-stat-value" style="color:{{ $rndVal > 0 ? '#16a34a' : ($rndVal < 0 ? '#dc2626' : '#9ca3af') }}">{{ $rndVal > 0 ? '+' : '' }}{{ $rndVal }}%</div>
+                <div class="rnd-stat-value" id="sv-{{ $admin->id }}-rnd" style="color:{{ $rndVal > 0 ? '#16a34a' : ($rndVal < 0 ? '#dc2626' : '#9ca3af') }}">{{ $rndVal > 0 ? '+' : '' }}{{ $rndVal }}%</div>
                 <div class="rnd-stat-sub">(cobrado − capital) / capital</div>
             </div>
         </div>
@@ -461,9 +461,10 @@
 
 {{-- ── JSON data para Chart.js ─────────────────────────────── --}}
 <script type="application/json" id="pie-data-{{ $admin->id }}">{!! json_encode([
-    'labels' => $pieLabels,
-    'values' => $pieValues,
-    'colors' => $pieColors,
+    'labels'     => $pieLabels,
+    'values'     => $pieValues,
+    'colors'     => $pieColors,
+    'by_estatus' => $s['by_estatus'] ?? [],
 ], JSON_UNESCAPED_UNICODE) !!}</script>
 
 <script type="application/json" id="line-data-{{ $admin->id }}">{!! json_encode([
@@ -704,6 +705,55 @@ document.addEventListener('DOMContentLoaded', function () {
 // ════════════════════════════════════════════════════════════
 const ownerCharts = {};
 
+// ── Recalcular stat boxes según estatus visibles ──────────
+function recalcStats(adminId, chart, byEstatus) {
+    var meta   = chart.getDatasetMeta(0);
+    var labels = chart.data.labels;
+
+    // Acumular solo los estatus cuyo segmento NO está oculto
+    var capDes = 0, intEsp = 0, saldo = 0, mora = 0, cobrado = 0, intCob = 0, capAcord = 0;
+    labels.forEach(function(est, i) {
+        if (meta.data[i] && meta.data[i].hidden) return;
+        var d = byEstatus[est];
+        if (!d) return;
+        capDes   += d.capDes;
+        capAcord += d.capAcord;
+        intEsp   += d.intEsp;
+        saldo    += d.saldo;
+        mora     += d.mora;
+        cobrado  += d.cobrado;
+        intCob   += d.intCob;
+    });
+
+    var fmt  = function(n) { return '$' + Math.round(n * 100) / 100 .toLocaleString('es-MX', {minimumFractionDigits:2, maximumFractionDigits:2}); };
+    var ip   = intEsp > 0 ? Math.round(intCob / intEsp * 1000) / 10 : 0;
+    var pct  = capAcord > 0 ? Math.round(cobrado / capAcord * 1000) / 10 : 0;
+    var rentab = capDes > 0 ? Math.round(intEsp / capDes * 1000) / 10 : 0;
+    var rnd    = capDes > 0 ? Math.round((cobrado - capDes) / capDes * 1000) / 10 : 0;
+    var barColor = pct >= 75 ? '#16a34a' : pct >= 40 ? '#f59e0b' : '#ef4444';
+
+    var set = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; };
+    var setStyle = function(id, prop, val) { var el = document.getElementById(id); if (el) el.style[prop] = val; };
+    var setWidth = function(id, w) { var el = document.getElementById(id); if (el) el.style.width = Math.min(100, w) + '%'; };
+
+    var p = 'sv-' + adminId + '-';
+    set(p + 'capdes',      fmt(capDes));
+    set(p + 'intesp',      fmt(intEsp));
+    set(p + 'intcob',      fmt(intCob));
+    set(p + 'intcob-sub',  ip + '% del interés acordado');
+    setWidth(p + 'intcob-bar', ip);
+    set(p + 'totcob',      fmt(cobrado));
+    set(p + 'totcob-sub',  pct + '% del total acordado');
+    setWidth(p + 'totcob-bar', pct);
+    setStyle(p + 'totcob-bar', 'background', barColor);
+    set(p + 'saldo',       fmt(saldo));
+    set(p + 'mora',        fmt(mora));
+    setStyle(p + 'mora',   'color', mora > 0 ? '#dc2626' : '#16a34a');
+    set(p + 'rentab',      rentab + '%');
+    set(p + 'rnd',         (rnd > 0 ? '+' : '') + rnd + '%');
+    setStyle(p + 'rnd',    'color', rnd > 0 ? '#16a34a' : rnd < 0 ? '#dc2626' : '#9ca3af');
+}
+
 // ── Toggle panel + lazy chart init ───────────────────────
 function toggleDetalle(adminId) {
     var panel = document.getElementById('detail-' + adminId);
@@ -758,6 +808,12 @@ function initCharts(adminId) {
                                 boxWidth: 10,
                                 usePointStyle: true,
                                 pointStyle: 'circle',
+                            },
+                            onClick: function(e, legendItem, legend) {
+                                // Comportamiento default (toggle visibilidad del segmento)
+                                Chart.defaults.plugins.legend.onClick.call(this, e, legendItem, legend);
+                                // Recalcular stats con los estatus visibles
+                                recalcStats(adminId, legend.chart, pd.by_estatus);
                             }
                         },
                         tooltip: {

@@ -547,6 +547,44 @@ class OwnerController extends Controller
                 : 0.0;
 
             $interes_cobrado = max(0.0, round($total_cobrado - $capital_desplegado, 2));
+
+            // ── Breakdown por estatus (para filtro interactivo del donut) ──
+            $pagosXEstatus = collect();
+            if ($pids->isNotEmpty()) {
+                $pagosXEstatus = DB::table('pagos')
+                    ->join('prestamos', 'pagos.prestamo_id', '=', 'prestamos.id')
+                    ->whereIn('pagos.prestamo_id', $pids)
+                    ->whereIn('pagos.estatus', ['Pagado', 'Parcial'])
+                    ->selectRaw('prestamos.estatus as est, SUM(pagos.monto_cobrado) as cobrado, SUM(pagos.capital) as cap_cobrado')
+                    ->groupBy('prestamos.estatus')
+                    ->get()->keyBy('est');
+            }
+            $estatusData = [];
+            foreach (['Activo', 'Atrasado', 'Finalizado', 'Pendiente', 'Retirado'] as $_est) {
+                $g = $allPrestamos->where('estatus', $_est);
+                if ($g->isEmpty()) continue;
+                $_cap   = (float) $g->sum('monto_entregado');
+                $_acord = (float) $g->sum('monto');
+                $_iEsp  = max(0.0, round($_acord - $_cap, 2));
+                $_saldo = in_array($_est, ['Activo','Atrasado']) ? (float) $g->sum('saldo_actual') : 0.0;
+                $_mora  = in_array($_est, ['Activo','Atrasado']) ? (float) $g->sum('interes_acumulado') : 0.0;
+                $_row   = $pagosXEstatus->get($_est);
+                $_cob   = $_row ? (float) $_row->cobrado : 0.0;
+                $_capC  = $_row ? (float) $_row->cap_cobrado : 0.0;
+                $_iCob  = max(0.0, round($_cob - $_capC, 2));
+                $estatusData[$_est] = [
+                    'capDes'  => $_cap,
+                    'capAcord'=> $_acord,
+                    'intEsp'  => $_iEsp,
+                    'saldo'   => $_saldo,
+                    'mora'    => $_mora,
+                    'cobrado' => $_cob,
+                    'intCob'  => $_iCob,
+                    'rentab'  => $_cap > 0 ? round($_iEsp / $_cap * 100, 1) : 0,
+                    'rnd'     => $_cap > 0 ? round(($_cob - $_cap) / $_cap * 100, 1) : 0,
+                ];
+            }
+
             $recuperado_pct  = $total_acordado > 0
                 ? min(100, round($total_cobrado / $total_acordado * 100, 1)) : 0;
 
@@ -604,6 +642,7 @@ class OwnerController extends Controller
                 'chart_labels'       => $chartLabels,
                 'chart_desembolsos'  => $chartDesembolsos,
                 'chart_cobros'       => $chartCobros,
+                'by_estatus'         => $estatusData,
             ];
         });
 
