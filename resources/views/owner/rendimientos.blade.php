@@ -707,13 +707,13 @@ const ownerCharts = {};
 
 // ── Recalcular stat boxes según estatus visibles ──────────
 function recalcStats(adminId, chart, byEstatus) {
-    var meta   = chart.getDatasetMeta(0);
     var labels = chart.data.labels;
 
     // Acumular solo los estatus cuyo segmento NO está oculto
     var capDes = 0, intEsp = 0, saldo = 0, mora = 0, cobrado = 0, intCob = 0, capAcord = 0;
     labels.forEach(function(est, i) {
-        if (meta.data[i] && meta.data[i].hidden) return;
+        // getDataVisibility() es el método correcto para doughnut en Chart.js 4
+        if (!chart.getDataVisibility(i)) return;
         var d = byEstatus[est];
         if (!d) return;
         capDes   += d.capDes;
@@ -810,10 +810,11 @@ function initCharts(adminId) {
                                 pointStyle: 'circle',
                             },
                             onClick: function(e, legendItem, legend) {
-                                // Comportamiento default (toggle visibilidad del segmento)
-                                Chart.defaults.plugins.legend.onClick.call(this, e, legendItem, legend);
-                                // Recalcular stats con los estatus visibles
-                                recalcStats(adminId, legend.chart, pd.by_estatus);
+                                var chart = legend.chart;
+                                // Toggle correcto para doughnut en Chart.js 4
+                                chart.toggleDataVisibility(legendItem.index);
+                                chart.update();
+                                recalcStats(adminId, chart, pd.by_estatus);
                             }
                         },
                         tooltip: {
