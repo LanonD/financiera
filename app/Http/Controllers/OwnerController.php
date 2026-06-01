@@ -465,6 +465,13 @@ class OwnerController extends Controller
             'contenido' => trim($request->contenido),
         ]);
 
+        $back = url()->previous();
+        $detalle = route('owner.admins.show', $id);
+
+        if (str_contains($back, "/owner/admins/{$id}")) {
+            return redirect($detalle)->with('success', 'Nota guardada.');
+        }
+
         return redirect()->route('owner.dashboard')
             ->with('success', 'Nota guardada.')
             ->with('open_notas_admin', $id);
