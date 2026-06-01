@@ -563,6 +563,18 @@ class OwnerController extends Controller
             foreach (['Activo', 'Atrasado', 'Finalizado', 'Pendiente', 'Retirado'] as $_est) {
                 $g = $allPrestamos->where('estatus', $_est);
                 if ($g->isEmpty()) continue;
+
+                // Pendiente y Retirado = dinero nunca entregado (ticket expirado o aún sin desembolsar).
+                // No representan capital desplegado ni generan rendimiento; excluirlos evita métricas distorsionadas.
+                if (in_array($_est, ['Pendiente', 'Retirado'])) {
+                    $estatusData[$_est] = [
+                        'capDes' => 0.0, 'capAcord' => 0.0, 'intEsp' => 0.0,
+                        'saldo'  => 0.0, 'mora'     => 0.0, 'cobrado' => 0.0,
+                        'intCob' => 0.0, 'rentab'   => 0,   'rnd'     => 0,
+                    ];
+                    continue;
+                }
+
                 $_cap   = (float) $g->sum('monto_entregado');
                 $_acord = (float) $g->sum('monto');
                 $_iEsp  = max(0.0, round($_acord - $_cap, 2));
