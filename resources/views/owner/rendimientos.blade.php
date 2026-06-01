@@ -820,8 +820,12 @@ function initCharts(adminId) {
                         tooltip: {
                             callbacks: {
                                 label: function(ctx) {
-                                    var total = ctx.dataset.data.reduce(function(a,b){ return a+b; }, 0);
-                                    var pct   = Math.round(ctx.raw / total * 100);
+                                    // Solo sumar los segmentos visibles para que los % sumen 100%
+                                    var chart = ctx.chart;
+                                    var visibleTotal = ctx.dataset.data.reduce(function(sum, val, i) {
+                                        return sum + (chart.getDataVisibility(i) ? val : 0);
+                                    }, 0);
+                                    var pct = visibleTotal > 0 ? Math.round(ctx.raw / visibleTotal * 100) : 0;
                                     return ' ' + ctx.label + ': ' + ctx.raw + ' (' + pct + '%)';
                                 }
                             }
