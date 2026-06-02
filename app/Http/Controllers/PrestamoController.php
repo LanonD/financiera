@@ -200,27 +200,26 @@ class PrestamoController extends Controller
         }
         // ────────────────────────────────────────────────────────────────────
 
-        // Block: Active loan with a DIFFERENT admin (cross-admin check)
-        try {
-            $clienteX = Cliente::find($data['cliente_id']);
-            if ($clienteX && $clienteX->curp) {
-                $prestamoCruzado = Prestamo::whereHas('cliente', function ($q) use ($clienteX) {
-                    $q->where('curp', $clienteX->curp)->where('admin_id', '!=', $clienteX->admin_id);
-                })->whereIn('estatus', ['Activo', 'Atrasado', 'Pendiente'])->first();
+        // Warn (not block): Active loan with a DIFFERENT admin (cross-admin check)
+        if (!$request->input('confirmar_cruzado')) {
+            try {
+                $clienteX = Cliente::find($data['cliente_id']);
+                if ($clienteX && $clienteX->curp) {
+                    $prestamoCruzado = Prestamo::whereHas('cliente', function ($q) use ($clienteX) {
+                        $q->where('curp', $clienteX->curp)->where('admin_id', '!=', $clienteX->admin_id);
+                    })->whereIn('estatus', ['Activo', 'Atrasado', 'Pendiente'])->first();
 
-                if ($prestamoCruzado) {
-                    $adminUser   = \App\Models\User::find($prestamoCruzado->admin_id);
-                    $adminNombre = $adminUser?->nombre ?? $adminUser?->usuario ?? 'otro administrador';
-                    return redirect()->back()
-                        ->withInput()
-                        ->withErrors(['cliente_id' =>
-                            "⚠ Este cliente ya tiene un préstamo activo con el administrador \"{$adminNombre}\". "
-                          . 'La deuda debe ser pagada antes de otorgar un nuevo préstamo.'
-                        ]);
+                    if ($prestamoCruzado) {
+                        $adminUser   = \App\Models\User::find($prestamoCruzado->admin_id);
+                        $adminNombre = $adminUser?->nombre ?? $adminUser?->usuario ?? 'otro administrador';
+                        return redirect()->back()
+                            ->withInput()
+                            ->with('warning_cruzado', $adminNombre);
+                    }
                 }
+            } catch (\Throwable $e) {
+                // Si falla la verificación cruzada, continuamos sin bloquear
             }
-        } catch (\Throwable $e) {
-            // Si falla la verificación cruzada, continuamos sin bloquear
         }
 
         $monto_entregado    = (float)$data['monto_entregado'];

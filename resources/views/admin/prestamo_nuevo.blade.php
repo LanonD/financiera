@@ -132,6 +132,29 @@ $docsMap   = $clientesConDocs ?? [];
     <span style="font-size:13px;color:#991b1b;font-weight:500">{{ $errors->first('cliente_id') }}</span>
 </div>
 @endif
+
+@if(session('warning_cruzado'))
+<div id="warningCruzadoServer" style="background:#fffbeb;border:1px solid #fbbf24;border-radius:10px;padding:12px 16px;margin-bottom:20px">
+    <div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:4px">⚠ Deuda activa con otro administrador</div>
+    <div style="font-size:13px;color:#78350f;margin-bottom:8px">
+        Este cliente ya tiene un préstamo activo con el administrador <strong>"{{ session('warning_cruzado') }}"</strong>.
+        ¿Desea otorgar el préstamo de todas formas?
+    </div>
+    <button type="button" onclick="aceptarCruzadoServer()"
+        style="padding:6px 16px;background:#d97706;color:#fff;border:none;border-radius:5px;font-size:13px;font-weight:600;cursor:pointer">
+        Aceptar y continuar de todas formas
+    </button>
+</div>
+<script>
+function aceptarCruzadoServer() {
+    document.getElementById('confirmarCruzado').value = '1';
+    const box = document.getElementById('warningCruzadoServer');
+    box.style.background = '#f0fdf4';
+    box.style.borderColor = '#86efac';
+    box.innerHTML = '<div style="font-size:13px;font-weight:600;color:#166534">✓ Confirmado — complete el formulario y envíe de nuevo</div>';
+}
+</script>
+@endif
 <div class="np-grid">
 
     {{-- Left panel: form --}}
@@ -199,7 +222,12 @@ $docsMap   = $clientesConDocs ?? [];
                 <div id="activeLoanWarning" style="display:none;margin-top:10px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:10px 14px">
                     <div style="font-size:12px;font-weight:700;color:#991b1b;margin-bottom:2px">⚠ Cliente con préstamo activo</div>
                     <div id="activeLoanMsg" style="font-size:12px;color:#7f1d1d"></div>
+                    <button type="button" id="btnAceptarCruzado" onclick="aceptarPrestamoCruzado()"
+                        style="display:none;margin-top:8px;padding:5px 14px;background:#d97706;color:#fff;border:none;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer">
+                        Aceptar y continuar de todas formas
+                    </button>
                 </div>
+                <input type="hidden" name="confirmar_cruzado" id="confirmarCruzado" value="0">
                 <div class="np-hint">Solo clientes activos asignados a tu cartera</div>
             </div>
 
@@ -501,12 +529,15 @@ function csSelect(el) {
         warn.querySelector('div').style.color = '#92400e';
         warn.querySelector('div').textContent = '⚠ Deuda activa con otro administrador';
         msg.style.color = '#78350f';
-        msg.textContent = `Este cliente ya tiene un préstamo activo con el administrador "${el.dataset.adminCruzado}". La deuda debe ser pagada antes de otorgar un nuevo préstamo.`;
+        msg.textContent = `Este cliente ya tiene un préstamo activo con el administrador "${el.dataset.adminCruzado}". ¿Desea otorgar el préstamo de todas formas?`;
+        document.getElementById('btnAceptarCruzado').style.display = '';
         warn.style.display = '';
     } else {
         warn.style.display = 'none';
+        document.getElementById('btnAceptarCruzado').style.display = 'none';
+        document.getElementById('confirmarCruzado').value = '0';
     }
-    window._clienteBloqueado = bloqueado || cruzado;
+    window._clienteBloqueado = bloqueado;
 
     // Marcar INE y comprobante como opcionales si el cliente ya los tiene registrados
     const tieneIne         = el.dataset.tieneIne === '1';
@@ -555,7 +586,21 @@ function csClear() {
     document.getElementById('csSearch').value = '';
     document.getElementById('csSelected').classList.remove('show');
     document.getElementById('activeLoanWarning').style.display = 'none';
+    document.getElementById('btnAceptarCruzado').style.display = 'none';
+    document.getElementById('confirmarCruzado').value = '0';
     csFilter(); checkCanSubmit();
+}
+
+function aceptarPrestamoCruzado() {
+    document.getElementById('confirmarCruzado').value = '1';
+    document.getElementById('btnAceptarCruzado').style.display = 'none';
+    const warn = document.getElementById('activeLoanWarning');
+    warn.style.background = '#f0fdf4';
+    warn.style.borderColor = '#86efac';
+    warn.querySelector('div').style.color = '#166534';
+    warn.querySelector('div').textContent = '✓ Confirmado — se procederá con el préstamo';
+    document.getElementById('activeLoanMsg').textContent = '';
+    checkCanSubmit();
 }
 
 function fmtMXN(n) { return '$' + n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
