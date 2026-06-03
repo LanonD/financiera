@@ -1,0 +1,195 @@
+package net.centralsystem.financiera;
+
+import android.annotation.SuppressLint;
+import android.app.Activity;
+import android.app.DownloadManager;
+import android.content.Context;
+import android.content.Intent;
+import android.graphics.Bitmap;
+import android.net.Uri;
+import android.net.http.SslError;
+import android.os.Bundle;
+import android.os.Environment;
+import android.view.View;
+import android.webkit.CookieManager;
+import android.webkit.DownloadListener;
+import android.webkit.SslErrorHandler;
+import android.webkit.URLUtil;
+import android.webkit.ValueCallback;
+import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
+import android.widget.ProgressBar;
+import android.widget.Toast;
+
+public class MainActivity extends Activity {
+    private static final String HOME_URL = "https://financiera.centralsystem.net/";
+    private static final int FILE_CHOOSER_REQUEST = 1001;
+
+    private WebView webView;
+    private ProgressBar progressBar;
+    private ValueCallback<Uri[]> filePathCallback;
+
+    @SuppressLint("SetJavaScriptEnabled")
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        progressBar.setMax(100);
+        progressBar.setVisibility(View.GONE);
+
+        webView = new WebView(this);
+        FrameLayout layout = new FrameLayout(this);
+        layout.addView(webView, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+        ));
+        layout.addView(progressBar, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+        ));
+        setContentView(layout);
+
+        CookieManager.getInstance().setAcceptCookie(true);
+        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
+
+        WebSettings settings = webView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        settings.setLoadWithOverviewMode(true);
+        settings.setUseWideViewPort(true);
+        settings.setBuiltInZoomControls(false);
+        settings.setDisplayZoomControls(false);
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+
+        webView.setWebViewClient(new FinancieraWebViewClient());
+        webView.setWebChromeClient(new FinancieraWebChromeClient());
+        webView.setDownloadListener(new FinancieraDownloadListener());
+
+        if (savedInstanceState == null) {
+            webView.loadUrl(HOME_URL);
+        } else {
+            webView.restoreState(savedInstanceState);
+        }
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        webView.saveState(outState);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (webView.canGoBack()) {
+            webView.goBack();
+            return;
+        }
+        super.onBackPressed();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != FILE_CHOOSER_REQUEST || filePathCallback == null) {
+            return;
+        }
+        Uri[] result = WebChromeClient.FileChooserParams.parseResult(resultCode, data);
+        filePathCallback.onReceiveValue(result);
+        filePathCallback = null;
+    }
+
+    private boolean isFinancieraUrl(Uri uri) {
+        String host = uri.getHost();
+        return host != null && (host.equals("financiera.centralsystem.net") || host.endsWith(".financiera.centralsystem.net"));
+    }
+
+    private class FinancieraWebViewClient extends WebViewClient {
+        @Override
+        public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+            Uri uri = request.getUrl();
+            String scheme = uri.getScheme();
+
+            if ("http".equals(scheme) || "https".equals(scheme)) {
+                if (isFinancieraUrl(uri)) {
+                    return false;
+                }
+                startActivity(new Intent(Intent.ACTION_VIEW, uri));
+                return true;
+            }
+
+            try {
+                startActivity(new Intent(Intent.ACTION_VIEW, uri));
+            } catch (Exception ignored) {
+                Toast.makeText(MainActivity.this, "No se pudo abrir el enlace.", Toast.LENGTH_SHORT).show();
+            }
+            return true;
+        }
+
+        @Override
+        public void onPageStarted(WebView view, String url, Bitmap favicon) {
+            progressBar.setVisibility(View.VISIBLE);
+        }
+
+        @Override
+        public void onPageFinished(WebView view, String url) {
+            progressBar.setVisibility(View.GONE);
+        }
+
+        @Override
+        public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
+            handler.cancel();
+            Toast.makeText(MainActivity.this, "No se pudo validar el certificado del sitio.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private class FinancieraWebChromeClient extends WebChromeClient {
+        @Override
+        public void onProgressChanged(WebView view, int newProgress) {
+            progressBar.setProgress(newProgress);
+            progressBar.setVisibility(newProgress >= 100 ? View.GONE : View.VISIBLE);
+        }
+
+        @Override
+        public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
+            if (filePathCallback != null) {
+                filePathCallback.onReceiveValue(null);
+            }
+
+            filePathCallback = callback;
+            Intent intent = params.createIntent();
+            try {
+                startActivityForResult(intent, FILE_CHOOSER_REQUEST);
+            } catch (Exception exception) {
+                filePathCallback = null;
+                Toast.makeText(MainActivity.this, "No se pudo abrir el selector de archivos.", Toast.LENGTH_SHORT).show();
+                return false;
+            }
+            return true;
+        }
+    }
+
+    private class FinancieraDownloadListener implements DownloadListener {
+        @Override
+        public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
+            String fileName = URLUtil.guessFileName(url, contentDisposition, mimetype);
+            DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
+            request.addRequestHeader("Cookie", CookieManager.getInstance().getCookie(url));
+            request.addRequestHeader("User-Agent", userAgent);
+            request.setMimeType(mimetype);
+            request.setTitle(fileName);
+            request.setDescription("Descargando archivo");
+            request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
+
+            DownloadManager manager = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+            manager.enqueue(request);
+            Toast.makeText(MainActivity.this, "Descarga iniciada", Toast.LENGTH_SHORT).show();
+        }
+    }
+}
