@@ -6,6 +6,8 @@ import android.app.DownloadManager;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.net.Uri;
 import android.net.http.SslError;
 import android.os.Bundle;
@@ -32,6 +34,7 @@ public class MainActivity extends Activity {
     private WebView webView;
     private ProgressBar progressBar;
     private ValueCallback<Uri[]> filePathCallback;
+    private OfflineDatabase offlineDatabase;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -41,6 +44,7 @@ public class MainActivity extends Activity {
         progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setMax(100);
         progressBar.setVisibility(View.GONE);
+        offlineDatabase = new OfflineDatabase(this);
 
         webView = new WebView(this);
         FrameLayout layout = new FrameLayout(this);
@@ -66,10 +70,12 @@ public class MainActivity extends Activity {
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+        settings.setCacheMode(isOnline() ? WebSettings.LOAD_DEFAULT : WebSettings.LOAD_CACHE_ELSE_NETWORK);
 
         webView.setWebViewClient(new FinancieraWebViewClient());
         webView.setWebChromeClient(new FinancieraWebChromeClient());
         webView.setDownloadListener(new FinancieraDownloadListener());
+        webView.addJavascriptInterface(new OfflineBridge(this, offlineDatabase), "FinancieraOffline");
 
         if (savedInstanceState == null) {
             webView.loadUrl(HOME_URL);
@@ -109,6 +115,12 @@ public class MainActivity extends Activity {
         return host != null && (host.equals("financiera.centralsystem.net") || host.endsWith(".financiera.centralsystem.net"));
     }
 
+    private boolean isOnline() {
+        ConnectivityManager manager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        NetworkInfo info = manager == null ? null : manager.getActiveNetworkInfo();
+        return info != null && info.isConnected();
+    }
+
     private class FinancieraWebViewClient extends WebViewClient {
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -134,6 +146,7 @@ public class MainActivity extends Activity {
         @Override
         public void onPageStarted(WebView view, String url, Bitmap favicon) {
             progressBar.setVisibility(View.VISIBLE);
+            webView.getSettings().setCacheMode(isOnline() ? WebSettings.LOAD_DEFAULT : WebSettings.LOAD_CACHE_ELSE_NETWORK);
         }
 
         @Override
