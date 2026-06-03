@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Financiera Offline</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #18212f;
+      --muted: #64748b;
+      --line: #d7dee8;
+      --brand: #0f766e;
+      --brand-dark: #134e4a;
+      --danger: #b91c1c;
+      --ok: #15803d;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    main {
+      display: grid;
+      gap: 12px;
+      padding: 12px;
+      padding-bottom: 96px;
+    }
+
+    section,
+    .loan {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .toolbar,
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .toolbar {
+      justify-content: flex-end;
+    }
+
+    label {
+      display: grid;
+      gap: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    input,
+    textarea {
+      width: 100%;
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 9px 10px;
+      font: inherit;
+      color: var(--ink);
+      background: #fff;
+    }
+
+    textarea {
+      min-height: 68px;
+      resize: vertical;
+    }
+
+    button {
+      min-height: 40px;
+      border: 0;
+      border-radius: 6px;
+      padding: 9px 12px;
+      font: inherit;
+      font-weight: 700;
+      color: #fff;
+      background: var(--brand);
+    }
+
+    button.secondary {
+      color: var(--brand-dark);
+      background: #dff7f2;
+    }
+
+    button:disabled {
+      opacity: .55;
+    }
+
+    .grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .login-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1fr;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .status {
+      min-height: 22px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .status.ok {
+      color: var(--ok);
+    }
+
+    .status.error {
+      color: var(--danger);
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      border-radius: 999px;
+      padding: 4px 9px;
+      color: var(--brand-dark);
+      background: #dff7f2;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .loan {
+      display: grid;
+      gap: 10px;
+    }
+
+    .loan h2 {
+      margin: 0;
+      font-size: 16px;
+    }
+
+    .money {
+      font-size: 20px;
+      font-weight: 800;
+    }
+
+    .payment-form {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: minmax(100px, 1fr) minmax(120px, 1fr);
+    }
+
+    .payment-form label:last-of-type,
+    .payment-form button {
+      grid-column: 1 / -1;
+    }
+
+    .empty {
+      padding: 22px 12px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    @media (min-width: 720px) {
+      main {
+        max-width: 920px;
+        margin: 0 auto;
+      }
+
+      .login-grid {
+        grid-template-columns: 1fr 1fr auto;
+        align-items: end;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Modo Offline</h1>
+      <div class="meta" id="subtitle">Cobros guardados en este celular</div>
+    </div>
+    <span class="pill" id="connection">...</span>
+  </header>
+
+  <main>
+    <section>
+      <div class="login-grid">
+        <label>
+          Usuario
+          <input id="usuario" autocomplete="username">
+        </label>
+        <label>
+          Contrasena
+          <input id="password" type="password" autocomplete="current-password">
+        </label>
+        <button id="loginButton">Entrar y sincronizar</button>
+      </div>
+      <div class="toolbar" style="margin-top:10px">
+        <button class="secondary" id="syncButton">Sincronizar</button>
+      </div>
+      <div class="status" id="status"></div>
+    </section>
+
+    <section>
+      <div class="row" style="justify-content:space-between">
+        <strong>Cobros pendientes</strong>
+        <span class="pill" id="pendingCount">0 en cola</span>
+      </div>
+      <div class="meta" id="snapshotMeta">Sin datos locales todavia.</div>
+    </section>
+
+    <div class="grid" id="loanList"></div>
+  </main>
+
+  <script>
+    const API_BASE = "https://financiera.centralsystem.net/api/mobile";
+    const today = new Date().toISOString().slice(0, 10);
+
+    const els = {
+      usuario: document.getElementById("usuario"),
+      password: document.getElementById("password"),
+      loginButton: document.getElementById("loginButton"),
+      syncButton: document.getElementById("syncButton"),
+      status: document.getElementById("status"),
+      connection: document.getElementById("connection"),
+      pendingCount: document.getElementById("pendingCount"),
+      snapshotMeta: document.getElementById("snapshotMeta"),
+      loanList: document.getElementById("loanList")
+    };
+
+    function bridge() {
+      return window.FinancieraOffline || null;
+    }
+
+    function setStatus(message, kind) {
+      els.status.textContent = message || "";
+      els.status.className = "status" + (kind ? " " + kind : "");
+    }
+
+    function isOnline() {
+      return bridge() ? bridge().isOnline() : navigator.onLine;
+    }
+
+    function token() {
+      return bridge() ? bridge().getAuthToken() : localStorage.getItem("mobile_auth_token") || "";
+    }
+
+    function setToken(value) {
+      if (bridge()) {
+        bridge().setAuthToken(value);
+      } else {
+        localStorage.setItem("mobile_auth_token", value);
+      }
+    }
+
+    function getSnapshot() {
+      const raw = bridge() ? bridge().getBootstrapSnapshot() : localStorage.getItem("bootstrap_snapshot");
+      try {
+        return raw ? JSON.parse(raw) : {};
+      } catch (_error) {
+        return {};
+      }
+    }
+
+    function setSnapshot(snapshot) {
+      const raw = JSON.stringify(snapshot || {});
+      if (bridge()) {
+        bridge().setBootstrapSnapshot(raw);
+      } else {
+        localStorage.setItem("bootstrap_snapshot", raw);
+      }
+    }
+
+    function getPendingOperations() {
+      if (!bridge()) {
+        return { ok: true, operations: JSON.parse(localStorage.getItem("sync_queue") || "[]") };
+      }
+      return JSON.parse(bridge().getPendingOperations());
+    }
+
+    function queueOperation(type, payload) {
+      if (!bridge()) {
+        const queue = getPendingOperations().operations;
+        const id = crypto.randomUUID();
+        queue.push({ client_operation_id: id, type, payload, status: "pending" });
+        localStorage.setItem("sync_queue", JSON.stringify(queue));
+        return { ok: true, client_operation_id: id, pending_count: queue.length };
+      }
+      return JSON.parse(bridge().queueOperation(type, JSON.stringify(payload)));
+    }
+
+    function updateConnection() {
+      const online = isOnline();
+      els.connection.textContent = online ? "Online" : "Offline";
+      els.connection.style.background = online ? "#dff7f2" : "#fee2e2";
+      els.connection.style.color = online ? "#134e4a" : "#991b1b";
+    }
+
+    function updatePendingCount() {
+      const pending = getPendingOperations();
+      const count = pending.operations ? pending.operations.length : 0;
+      els.pendingCount.textContent = count + " en cola";
+    }
+
+    async function api(path, options) {
+      const response = await fetch(API_BASE + path, {
+        ...options,
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json",
+          ...(options && options.headers ? options.headers : {})
+        }
+      });
+
+      const data = await response.json();
+      if (!response.ok || data.ok === false) {
+        throw new Error(data.error || "No se pudo completar la operacion.");
+      }
+      return data;
+    }
+
+    async function loginAndBootstrap() {
+      if (!isOnline()) {
+        setStatus("Sin internet. Usa los datos ya sincronizados.", "error");
+        return;
+      }
+
+      els.loginButton.disabled = true;
+      setStatus("Entrando...");
+
+      try {
+        const login = await api("/login", {
+          method: "POST",
+          body: JSON.stringify({
+            usuario: els.usuario.value.trim(),
+            password: els.password.value,
+            device_name: "Financiera Android"
+          })
+        });
+        setToken(login.token);
+        await downloadBootstrap();
+        els.password.value = "";
+        setStatus("Listo. Datos sincronizados para trabajar offline.", "ok");
+      } catch (error) {
+        setStatus(error.message, "error");
+      } finally {
+        els.loginButton.disabled = false;
+      }
+    }
+
+    async function downloadBootstrap() {
+      const auth = token();
+      if (!auth) {
+        throw new Error("Primero inicia sesion con internet.");
+      }
+
+      const snapshot = await api("/bootstrap", {
+        method: "GET",
+        headers: { Authorization: "Bearer " + auth }
+      });
+      setSnapshot(snapshot);
+      render();
+    }
+
+    async function sync() {
+      if (!isOnline()) {
+        setStatus("Sin internet. Los movimientos quedan guardados.", "error");
+        return;
+      }
+
+      const auth = token();
+      if (!auth) {
+        setStatus("Primero inicia sesion con internet.", "error");
+        return;
+      }
+
+      const pending = getPendingOperations();
+      const operations = pending.operations || [];
+      if (!operations.length) {
+        setStatus("No hay movimientos pendientes. Actualizando datos...");
+        await downloadBootstrap();
+        setStatus("Datos actualizados.", "ok");
+        return;
+      }
+
+      els.syncButton.disabled = true;
+      setStatus("Sincronizando " + operations.length + " movimiento(s)...");
+
+      try {
+        const result = await api("/sync", {
+          method: "POST",
+          headers: { Authorization: "Bearer " + auth },
+          body: JSON.stringify({ operations })
+        });
+
+        for (const item of result.results || []) {
+          if (!bridge()) {
+            continue;
+          }
+          if (item.status === "processed") {
+            bridge().markOperationProcessed(item.client_operation_id);
+          } else {
+            bridge().markOperationFailed(item.client_operation_id, item.error || "No se pudo sincronizar.");
+          }
+        }
+
+        await downloadBootstrap();
+        setStatus("Sincronizacion terminada.", "ok");
+      } catch (error) {
+        setStatus(error.message, "error");
+      } finally {
+        els.syncButton.disabled = false;
+        render();
+      }
+    }
+
+    function money(value) {
+      const number = Number(value || 0);
+      return "$" + number.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function render() {
+      updateConnection();
+      updatePendingCount();
+
+      const snapshot = getSnapshot();
+      const data = snapshot.data || {};
+      const prestamos = data.prestamos || [];
+      const clientes = new Map((data.clientes || []).map(cliente => [String(cliente.id), cliente]));
+      const pagos = data.pagos || [];
+
+      if (snapshot.server_time) {
+        els.snapshotMeta.textContent = "Ultima descarga: " + new Date(snapshot.server_time).toLocaleString("es-MX");
+      }
+
+      const duePayments = pagos
+        .filter(pago => ["Pendiente", "Atrasado", "Parcial"].includes(pago.estatus))
+        .filter(pago => String(pago.fecha_programada).slice(0, 10) <= today)
+        .sort((a, b) => String(a.fecha_programada).localeCompare(String(b.fecha_programada)));
+
+      if (!duePayments.length) {
+        els.loanList.innerHTML = '<section class="empty">No hay cobros vencidos o de hoy en los datos locales.</section>';
+        return;
+      }
+
+      els.loanList.innerHTML = duePayments.map(pago => {
+        const prestamo = prestamos.find(item => Number(item.id) === Number(pago.prestamo_id)) || {};
+        const cliente = clientes.get(String(prestamo.cliente_id)) || {};
+        return `
+          <article class="loan">
+            <div class="row" style="justify-content:space-between">
+              <div>
+                <h2>${escapeHtml(cliente.nombre || "Cliente")}</h2>
+                <div class="meta">Prestamo #${prestamo.id || pago.prestamo_id} - cuota #${pago.numero_pago}</div>
+              </div>
+              <span class="pill">${escapeHtml(pago.estatus || "Pendiente")}</span>
+            </div>
+            <div class="money">${money(pago.monto_cuota)}</div>
+            <div class="meta">Fecha programada: ${String(pago.fecha_programada).slice(0, 10)}<br>Saldo: ${money(prestamo.saldo_actual)}</div>
+            <form class="payment-form" data-prestamo="${prestamo.id || pago.prestamo_id}" data-pago="${pago.id}">
+              <label>
+                Monto recibido
+                <input name="monto" type="number" min="0.01" step="0.01" value="${Number(pago.monto_cuota || 0).toFixed(2)}">
+              </label>
+              <label>
+                Fecha
+                <input name="fecha_pago" type="date" value="${today}">
+              </label>
+              <label>
+                Nota
+                <textarea name="nota" placeholder="Opcional"></textarea>
+              </label>
+              <button>Guardar pago offline</button>
+            </form>
+          </article>
+        `;
+      }).join("");
+
+      for (const form of document.querySelectorAll(".payment-form")) {
+        form.addEventListener("submit", event => {
+          event.preventDefault();
+          const formData = new FormData(form);
+          const amount = Number(formData.get("monto"));
+          if (!amount || amount <= 0) {
+            setStatus("Ingresa un monto valido.", "error");
+            return;
+          }
+
+          const queued = queueOperation("register_payment", {
+            prestamo_id: Number(form.dataset.prestamo),
+            pago_id: Number(form.dataset.pago),
+            monto: amount,
+            nota: String(formData.get("nota") || ""),
+            fecha_pago: String(formData.get("fecha_pago") || today),
+            carry_forward: false
+          });
+
+          if (queued.ok) {
+            setStatus("Pago guardado en cola. Sincroniza cuando tengas internet.", "ok");
+            form.querySelector("button").disabled = true;
+            form.querySelector("button").textContent = "Guardado";
+          } else {
+            setStatus(queued.error || "No se pudo guardar.", "error");
+          }
+          updatePendingCount();
+        });
+      }
+    }
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    els.loginButton.addEventListener("click", loginAndBootstrap);
+    els.syncButton.addEventListener("click", sync);
+    window.addEventListener("online", render);
+    window.addEventListener("offline", render);
+    render();
+  </script>
+</body>
+</html>
