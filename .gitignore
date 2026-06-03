@@ -23,6 +23,8 @@
 /vendor
 /.gradle
 /android-app/build
+/apk-output
+/financiera-debug-apk.zip
 local.properties
 _ide_helper.php
 Homestead.json
