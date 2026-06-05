@@ -184,22 +184,25 @@ class PrestamoController extends Controller
         $empleado = $user->empleado;
         $isAdmin  = in_array('admin', $user->getAllRoles());
 
-        // ── Warn (not block): mismo admin ya tiene préstamo activo → recomendar refinanciamiento ─
-        if (!$request->input('confirmar_mismo_admin')) {
-            $prestamoActivoMismo = Prestamo::where('cliente_id', $data['cliente_id'])
-                ->where('admin_id', auth()->user()->adminId())
-                ->whereIn('estatus', ['Activo', 'Atrasado', 'Pendiente'])
-                ->with('promotor')
-                ->first();
+        // ── Warn / Redirect: mismo admin ya tiene préstamo activo → refinanciamiento ─────────
+        $prestamoActivoMismo = Prestamo::where('cliente_id', $data['cliente_id'])
+            ->where('admin_id', auth()->user()->adminId())
+            ->whereIn('estatus', ['Activo', 'Atrasado', 'Pendiente'])
+            ->with('promotor')
+            ->first();
 
-            if ($prestamoActivoMismo) {
-                $promotorNombre = $prestamoActivoMismo->promotor?->nombre ?? 'otro promotor';
-                return redirect()->back()
-                    ->withInput()
-                    ->with('warning_mismo_admin', $promotorNombre);
+        if ($prestamoActivoMismo) {
+            if ($request->input('confirmar_mismo_admin')) {
+                // Admin confirmó → llevarlo al préstamo activo para refinanciar
+                return redirect()->route('prestamos.show', $prestamoActivoMismo->id)
+                    ->with('abrir_refinanciar', true);
             }
+            $promotorNombre = $prestamoActivoMismo->promotor?->nombre ?? 'otro promotor';
+            return redirect()->back()
+                ->withInput()
+                ->with('warning_mismo_admin', $promotorNombre);
         }
-        // ────────────────────────────────────────────────────────────────────
+        // ─────────────────────────────────────────────────────────────────────────────────────
 
         // Warn (not block): Active loan with a DIFFERENT admin (cross-admin check)
         if (!$request->input('confirmar_cruzado')) {

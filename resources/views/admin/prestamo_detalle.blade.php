@@ -1058,6 +1058,10 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('refi-cancel-btn')?.addEventListener('click', () => dlg.close());
     // Cerrar al hacer clic en el backdrop
     dlg?.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
+    @if(session('abrir_refinanciar'))
+    // Redirigido desde "crear préstamo" con préstamo activo → abrir refinanciamiento directamente
+    if (dlg) abrirModalRefinanciar();
+    @endif
 });
 
 function abrirModalRefinanciar() {
