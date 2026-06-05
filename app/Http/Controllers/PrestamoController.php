@@ -87,7 +87,7 @@ class PrestamoController extends Controller
 
         $clientes = $query->with('promotor')->orderBy('nombre')->get();
 
-        // Map: client_id => promotor_nombre for clients with active loans of THIS same admin (UI warning → refinanciamiento)
+        // Map: client_id => ['promotor' => nombre, 'id' => prestamo_id] — mismo admin, préstamo activo
         $clientesConPrestamo = Cache::remember("clientes_con_prestamo_{$adminId}", 60, fn() =>
             Prestamo::whereIn('cliente_id', $clientes->pluck('id'))
                 ->where('admin_id', $adminId)
@@ -95,7 +95,10 @@ class PrestamoController extends Controller
                 ->with('promotor')
                 ->get()
                 ->keyBy('cliente_id')
-                ->map(fn($p) => $p->promotor?->nombre ?? 'otro promotor')
+                ->map(fn($p) => [
+                    'promotor' => $p->promotor?->nombre ?? 'otro promotor',
+                    'id'       => $p->id,
+                ])
                 ->toArray()
         );
 
@@ -200,7 +203,8 @@ class PrestamoController extends Controller
             $promotorNombre = $prestamoActivoMismo->promotor?->nombre ?? 'otro promotor';
             return redirect()->back()
                 ->withInput()
-                ->with('warning_mismo_admin', $promotorNombre);
+                ->with('warning_mismo_admin', $promotorNombre)
+                ->with('warning_mismo_admin_id', $prestamoActivoMismo->id);
         }
         // ─────────────────────────────────────────────────────────────────────────────────────
 

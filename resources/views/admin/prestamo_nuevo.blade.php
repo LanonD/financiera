@@ -134,26 +134,17 @@ $docsMap   = $clientesConDocs ?? [];
 @endif
 
 @if(session('warning_mismo_admin'))
-<div id="warningMismoAdminServer" style="background:#fffbeb;border:1px solid #f59e0b;border-radius:10px;padding:12px 16px;margin-bottom:20px">
+<div style="background:#fffbeb;border:1px solid #f59e0b;border-radius:10px;padding:12px 16px;margin-bottom:20px">
     <div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:4px">⚠ Este administrador ya tiene un préstamo activo con este cliente</div>
     <div style="font-size:13px;color:#78350f;margin-bottom:8px">
         El cliente ya tiene un préstamo activo asignado al promotor <strong>"{{ session('warning_mismo_admin') }}"</strong>.
-        Se recomienda otorgar un <strong>refinanciamiento</strong> en lugar de un préstamo nuevo. ¿Desea continuar de todas formas?
+        Se recomienda otorgar un <strong>refinanciamiento</strong> en lugar de un préstamo nuevo.
     </div>
-    <button type="button" onclick="aceptarMismoAdminServer()"
-        style="padding:6px 16px;background:#d97706;color:#fff;border:none;border-radius:5px;font-size:13px;font-weight:600;cursor:pointer">
-        Continuar de todas formas
-    </button>
+    <a href="{{ route('prestamos.show', session('warning_mismo_admin_id')) }}?refinanciar=1"
+       style="display:inline-block;padding:6px 16px;background:#d97706;color:#fff;border-radius:5px;font-size:13px;font-weight:600;text-decoration:none">
+        Ir al préstamo activo para refinanciar
+    </a>
 </div>
-<script>
-function aceptarMismoAdminServer() {
-    document.getElementById('confirmarMismoAdmin').value = '1';
-    const box = document.getElementById('warningMismoAdminServer');
-    box.style.background = '#f0fdf4';
-    box.style.borderColor = '#86efac';
-    box.innerHTML = '<div style="font-size:13px;font-weight:600;color:#166534">✓ Confirmado — complete el formulario y envíe de nuevo</div>';
-}
-</script>
 @endif
 
 @if(session('warning_cruzado'))
@@ -213,7 +204,8 @@ function aceptarCruzadoServer() {
                              data-nombre="{{ $c->nombre }}"
                              data-celular="{{ $c->celular ?? '' }}"
                              data-mismo-admin="{{ $mismoAdmin ? '1' : '0' }}"
-                             data-promotor="{{ $mismoAdmin ? $activoMap[$c->id] : '' }}"
+                             data-promotor="{{ $mismoAdmin ? $activoMap[$c->id]['promotor'] : '' }}"
+                             data-prestamo-activo-url="{{ $mismoAdmin ? route('prestamos.show', $activoMap[$c->id]['id']) : '' }}"
                              data-cruzado="{{ $cruzado ? '1' : '0' }}"
                              data-admin-cruzado="{{ $cruzado ? ($clientesConPrestamoCruzado[$c->id] ?? '') : '' }}"
                              data-tiene-ine="{{ $cDocs['ine'] ? '1' : '0' }}"
@@ -247,7 +239,7 @@ function aceptarCruzadoServer() {
                     <div id="activeLoanMsg" style="font-size:12px;color:#78350f"></div>
                     <button type="button" id="btnAceptarMismoAdmin" onclick="aceptarMismoAdmin()"
                         style="display:none;margin-top:8px;padding:5px 14px;background:#d97706;color:#fff;border:none;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer">
-                        Dar refinanciamiento de todas formas
+                        Ir al préstamo activo para refinanciar
                     </button>
                     <button type="button" id="btnAceptarCruzado" onclick="aceptarPrestamoCruzado()"
                         style="display:none;margin-top:8px;padding:5px 14px;background:#d97706;color:#fff;border:none;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer">
@@ -550,7 +542,8 @@ function csSelect(el) {
         title.style.color = '#92400e';
         title.textContent = '⚠ Este administrador ya tiene un préstamo activo con este cliente';
         msg.style.color = '#78350f';
-        msg.textContent = `El cliente ya tiene un préstamo activo con el promotor "${el.dataset.promotor}". Se recomienda dar un refinanciamiento en lugar de un préstamo nuevo. ¿Desea continuar?`;
+        msg.textContent = `El cliente ya tiene un préstamo activo con el promotor "${el.dataset.promotor}". Se recomienda dar un refinanciamiento en lugar de un préstamo nuevo.`;
+        window._prestamoActivoUrl = el.dataset.prestamoActivoUrl;
         document.getElementById('btnAceptarMismoAdmin').style.display = '';
         document.getElementById('btnAceptarCruzado').style.display = 'none';
         warn.style.display = '';
@@ -615,6 +608,7 @@ function _actualizarDocReq(key, yaTiene, label) {
 function csClear() {
     clienteSeleccionado = null;
     window._clienteBloqueado = false;
+    window._prestamoActivoUrl = null;
     document.getElementById('csClienteId').value = '';
     document.getElementById('csSearch').style.display = '';
     document.getElementById('csSearch').value = '';
@@ -628,15 +622,9 @@ function csClear() {
 }
 
 function aceptarMismoAdmin() {
-    document.getElementById('confirmarMismoAdmin').value = '1';
-    document.getElementById('btnAceptarMismoAdmin').style.display = 'none';
-    const warn = document.getElementById('activeLoanWarning');
-    warn.style.background = '#f0fdf4';
-    warn.style.borderColor = '#86efac';
-    document.getElementById('activeLoanTitle').style.color = '#166534';
-    document.getElementById('activeLoanTitle').textContent = '✓ Confirmado — se procederá con el refinanciamiento';
-    document.getElementById('activeLoanMsg').textContent = '';
-    checkCanSubmit();
+    if (window._prestamoActivoUrl) {
+        window.location.href = window._prestamoActivoUrl + '?refinanciar=1';
+    }
 }
 
 function aceptarPrestamoCruzado() {
