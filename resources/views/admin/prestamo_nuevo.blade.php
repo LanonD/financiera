@@ -133,6 +133,29 @@ $docsMap   = $clientesConDocs ?? [];
 </div>
 @endif
 
+@if(session('warning_mismo_admin'))
+<div id="warningMismoAdminServer" style="background:#fffbeb;border:1px solid #f59e0b;border-radius:10px;padding:12px 16px;margin-bottom:20px">
+    <div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:4px">⚠ Este administrador ya tiene un préstamo activo con este cliente</div>
+    <div style="font-size:13px;color:#78350f;margin-bottom:8px">
+        El cliente ya tiene un préstamo activo asignado al promotor <strong>"{{ session('warning_mismo_admin') }}"</strong>.
+        Se recomienda otorgar un <strong>refinanciamiento</strong> en lugar de un préstamo nuevo. ¿Desea continuar de todas formas?
+    </div>
+    <button type="button" onclick="aceptarMismoAdminServer()"
+        style="padding:6px 16px;background:#d97706;color:#fff;border:none;border-radius:5px;font-size:13px;font-weight:600;cursor:pointer">
+        Continuar de todas formas
+    </button>
+</div>
+<script>
+function aceptarMismoAdminServer() {
+    document.getElementById('confirmarMismoAdmin').value = '1';
+    const box = document.getElementById('warningMismoAdminServer');
+    box.style.background = '#f0fdf4';
+    box.style.borderColor = '#86efac';
+    box.innerHTML = '<div style="font-size:13px;font-weight:600;color:#166534">✓ Confirmado — complete el formulario y envíe de nuevo</div>';
+}
+</script>
+@endif
+
 @if(session('warning_cruzado'))
 <div id="warningCruzadoServer" style="background:#fffbeb;border:1px solid #fbbf24;border-radius:10px;padding:12px 16px;margin-bottom:20px">
     <div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:4px">⚠ Deuda activa con otro administrador</div>
@@ -181,16 +204,16 @@ function aceptarCruzadoServer() {
                         @else
                          @foreach($clientes as $c)
                         @php
-                            $bloqueado = array_key_exists($c->id, $activoMap);
-                            $cruzado   = !$bloqueado && array_key_exists($c->id, $clientesConPrestamoCruzado ?? []);
-                            $cDocs     = $docsMap[$c->id] ?? ['ine'=>false,'comprobante'=>false];
+                            $mismoAdmin = array_key_exists($c->id, $activoMap);
+                            $cruzado    = !$mismoAdmin && array_key_exists($c->id, $clientesConPrestamoCruzado ?? []);
+                            $cDocs      = $docsMap[$c->id] ?? ['ine'=>false,'comprobante'=>false];
                         @endphp
-                        <div class="cs-item {{ ($bloqueado || $cruzado) ? 'cs-item-bloqueado' : '' }}"
+                        <div class="cs-item {{ ($mismoAdmin || $cruzado) ? 'cs-item-bloqueado' : '' }}"
                              data-id="{{ $c->id }}"
                              data-nombre="{{ $c->nombre }}"
                              data-celular="{{ $c->celular ?? '' }}"
-                             data-bloqueado="{{ $bloqueado ? '1' : '0' }}"
-                             data-promotor="{{ $bloqueado ? $activoMap[$c->id] : '' }}"
+                             data-mismo-admin="{{ $mismoAdmin ? '1' : '0' }}"
+                             data-promotor="{{ $mismoAdmin ? $activoMap[$c->id] : '' }}"
                              data-cruzado="{{ $cruzado ? '1' : '0' }}"
                              data-admin-cruzado="{{ $cruzado ? ($clientesConPrestamoCruzado[$c->id] ?? '') : '' }}"
                              data-tiene-ine="{{ $cDocs['ine'] ? '1' : '0' }}"
@@ -198,8 +221,8 @@ function aceptarCruzadoServer() {
                              onclick="csSelect(this)">
                             <div style="display:flex;align-items:center;justify-content:space-between">
                                 <div class="cs-item-name">{{ $c->nombre }}</div>
-                                @if($bloqueado)
-                                <span style="font-size:10px;background:#fee2e2;color:#991b1b;border-radius:4px;padding:1px 6px;font-weight:700">Activo</span>
+                                @if($mismoAdmin)
+                                <span style="font-size:10px;background:#fef3c7;color:#92400e;border-radius:4px;padding:1px 6px;font-weight:700">Refinanciar</span>
                                 @elseif($cruzado)
                                 <span style="font-size:10px;background:#fff3cd;color:#856404;border-radius:4px;padding:1px 6px;font-weight:700">Deuda activa</span>
                                 @endif
@@ -219,14 +242,19 @@ function aceptarCruzadoServer() {
                     <input type="hidden" name="cliente_id" id="csClienteId" required>
                 </div>
                 <!-- Active loan warning -->
-                <div id="activeLoanWarning" style="display:none;margin-top:10px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:10px 14px">
-                    <div style="font-size:12px;font-weight:700;color:#991b1b;margin-bottom:2px">⚠ Cliente con préstamo activo</div>
-                    <div id="activeLoanMsg" style="font-size:12px;color:#7f1d1d"></div>
+                <div id="activeLoanWarning" style="display:none;margin-top:10px;background:#fffbeb;border:1px solid #fbbf24;border-radius:8px;padding:10px 14px">
+                    <div id="activeLoanTitle" style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:2px">⚠ Préstamo activo detectado</div>
+                    <div id="activeLoanMsg" style="font-size:12px;color:#78350f"></div>
+                    <button type="button" id="btnAceptarMismoAdmin" onclick="aceptarMismoAdmin()"
+                        style="display:none;margin-top:8px;padding:5px 14px;background:#d97706;color:#fff;border:none;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer">
+                        Dar refinanciamiento de todas formas
+                    </button>
                     <button type="button" id="btnAceptarCruzado" onclick="aceptarPrestamoCruzado()"
                         style="display:none;margin-top:8px;padding:5px 14px;background:#d97706;color:#fff;border:none;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer">
                         Aceptar y continuar de todas formas
                     </button>
                 </div>
+                <input type="hidden" name="confirmar_mismo_admin" id="confirmarMismoAdmin" value="0">
                 <input type="hidden" name="confirmar_cruzado" id="confirmarCruzado" value="0">
                 <div class="np-hint">Solo clientes activos asignados a tu cartera</div>
             </div>
@@ -511,33 +539,39 @@ function csSelect(el) {
     document.getElementById('csList').classList.remove('open');
 
     // Show/hide active loan warning
-    const bloqueado = el.dataset.bloqueado === '1';
-    const cruzado   = el.dataset.cruzado   === '1';
-    const warn = document.getElementById('activeLoanWarning');
-    const msg  = document.getElementById('activeLoanMsg');
-    if (bloqueado) {
-        warn.style.background = '#fef2f2';
-        warn.style.borderColor = '#fca5a5';
-        warn.querySelector('div').style.color = '#991b1b';
-        warn.querySelector('div').textContent = '⚠ Cliente con préstamo activo';
-        msg.style.color = '#7f1d1d';
-        msg.textContent = `Este cliente ya tiene un préstamo activo con el promotor "${el.dataset.promotor}". No se puede crear otro mientras haya uno en curso.`;
+    const mismoAdmin = el.dataset.mismoAdmin === '1';
+    const cruzado    = el.dataset.cruzado    === '1';
+    const warn  = document.getElementById('activeLoanWarning');
+    const msg   = document.getElementById('activeLoanMsg');
+    const title = document.getElementById('activeLoanTitle');
+    if (mismoAdmin) {
+        warn.style.background = '#fffbeb';
+        warn.style.borderColor = '#f59e0b';
+        title.style.color = '#92400e';
+        title.textContent = '⚠ Este administrador ya tiene un préstamo activo con este cliente';
+        msg.style.color = '#78350f';
+        msg.textContent = `El cliente ya tiene un préstamo activo con el promotor "${el.dataset.promotor}". Se recomienda dar un refinanciamiento en lugar de un préstamo nuevo. ¿Desea continuar?`;
+        document.getElementById('btnAceptarMismoAdmin').style.display = '';
+        document.getElementById('btnAceptarCruzado').style.display = 'none';
         warn.style.display = '';
     } else if (cruzado) {
         warn.style.background = '#fffbeb';
         warn.style.borderColor = '#fbbf24';
-        warn.querySelector('div').style.color = '#92400e';
-        warn.querySelector('div').textContent = '⚠ Deuda activa con otro administrador';
+        title.style.color = '#92400e';
+        title.textContent = '⚠ Deuda activa con otro administrador';
         msg.style.color = '#78350f';
         msg.textContent = `Este cliente ya tiene un préstamo activo con el administrador "${el.dataset.adminCruzado}". ¿Desea otorgar el préstamo de todas formas?`;
         document.getElementById('btnAceptarCruzado').style.display = '';
+        document.getElementById('btnAceptarMismoAdmin').style.display = 'none';
         warn.style.display = '';
     } else {
         warn.style.display = 'none';
         document.getElementById('btnAceptarCruzado').style.display = 'none';
+        document.getElementById('btnAceptarMismoAdmin').style.display = 'none';
         document.getElementById('confirmarCruzado').value = '0';
+        document.getElementById('confirmarMismoAdmin').value = '0';
     }
-    window._clienteBloqueado = bloqueado;
+    window._clienteBloqueado = false;
 
     // Marcar INE y comprobante como opcionales si el cliente ya los tiene registrados
     const tieneIne         = el.dataset.tieneIne === '1';
@@ -587,8 +621,22 @@ function csClear() {
     document.getElementById('csSelected').classList.remove('show');
     document.getElementById('activeLoanWarning').style.display = 'none';
     document.getElementById('btnAceptarCruzado').style.display = 'none';
+    document.getElementById('btnAceptarMismoAdmin').style.display = 'none';
     document.getElementById('confirmarCruzado').value = '0';
+    document.getElementById('confirmarMismoAdmin').value = '0';
     csFilter(); checkCanSubmit();
+}
+
+function aceptarMismoAdmin() {
+    document.getElementById('confirmarMismoAdmin').value = '1';
+    document.getElementById('btnAceptarMismoAdmin').style.display = 'none';
+    const warn = document.getElementById('activeLoanWarning');
+    warn.style.background = '#f0fdf4';
+    warn.style.borderColor = '#86efac';
+    document.getElementById('activeLoanTitle').style.color = '#166534';
+    document.getElementById('activeLoanTitle').textContent = '✓ Confirmado — se procederá con el refinanciamiento';
+    document.getElementById('activeLoanMsg').textContent = '';
+    checkCanSubmit();
 }
 
 function aceptarPrestamoCruzado() {
@@ -597,8 +645,8 @@ function aceptarPrestamoCruzado() {
     const warn = document.getElementById('activeLoanWarning');
     warn.style.background = '#f0fdf4';
     warn.style.borderColor = '#86efac';
-    warn.querySelector('div').style.color = '#166534';
-    warn.querySelector('div').textContent = '✓ Confirmado — se procederá con el préstamo';
+    document.getElementById('activeLoanTitle').style.color = '#166534';
+    document.getElementById('activeLoanTitle').textContent = '✓ Confirmado — se procederá con el préstamo';
     document.getElementById('activeLoanMsg').textContent = '';
     checkCanSubmit();
 }
@@ -774,8 +822,7 @@ function checkCanSubmit() {
     const numPagos        = parseInt(document.getElementById('inNumPagos').value)       || 0;
     const clienteOk       = !!document.getElementById('csClienteId').value;
     const fechaPrimerCobro= document.getElementById('inFechaPrimerCobro').value;
-    const bloqueado       = !!window._clienteBloqueado;
-    const ok = clienteOk && !bloqueado && entregado > 0 && rentPctInput > 0 && retornar >= entregado && numPagos > 0 && !!fechaPrimerCobro;
+    const ok = clienteOk && entregado > 0 && rentPctInput > 0 && retornar >= entregado && numPagos > 0 && !!fechaPrimerCobro;
     const btn = document.getElementById('btnCrear');
     btn.disabled = !ok;
     btn.style.opacity = ok ? '1' : '.5';

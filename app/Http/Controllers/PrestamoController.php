@@ -87,9 +87,10 @@ class PrestamoController extends Controller
 
         $clientes = $query->with('promotor')->orderBy('nombre')->get();
 
-        // Map: client_id => promotor_nombre for clients with active loans (UI warning)
+        // Map: client_id => promotor_nombre for clients with active loans of THIS same admin (UI warning → refinanciamiento)
         $clientesConPrestamo = Cache::remember("clientes_con_prestamo_{$adminId}", 60, fn() =>
             Prestamo::whereIn('cliente_id', $clientes->pluck('id'))
+                ->where('admin_id', $adminId)
                 ->whereIn('estatus', ['Activo', 'Atrasado', 'Pendiente'])
                 ->with('promotor')
                 ->get()
@@ -183,20 +184,20 @@ class PrestamoController extends Controller
         $empleado = $user->empleado;
         $isAdmin  = in_array('admin', $user->getAllRoles());
 
-        // ── Block: One active loan per client ────────────────────────────────
-        $prestamoActivo = Prestamo::where('cliente_id', $data['cliente_id'])
-            ->whereIn('estatus', ['Activo', 'Atrasado', 'Pendiente'])
-            ->with('promotor')
-            ->first();
+        // ── Warn (not block): mismo admin ya tiene préstamo activo → recomendar refinanciamiento ─
+        if (!$request->input('confirmar_mismo_admin')) {
+            $prestamoActivoMismo = Prestamo::where('cliente_id', $data['cliente_id'])
+                ->where('admin_id', auth()->user()->adminId())
+                ->whereIn('estatus', ['Activo', 'Atrasado', 'Pendiente'])
+                ->with('promotor')
+                ->first();
 
-        if ($prestamoActivo) {
-            $promotorNombre = $prestamoActivo->promotor?->nombre ?? 'otro promotor';
-            return redirect()->back()
-                ->withInput()
-                ->withErrors(['cliente_id' =>
-                    "Este cliente ya tiene un préstamo activo asignado al promotor \u201c{$promotorNombre}\u201d. "
-                  . 'No se puede crear otro préstamo mientras haya uno en curso.'
-                ]);
+            if ($prestamoActivoMismo) {
+                $promotorNombre = $prestamoActivoMismo->promotor?->nombre ?? 'otro promotor';
+                return redirect()->back()
+                    ->withInput()
+                    ->with('warning_mismo_admin', $promotorNombre);
+            }
         }
         // ────────────────────────────────────────────────────────────────────
 
