@@ -847,7 +847,7 @@ $esMiPrestamo   = $empDetalle && $prestamo->promotor_id == $empDetalle->id;
 .refi-desglose-cols { display:grid;grid-template-columns:1fr 1fr }
 /* Tabla: ocultar Capital/Interés/Saldo en móvil pequeño */
 @media(max-width:480px){
-    #modal-refinanciar { width:100%;max-width:100%;border-radius:16px 16px 0 0;max-height:92svh;position:fixed;bottom:0;margin:0;left:0 }
+    #modal-refinanciar { width:100%;max-width:100%;border-radius:16px 16px 0 0;max-height:92vh;max-height:92svh;height:92vh;height:92svh;position:fixed;bottom:0;top:auto;transform:none;margin:0;left:0 }
     .refi-g3 { grid-template-columns:1fr 1fr }
     .refi-g2 { grid-template-columns:1fr }
     .refi-desglose-cols { grid-template-columns:1fr }
