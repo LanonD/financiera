@@ -9,6 +9,7 @@ use App\Models\Prestamo;
 use App\Models\Pago;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Validation\Rule;
 
 class EmpleadoController extends Controller
 {
@@ -108,7 +109,8 @@ class EmpleadoController extends Controller
             'roles.*'      => 'in:promo,collector,desembolso',
             'rango'        => 'required|string',
             'capacidad'    => 'nullable|numeric|min:0',
-            'promotor_id'  => 'nullable|exists:empleados,id',
+            // Scoped al tenant: el promotor supervisor debe ser del mismo admin
+            'promotor_id'  => ['nullable', Rule::exists('empleados', 'id')->where('admin_id', auth()->user()->id)],
         ]);
 
         $roles       = $request->roles;
@@ -155,7 +157,8 @@ class EmpleadoController extends Controller
             'rango'       => 'required|string',
             'capacidad'   => 'nullable|numeric|min:0',
             'password'    => 'nullable|string|min:4',
-            'promotor_id' => 'nullable|exists:empleados,id',
+            // Scoped al tenant: el promotor supervisor debe ser del mismo admin
+            'promotor_id' => ['nullable', Rule::exists('empleados', 'id')->where('admin_id', $adminId)],
         ]);
 
         $roles       = $request->roles;

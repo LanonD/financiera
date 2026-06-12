@@ -485,7 +485,7 @@ $parBarColor = fn($v) => $v < 5 ? '#16a34a' : ($v < 15 ? '#d97706' : '#dc2626');
                     $hoy      = \Carbon\Carbon::today();
                     $diasAtraso = 0;
                     if ($pago && $pago->fecha_programada && $pago->fecha_programada < $hoy) {
-                        $diasAtraso = $pago->fecha_programada->diffInDays($hoy);
+                        $diasAtraso = (int) $pago->fecha_programada->diffInDays($hoy);
                     }
                     $cfg = $prestamo ? ($estatusCfg[$prestamo->estatus] ?? ['pill-gray','#9ca3af']) : ['pill-gray','#9ca3af'];
                 @endphp
@@ -545,7 +545,8 @@ $parBarColor = fn($v) => $v < 5 ? '#16a34a' : ($v < 15 ? '#d97706' : '#dc2626');
         @php
             $hoy    = \Carbon\Carbon::today();
             $fecha  = $pago->fecha_programada;
-            $dias   = $hoy->diffInDays($fecha, false);
+            // Carbon 3: diffInDays devuelve float — castear a int para que $dias === 0 funcione
+            $dias   = (int) $hoy->diffInDays($fecha, false);
             $esHoy  = $dias === 0;
             $tarde  = $dias < 0;
         @endphp

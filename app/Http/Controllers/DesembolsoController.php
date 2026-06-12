@@ -8,6 +8,7 @@ use App\Models\Empleado;
 use App\Models\PrestamoActividad;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 
 class DesembolsoController extends Controller
 {
@@ -65,7 +66,8 @@ class DesembolsoController extends Controller
         $prestamo = Prestamo::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
 
         $data = $request->validate([
-            'desembolso_id' => 'nullable|exists:empleados,id',
+            // Scoped al tenant: impide enlazar un desembolsador de OTRO admin (IDOR cross-tenant)
+            'desembolso_id' => ['nullable', Rule::exists('empleados', 'id')->where('admin_id', $adminId)],
         ]);
 
         $anteriorId = $prestamo->desembolso_id;

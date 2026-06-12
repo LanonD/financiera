@@ -72,7 +72,8 @@ class PagoController extends Controller
                     // toDateString() evita que Carbon genere '2026-04-15 00:00:00' que rompe comparaciones de string
                     $p->proximo_pago = $next?->fecha_programada?->toDateString();
                     if ($next && $p->proximo_pago < now()->toDateString()) {
-                        $p->dias_atraso = now()->diffInDays($next->fecha_programada);
+                        // Carbon 3: diffInDays es con signo — partir de la fecha vencida para obtener días positivos
+                        $p->dias_atraso = (int) $next->fecha_programada->startOfDay()->diffInDays(now()->startOfDay());
                     } else {
                         $p->dias_atraso = 0;
                     }
@@ -203,10 +204,27 @@ class PagoController extends Controller
         }
 
         $prestamos = $query->get()->map(function ($p) {
-            $next = $p->pagos()->whereIn('estatus', ['Pendiente', 'Atrasado'])->orderBy('fecha_programada')->first();
+            $next    = $p->pagos()->whereIn('estatus', ['Pendiente', 'Atrasado'])->orderBy('fecha_programada')->first();
+            $vencido = $next && $next->fecha_programada->toDateString() < now()->toDateString();
+
+            // Self-heal: préstamo ya liquidado que quedó con estatus activo →
+            // finalizarlo y sacarlo de la lista de asignación
+            if ((!$next || (float)$p->saldo_actual <= 0) && $p->finalizarSiLiquidado()) {
+                return null;
+            }
+
+            // Préstamo vencido que sigue marcado Activo (refinanciados, sincronización
+            // offline, etc.) → reflejarlo como Atrasado para que aparezca en su sección.
+            // Guardar ANTES de asignar los atributos sintéticos (no son columnas).
+            if ($vencido && $p->estatus === 'Activo') {
+                $p->estatus = 'Atrasado';
+                $p->save();
+            }
+
             $p->proximo_pago = $next?->fecha_programada?->toDateString();
-            $p->dias_atraso  = ($next && $p->proximo_pago < now()->toDateString())
-                ? now()->diffInDays($next->fecha_programada)
+            // Carbon 3: diffInDays es con signo — partir de la fecha vencida para obtener días positivos
+            $p->dias_atraso  = $vencido
+                ? (int) $next->fecha_programada->startOfDay()->diffInDays(now()->startOfDay())
                 : 0;
             // Check if paid today
             $pagadoHoy = $p->pagos()
@@ -216,7 +234,7 @@ class PagoController extends Controller
             $p->pagado_hoy    = $pagadoHoy ? 1 : 0;
             $p->tipo_pago_hoy = $pagadoHoy?->estatus;
             return $p;
-        });
+        })->filter()->values();
 
         if ($filtroDesde || $filtroHasta) {
             $prestamos = $prestamos->filter(function ($p) use ($filtroDesde, $filtroHasta) {
@@ -323,6 +341,9 @@ class PagoController extends Controller
         $errors      = [];
 
         foreach ($cobros as $prestamoId => $cobro) {
+            // Evitar que valores de la iteración anterior contaminen el log de esta
+            unset($tipo, $diferencia, $nextPago);
+
             $prestamo = Prestamo::where('id', $prestamoId)
                 ->where('admin_id', $adminId)
                 ->first();
@@ -398,11 +419,7 @@ class PagoController extends Controller
                     $remaining = Pago::where('prestamo_id', $prestamoId)
                         ->whereIn('estatus', ['Pendiente', 'Atrasado'])
                         ->count();
-                    if ($remaining === 0) {
-                        $prestamo->estatus             = 'Finalizado';
-                        $prestamo->interes_mora_activo = false;
-                        $prestamo->interes_diario      = 0;
-                    } else {
+                    if ($remaining > 0) {
                         $prestamo->estatus = 'Activo';
                     }
                 }
@@ -434,6 +451,9 @@ class PagoController extends Controller
             }
 
             $prestamo->save();
+
+            // Finalizar si quedó liquidado (última cuota pagada, o saldo y mora en $0)
+            $prestamo->finalizarSiLiquidado();
 
             // Log actividad
             $quien = $user->empleado?->nombre ?? $user->usuario;
@@ -881,11 +901,7 @@ class PagoController extends Controller
                 $remaining = Pago::where('prestamo_id', $prestamoId)
                     ->whereIn('estatus', ['Pendiente', 'Atrasado'])
                     ->count();
-                if ($remaining === 0) {
-                    $prestamo->estatus             = 'Finalizado';
-                    $prestamo->interes_mora_activo = false;
-                    $prestamo->interes_diario      = 0;
-                } else {
+                if ($remaining > 0) {
                     $prestamo->estatus = 'Activo';
                 }
             }
@@ -896,6 +912,9 @@ class PagoController extends Controller
         }
 
         $prestamo->save();
+
+        // Finalizar si quedó liquidado (última cuota pagada, o saldo y mora en $0)
+        $prestamo->finalizarSiLiquidado();
 
         $totalPagado  = (float)$request->monto;
         $carryForward = $request->boolean('carry_forward');

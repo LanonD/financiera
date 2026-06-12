@@ -1,0 +1,22 @@
+# Defensa en profundidad: este directorio solo contiene documentos subidos
+# (INE, pagarés, comprobantes). NUNCA debe ejecutar código del lado servidor.
+# Desactiva el motor PHP por si un archivo malicioso lograra colarse aquí.
+
+<IfModule mod_php.c>
+    php_admin_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_admin_flag engine off
+</IfModule>
+<IfModule mod_php8.c>
+    php_admin_flag engine off
+</IfModule>
+
+# Quita cualquier handler que ejecute scripts
+RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .phar .pl .py .cgi
+RemoveType .php .phtml .php3 .php4 .php5 .php7 .phar
+
+# Bloquea por completo el acceso a archivos ejecutables
+<FilesMatch "(?i)\.(php|phtml|php3|php4|php5|php7|phar|pl|py|cgi|asp|aspx|sh|exe|bat)$">
+    Require all denied
+</FilesMatch>

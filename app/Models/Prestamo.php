@@ -4,10 +4,24 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
 
 class Prestamo extends Model
 {
     use HasFactory;
+
+    protected static function booted(): void
+    {
+        // El formulario de nuevo préstamo y el dashboard cachean qué clientes
+        // tienen préstamo activo; cualquier alta o cambio de estatus debe invalidarlos
+        static::saved(function (self $prestamo) {
+            if ($prestamo->wasRecentlyCreated || $prestamo->wasChanged('estatus')) {
+                Cache::forget("clientes_con_prestamo_{$prestamo->admin_id}");
+                Cache::forget("dashboard_kpis_{$prestamo->admin_id}");
+                Cache::forget("dashboard_prestamos_{$prestamo->admin_id}");
+            }
+        });
+    }
 
     protected $table = 'prestamos';
 
@@ -99,5 +113,56 @@ class Prestamo extends Model
     public function proximoPago()
     {
         return $this->pagosPendientes()->first();
+    }
+
+    /**
+     * Finaliza el préstamo si ya quedó liquidado:
+     * sin cuotas Pendiente/Atrasado, o con saldo y mora en $0
+     * (p. ej. el último pago se registró como Parcial porque la cuota
+     * nominal era mayor al saldo restante tras cobros extra o ajustes).
+     */
+    public function finalizarSiLiquidado(): bool
+    {
+        if (!in_array($this->estatus, ['Activo', 'Atrasado'])) {
+            return false;
+        }
+
+        $pendientes = Pago::where('prestamo_id', $this->id)
+            ->whereIn('estatus', ['Pendiente', 'Atrasado'])
+            ->count();
+        $deudaLiquidada = (float)$this->saldo_actual <= 0
+            && (float)$this->interes_acumulado <= 0;
+
+        if ($pendientes > 0 && !$deudaLiquidada) {
+            return false;
+        }
+
+        if ($pendientes > 0) {
+            // Deuda en $0 con cuotas aún pendientes → marcarlas como liquidadas
+            Pago::where('prestamo_id', $this->id)
+                ->whereIn('estatus', ['Pendiente', 'Atrasado'])
+                ->update([
+                    'estatus'       => 'Pagado',
+                    'monto_cobrado' => 0,
+                    'tipo_cobro'    => 'completo',
+                    'tipo_pago'     => 'liquidado',
+                    'fecha_pago'    => now()->toDateString(),
+                    'nota_cobro'    => 'Liquidación anticipada',
+                ]);
+        }
+
+        $estatusAnterior           = $this->estatus;
+        $this->estatus             = 'Finalizado';
+        $this->payment_hold        = false;
+        $this->interes_mora_activo = false;
+        $this->interes_diario      = 0;
+        $this->save();
+
+        PrestamoActividad::log($this->id, 'estatus',
+            'Préstamo finalizado automáticamente — deuda liquidada.',
+            ['de' => $estatusAnterior, 'a' => 'Finalizado']
+        );
+
+        return true;
     }
 }

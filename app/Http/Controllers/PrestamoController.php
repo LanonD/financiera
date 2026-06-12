@@ -10,7 +10,9 @@ use App\Models\Empleado;
 use App\Models\PrestamoActividad;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use App\Models\PrestamoArchivo;
+use Illuminate\Validation\Rule;
 use Carbon\Carbon;
 
 class PrestamoController extends Controller
@@ -94,6 +96,9 @@ class PrestamoController extends Controller
                 ->whereIn('estatus', ['Activo', 'Atrasado', 'Pendiente'])
                 ->with('promotor')
                 ->get()
+                // Self-heal: préstamos ya liquidados que quedaron con estatus activo
+                // se finalizan aquí y no aparecen como "préstamo activo a refinanciar"
+                ->reject(fn($p) => $p->finalizarSiLiquidado())
                 ->keyBy('cliente_id')
                 ->map(fn($p) => [
                     'promotor' => $p->promotor?->nombre ?? 'otro promotor',
@@ -165,6 +170,8 @@ class PrestamoController extends Controller
             // Allow up to 1 year in the past to support offline sync
             'fecha_inicio'        => 'required|date|after_or_equal:' . now()->subYear()->toDateString(),
             'fecha_primer_cobro'  => 'required|date|after_or_equal:' . now()->subYear()->toDateString(),
+            // Scoped al tenant: impide asignar un promotor de OTRO admin (IDOR cross-tenant)
+            'promotor_id'         => ['nullable', Rule::exists('empleados', 'id')->where('admin_id', auth()->user()->adminId())],
         ];
 
         if ($desembolsar) {
@@ -194,6 +201,12 @@ class PrestamoController extends Controller
             ->with('promotor')
             ->first();
 
+        // Self-heal: si el préstamo "activo" en realidad ya está liquidado,
+        // finalizarlo y no mostrar la advertencia de refinanciamiento
+        if ($prestamoActivoMismo && $prestamoActivoMismo->finalizarSiLiquidado()) {
+            $prestamoActivoMismo = null;
+        }
+
         if ($prestamoActivoMismo) {
             if ($request->input('confirmar_mismo_admin')) {
                 // Admin confirmó → llevarlo al préstamo activo para refinanciar
@@ -208,26 +221,22 @@ class PrestamoController extends Controller
         }
         // ─────────────────────────────────────────────────────────────────────────────────────
 
-        // Warn (not block): Active loan with a DIFFERENT admin (cross-admin check)
-        if (!$request->input('confirmar_cruzado')) {
-            try {
-                $clienteX = Cliente::find($data['cliente_id']);
-                if ($clienteX && $clienteX->curp) {
-                    $prestamoCruzado = Prestamo::whereHas('cliente', function ($q) use ($clienteX) {
-                        $q->where('curp', $clienteX->curp)->where('admin_id', '!=', $clienteX->admin_id);
-                    })->whereIn('estatus', ['Activo', 'Atrasado', 'Pendiente'])->first();
+        // Warn (not block): Active loan with a DIFFERENT admin — record for flash, never redirect back
+        $warningCruzado = null;
+        try {
+            $clienteX = Cliente::find($data['cliente_id']);
+            if ($clienteX && $clienteX->curp) {
+                $prestamoCruzado = Prestamo::whereHas('cliente', function ($q) use ($clienteX) {
+                    $q->where('curp', $clienteX->curp)->where('admin_id', '!=', $clienteX->admin_id);
+                })->whereIn('estatus', ['Activo', 'Atrasado', 'Pendiente'])->first();
 
-                    if ($prestamoCruzado) {
-                        $adminUser   = \App\Models\User::find($prestamoCruzado->admin_id);
-                        $adminNombre = $adminUser?->nombre ?? $adminUser?->usuario ?? 'otro administrador';
-                        return redirect()->back()
-                            ->withInput()
-                            ->with('warning_cruzado', $adminNombre);
-                    }
+                if ($prestamoCruzado) {
+                    $adminUser      = \App\Models\User::find($prestamoCruzado->admin_id);
+                    $warningCruzado = $adminUser?->nombre ?? $adminUser?->usuario ?? 'otro administrador';
                 }
-            } catch (\Throwable $e) {
-                // Si falla la verificación cruzada, continuamos sin bloquear
             }
+        } catch (\Throwable $e) {
+            // Si falla la verificación cruzada, continuamos sin bloquear
         }
 
         $monto_entregado    = (float)$data['monto_entregado'];
@@ -361,8 +370,12 @@ class PrestamoController extends Controller
         Cache::forget("dashboard_prestamos_{$adminId}");
         Cache::forget("clientes_con_prestamo_{$adminId}");
 
-        $msg = $desembolsar ? 'Préstamo creado y desembolsado correctamente.' : 'Préstamo creado correctamente.';
-        return redirect()->route('prestamos.show', $prestamo->id)->with('success', $msg);
+        $msg      = $desembolsar ? 'Préstamo creado y desembolsado correctamente.' : 'Préstamo creado correctamente.';
+        $redirect = redirect()->route('prestamos.show', $prestamo->id)->with('success', $msg);
+        if ($warningCruzado) {
+            $redirect = $redirect->with('warning', "⚠ Este cliente ya tiene un préstamo activo con el administrador \"{$warningCruzado}\".");
+        }
+        return $redirect;
     }
 
     public function show($id)
@@ -378,6 +391,9 @@ class PrestamoController extends Controller
             $prestamo->estatus = 'Retirado';
             $prestamo->save();
         }
+
+        // Self-heal: finalizar préstamos ya liquidados que quedaron con estatus activo
+        $prestamo->finalizarSiLiquidado();
 
         // Auto-change status to Atrasado when there are overdue payments
         // NOTE: mora interest (interes_diario) is NOT auto-set — admin activates it manually
@@ -447,10 +463,11 @@ class PrestamoController extends Controller
         $prestamo = Prestamo::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
 
         // El estatus NO es editable — se actualiza automáticamente por el sistema
+        // Empleados scoped al tenant: impide enlazar personal de OTRO admin (IDOR cross-tenant)
         $data = $request->validate([
-            'cobrador_id'     => 'nullable|exists:empleados,id',
-            'promotor_id'     => 'nullable|exists:empleados,id',
-            'desembolso_id'   => 'nullable|exists:empleados,id',
+            'cobrador_id'     => ['nullable', Rule::exists('empleados', 'id')->where('admin_id', $adminId)],
+            'promotor_id'     => ['nullable', Rule::exists('empleados', 'id')->where('admin_id', $adminId)],
+            'desembolso_id'   => ['nullable', Rule::exists('empleados', 'id')->where('admin_id', $adminId)],
             'interes_diario'  => 'nullable|numeric|min:0',
         ]);
 
@@ -827,6 +844,11 @@ class PrestamoController extends Controller
         $promotorId = $prestamo->promotor_id;
         $cobradorId = $prestamo->cobrador_id;
 
+        // Todo o nada: si falla la creación del nuevo préstamo, su plan de pagos
+        // o el guardado del pagaré, el préstamo anterior NO debe quedar cerrado
+        DB::beginTransaction();
+        try {
+
         // ── 1. Cerrar préstamo anterior ──────────────────────────────────
         Pago::where('prestamo_id', $id)
             ->whereIn('estatus', ['Pendiente', 'Atrasado'])
@@ -901,7 +923,7 @@ class PrestamoController extends Controller
 
             Pago::create([
                 'prestamo_id'      => $nuevoPrestamo->id,
-                'cobrador_id'      => null,
+                'cobrador_id'      => $cobradorId,
                 'numero_pago'      => $i,
                 'monto_cuota'      => $cuota,
                 'interes'          => $interes,
@@ -937,6 +959,14 @@ class PrestamoController extends Controller
              'nuevo_efectivo' => $nuevoEfectivo, 'rendimiento' => $rendimientoMonto,
              'rentabilidad_pct' => $rentabilidad]
         );
+
+        DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            report($e);
+            return redirect()->route('prestamos.show', $id)
+                ->with('error', 'No se pudo completar el refinanciamiento. No se realizó ningún cambio. Detalle: ' . $e->getMessage());
+        }
 
         Cache::forget("dashboard_kpis_{$adminId}");
         Cache::forget("dashboard_prestamos_{$adminId}");

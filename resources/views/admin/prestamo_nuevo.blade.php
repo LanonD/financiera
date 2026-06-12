@@ -147,28 +147,6 @@ $docsMap   = $clientesConDocs ?? [];
 </div>
 @endif
 
-@if(session('warning_cruzado'))
-<div id="warningCruzadoServer" style="background:#fffbeb;border:1px solid #fbbf24;border-radius:10px;padding:12px 16px;margin-bottom:20px">
-    <div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:4px">⚠ Deuda activa con otro administrador</div>
-    <div style="font-size:13px;color:#78350f;margin-bottom:8px">
-        Este cliente ya tiene un préstamo activo con el administrador <strong>"{{ session('warning_cruzado') }}"</strong>.
-        ¿Desea otorgar el préstamo de todas formas?
-    </div>
-    <button type="button" onclick="aceptarCruzadoServer()"
-        style="padding:6px 16px;background:#d97706;color:#fff;border:none;border-radius:5px;font-size:13px;font-weight:600;cursor:pointer">
-        Aceptar y continuar de todas formas
-    </button>
-</div>
-<script>
-function aceptarCruzadoServer() {
-    document.getElementById('confirmarCruzado').value = '1';
-    const box = document.getElementById('warningCruzadoServer');
-    box.style.background = '#f0fdf4';
-    box.style.borderColor = '#86efac';
-    box.innerHTML = '<div style="font-size:13px;font-weight:600;color:#166534">✓ Confirmado — complete el formulario y envíe de nuevo</div>';
-}
-</script>
-@endif
 <div class="np-grid">
 
     {{-- Left panel: form --}}

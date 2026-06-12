@@ -76,6 +76,7 @@
     .alert{padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:16px}
     .alert-success{background:#dcfce7;border:1px solid #86efac;color:#15803d}
     .alert-error{background:#fee2e2;border:1px solid #fca5a5;color:#991b1b}
+    .alert-warning{background:#fffbeb;border:1px solid #fcd34d;color:#92400e}
     /* Offline UI */
     #offline-banner{display:none;position:sticky;top:56px;z-index:49;background:#fef9c3;border-bottom:1px solid #fcd34d;padding:8px 28px;font-size:12px;font-weight:600;color:#92400e;display:none;align-items:center;gap:8px}
     .offline-badge{display:none;align-items:center;justify-content:center;min-width:17px;height:17px;padding:0 5px;border-radius:999px;background:#ef4444;color:#fff;font-size:10px;font-weight:700;line-height:1;margin-left:auto}
@@ -305,6 +306,9 @@
         @endif
         @if(session('error'))
             <div class="alert alert-error">{{ session('error') }}</div>
+        @endif
+        @if(session('warning'))
+            <div class="alert alert-warning">{{ session('warning') }}</div>
         @endif
 
         {{-- Pending offline loans panel --}}

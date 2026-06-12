@@ -69,7 +69,8 @@ class ClienteController extends Controller
             'latitud'     => 'nullable|numeric',
             'longitud'    => 'nullable|numeric',
             'ocupacion'   => 'nullable|in:Empleado,Negocio propio,Independiente,Otro',
-            'promotor_id' => 'nullable|exists:empleados,id',
+            // Scoped al tenant: impide asignar un promotor de OTRO admin (IDOR cross-tenant)
+            'promotor_id' => ['nullable', Rule::exists('empleados', 'id')->where('admin_id', $adminId)],
         ], [
             'curp.unique' => 'Este CURP ya está registrado para uno de tus clientes.',
         ]);
@@ -162,7 +163,8 @@ class ClienteController extends Controller
             'latitud'     => 'nullable|numeric',
             'longitud'    => 'nullable|numeric',
             'ocupacion'   => 'nullable|in:Empleado,Negocio propio,Independiente,Otro',
-            'promotor_id' => 'nullable|exists:empleados,id',
+            // Scoped al tenant: impide asignar un promotor de OTRO admin (IDOR cross-tenant)
+            'promotor_id' => ['nullable', Rule::exists('empleados', 'id')->where('admin_id', $adminId)],
         ], [
             'curp.unique' => 'Este CURP ya está registrado para otro cliente tuyo.',
         ]);
@@ -209,7 +211,8 @@ class ClienteController extends Controller
             'direccion'   => 'nullable|string|max:500',
             'latitud'     => 'nullable|numeric',
             'longitud'    => 'nullable|numeric',
-            'promotor_id' => 'nullable|exists:empleados,id',
+            // Scoped al tenant: impide asignar un promotor de OTRO admin (IDOR cross-tenant)
+            'promotor_id' => ['nullable', Rule::exists('empleados', 'id')->where('admin_id', $adminId)],
         ];
 
         if ($withPrestamo) {
