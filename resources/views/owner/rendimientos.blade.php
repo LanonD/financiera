@@ -150,6 +150,39 @@
 @media(prefers-reduced-motion:reduce){
     .rnd-kpi,.pf-section,.rnd-stat-box,.pf-qbtn{transition:none}
 }
+
+/* ═══════════════════════ Contabilidad consolidada ═══════════════════════ */
+.acc-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:14px}
+.acc-kpi{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:15px 16px;position:relative;overflow:hidden;box-shadow:var(--shadow-sm);transition:transform .25s cubic-bezier(.2,.7,.2,1),box-shadow .25s}
+.acc-kpi:hover{transform:translateY(-3px);box-shadow:var(--shadow-md)}
+.acc-accent{position:absolute;top:0;left:0;width:3px;height:100%;box-shadow:0 0 14px 0 currentColor;opacity:.95}
+.acc-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:6px}
+.acc-value{font-size:21px;font-weight:800;letter-spacing:-.03em;line-height:1;font-variant-numeric:tabular-nums}
+.acc-sub{font-size:11px;color:var(--text2);margin-top:5px;line-height:1.35}
+.acc-mini{height:4px;background:#eef0f3;border-radius:99px;overflow:hidden;margin-top:7px}
+.acc-mini-fill{height:100%;border-radius:99px}
+
+.acc-panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg,16px);box-shadow:var(--shadow-sm);padding:18px 20px;margin-bottom:22px}
+.acc-panel-title{font-size:13px;font-weight:800;letter-spacing:-.01em;color:var(--text);margin-bottom:2px}
+.acc-panel-sub{font-size:11px;color:var(--text3);margin-bottom:15px}
+.acc-stack{display:flex;height:28px;border-radius:8px;overflow:hidden;background:#f3f4f6;margin-bottom:11px}
+.acc-stack-seg{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;white-space:nowrap;min-width:0;transition:flex-basis .5s cubic-bezier(.2,.7,.2,1)}
+.acc-stack-legend{display:flex;flex-wrap:wrap;gap:14px 20px;align-items:center;margin-bottom:18px}
+.acc-leg{display:flex;align-items:center;gap:8px}
+.acc-leg-dot{width:11px;height:11px;border-radius:3px;flex-shrink:0;margin-top:2px}
+.acc-leg-k{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)}
+.acc-leg-v{font-size:14px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums;line-height:1.1}
+.acc-dual{display:grid;grid-template-columns:1fr 1fr;gap:14px 26px;padding-top:15px;border-top:1px dashed var(--border)}
+.acc-prog-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.acc-prog-name{font-size:12px;font-weight:700;color:var(--text2)}
+.acc-prog-pct{font-size:14px;font-weight:800;font-variant-numeric:tabular-nums}
+.acc-prog-bar{height:9px;background:#f3f4f6;border-radius:99px;overflow:hidden}
+.acc-prog-fill{height:100%;border-radius:99px;transition:width .5s cubic-bezier(.2,.7,.2,1)}
+.acc-prog-foot{display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--text3);font-variant-numeric:tabular-nums}
+
+@media(max-width:1200px){.acc-grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:768px){.acc-grid{grid-template-columns:repeat(2,1fr)}.acc-dual{grid-template-columns:1fr}}
+@media(max-width:480px){.acc-grid{grid-template-columns:1fr}}
 </style>
 @endpush
 
@@ -171,37 +204,110 @@
     </div>
 </div>
 
-{{-- ── KPIs globales ───────────────────────────────────────── --}}
-<div class="rnd-kpi-grid">
-    <div class="rnd-kpi">
-        <div class="rnd-kpi-accent" style="background:#6366f1"></div>
-        <div class="rnd-kpi-label">Capital desplegado</div>
-        <div class="rnd-kpi-value" style="color:#4f46e5">${{ number_format($globales['capital_desplegado'], 0, '.', ',') }}</div>
-        <div class="rnd-kpi-sub">{{ $globales['total_prestamos'] }} préstamos</div>
+{{-- ── Contabilidad consolidada · KPIs ─────────────────────── --}}
+@php
+    $g                = $globales;
+    // Modelo contable capital-primero: lo cobrado primero regresa el capital, el excedente es interés.
+    $capRecuperado    = max(0, $g['total_cobrado'] - $g['interes_cobrado']);
+    $capPendiente     = max(0, $g['capital_desplegado'] - $capRecuperado);
+    $capRecPct        = $g['capital_desplegado'] > 0 ? round($capRecuperado / $g['capital_desplegado'] * 100, 1) : 0;
+    $interesEsperado  = max(0, $g['total_acordado'] - $g['capital_desplegado']);
+    $interesPorCobrar = max(0, $interesEsperado - $g['interes_cobrado']);
+    $interesPct       = $interesEsperado > 0 ? round($g['interes_cobrado'] / $interesEsperado * 100, 1) : 0;
+    $totCobBase       = max(1, $g['total_cobrado']);
+    $wCap             = round($capRecuperado / $totCobBase * 100, 2);
+    $wInt             = round($g['interes_cobrado'] / $totCobBase * 100, 2);
+@endphp
+
+<div class="acc-grid">
+    {{-- Capital desplegado --}}
+    <div class="acc-kpi">
+        <div class="acc-accent" style="color:#6366f1;background:#6366f1"></div>
+        <div class="acc-label">Capital desplegado</div>
+        <div class="acc-value" style="color:#4f46e5">${{ number_format($g['capital_desplegado'],0,'.',',') }}</div>
+        <div class="acc-sub">{{ $g['total_prestamos'] }} préstamos · dinero prestado</div>
     </div>
-    <div class="rnd-kpi">
-        <div class="rnd-kpi-accent" style="background:#10b981"></div>
-        <div class="rnd-kpi-label">Total cobrado</div>
-        <div class="rnd-kpi-value" style="color:#10b981">${{ number_format($globales['total_cobrado'], 0, '.', ',') }}</div>
-        <div class="rnd-kpi-sub">{{ $globales['recuperado_pct'] }}% del acordado</div>
+    {{-- Capital recuperado --}}
+    <div class="acc-kpi">
+        <div class="acc-accent" style="color:#0ea5e9;background:#0ea5e9"></div>
+        <div class="acc-label">Capital recuperado</div>
+        <div class="acc-value" style="color:#0284c7">${{ number_format($capRecuperado,0,'.',',') }}</div>
+        <div class="acc-sub">{{ $capRecPct }}% del capital ya regresó</div>
+        <div class="acc-mini"><div class="acc-mini-fill" style="width:{{ min(100,$capRecPct) }}%;background:#0ea5e9"></div></div>
     </div>
-    <div class="rnd-kpi">
-        <div class="rnd-kpi-accent" style="background:#7c3aed"></div>
-        <div class="rnd-kpi-label">Interés cobrado</div>
-        <div class="rnd-kpi-value" style="color:#7c3aed">${{ number_format($globales['interes_cobrado'], 0, '.', ',') }}</div>
-        <div class="rnd-kpi-sub">cobrado/capital: {{ $globales['rendimiento_pct'] }}%</div>
+    {{-- Interés cobrado --}}
+    <div class="acc-kpi">
+        <div class="acc-accent" style="color:#7c3aed;background:#7c3aed"></div>
+        <div class="acc-label">Interés cobrado</div>
+        <div class="acc-value" style="color:#7c3aed">${{ number_format($g['interes_cobrado'],0,'.',',') }}</div>
+        <div class="acc-sub">ganancia real · {{ $interesPct }}% del esperado</div>
+        <div class="acc-mini"><div class="acc-mini-fill" style="width:{{ min(100,$interesPct) }}%;background:#7c3aed"></div></div>
     </div>
-    <div class="rnd-kpi">
-        <div class="rnd-kpi-accent" style="background:#f59e0b"></div>
-        <div class="rnd-kpi-label">Saldo en cartera</div>
-        <div class="rnd-kpi-value" style="color:#d97706">${{ number_format($globales['saldo_pendiente'], 0, '.', ',') }}</div>
-        <div class="rnd-kpi-sub">activos + atrasados</div>
+    {{-- Total cobrado --}}
+    <div class="acc-kpi">
+        <div class="acc-accent" style="color:#10b981;background:#10b981"></div>
+        <div class="acc-label">Total cobrado</div>
+        <div class="acc-value" style="color:#10b981">${{ number_format($g['total_cobrado'],0,'.',',') }}</div>
+        <div class="acc-sub">capital + interés · entró a caja</div>
     </div>
-    <div class="rnd-kpi">
-        <div class="rnd-kpi-accent" style="background:#ef4444"></div>
-        <div class="rnd-kpi-label">Mora acumulada</div>
-        <div class="rnd-kpi-value" style="color:#dc2626">${{ number_format($globales['mora_pendiente'], 0, '.', ',') }}</div>
-        <div class="rnd-kpi-sub">moratorio pendiente</div>
+    {{-- En cartera (por cobrar) --}}
+    <div class="acc-kpi">
+        <div class="acc-accent" style="color:#f59e0b;background:#f59e0b"></div>
+        <div class="acc-label">En cartera (por cobrar)</div>
+        <div class="acc-value" style="color:#d97706">${{ number_format($g['saldo_pendiente'],0,'.',',') }}</div>
+        <div class="acc-sub">saldo vivo · activos + atrasados</div>
+    </div>
+    {{-- Mora acumulada --}}
+    <div class="acc-kpi">
+        <div class="acc-accent" style="color:#ef4444;background:#ef4444"></div>
+        <div class="acc-label">Mora acumulada</div>
+        <div class="acc-value" style="color:#dc2626">${{ number_format($g['mora_pendiente'],0,'.',',') }}</div>
+        <div class="acc-sub">interés moratorio sin cobrar</div>
+    </div>
+</div>
+
+{{-- ── Estado de cuenta: composición de caja + progreso ────── --}}
+<div class="acc-panel">
+    <div class="acc-panel-title">Estado de cuenta consolidado</div>
+    <div class="acc-panel-sub">Cómo se compone el dinero que ya entró a caja y cuánto falta por recuperar</div>
+
+    @if($g['total_cobrado'] > 0)
+    {{-- Barra apilada: Total cobrado = Capital recuperado + Interés ganado --}}
+    <div class="acc-stack">
+        <div class="acc-stack-seg" style="flex:0 0 {{ $wCap }}%;background:#0ea5e9" title="Capital recuperado: ${{ number_format($capRecuperado,2,'.',',') }}">{{ $wCap >= 14 ? '$'.number_format($capRecuperado,0,'.',',') : '' }}</div>
+        <div class="acc-stack-seg" style="flex:0 0 {{ $wInt }}%;background:#7c3aed" title="Interés ganado: ${{ number_format($g['interes_cobrado'],2,'.',',') }}">{{ $wInt >= 14 ? '$'.number_format($g['interes_cobrado'],0,'.',',') : '' }}</div>
+    </div>
+    <div class="acc-stack-legend">
+        <div class="acc-leg"><span class="acc-leg-dot" style="background:#0ea5e9"></span><div><div class="acc-leg-k">Capital recuperado</div><div class="acc-leg-v">${{ number_format($capRecuperado,0,'.',',') }}</div></div></div>
+        <div class="acc-leg"><span class="acc-leg-dot" style="background:#7c3aed"></span><div><div class="acc-leg-k">Interés ganado</div><div class="acc-leg-v">${{ number_format($g['interes_cobrado'],0,'.',',') }}</div></div></div>
+        <div class="acc-leg" style="margin-left:auto"><span class="acc-leg-dot" style="background:#10b981"></span><div><div class="acc-leg-k">Total cobrado</div><div class="acc-leg-v" style="color:#10b981">${{ number_format($g['total_cobrado'],0,'.',',') }}</div></div></div>
+    </div>
+    @endif
+
+    {{-- Progreso dual: recuperación de capital + cobro de interés --}}
+    <div class="acc-dual">
+        <div>
+            <div class="acc-prog-head">
+                <span class="acc-prog-name">Recuperación de capital</span>
+                <span class="acc-prog-pct" style="color:#0284c7">{{ $capRecPct }}%</span>
+            </div>
+            <div class="acc-prog-bar"><div class="acc-prog-fill" style="width:{{ min(100,$capRecPct) }}%;background:linear-gradient(90deg,#38bdf8,#0ea5e9)"></div></div>
+            <div class="acc-prog-foot">
+                <span>Recuperado ${{ number_format($capRecuperado,0,'.',',') }}</span>
+                <span>Falta ${{ number_format($capPendiente,0,'.',',') }}</span>
+            </div>
+        </div>
+        <div>
+            <div class="acc-prog-head">
+                <span class="acc-prog-name">Cobro de interés</span>
+                <span class="acc-prog-pct" style="color:#7c3aed">{{ $interesPct }}%</span>
+            </div>
+            <div class="acc-prog-bar"><div class="acc-prog-fill" style="width:{{ min(100,$interesPct) }}%;background:linear-gradient(90deg,#a78bfa,#7c3aed)"></div></div>
+            <div class="acc-prog-foot">
+                <span>Cobrado ${{ number_format($g['interes_cobrado'],0,'.',',') }}</span>
+                <span>Por cobrar ${{ number_format($interesPorCobrar,0,'.',',') }}</span>
+            </div>
+        </div>
     </div>
 </div>
 
