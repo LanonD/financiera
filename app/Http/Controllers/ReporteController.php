@@ -24,6 +24,7 @@ class ReporteController extends Controller
         $resumen = Pago::whereBetween('fecha_pago', [$fecha_desde, $fecha_hasta])
             ->whereIn('prestamo_id', $prestamoIds)
             ->whereIn('estatus', ['Pagado', 'Parcial'])
+            ->where('monto_cobrado', '>', 0) // excluir cuotas liquidadas (cobro $0) — no duplicar capital/interés
             ->selectRaw("
                 COUNT(*) as total_cobros,
                 COALESCE(SUM(monto_cobrado), 0) as total_monto,
@@ -51,6 +52,7 @@ class ReporteController extends Controller
         $cobros_hoy = Pago::whereDate('fecha_pago', $hoy)
             ->whereIn('prestamo_id', $prestamoIds)
             ->whereIn('estatus', ['Pagado', 'Parcial'])
+            ->where('monto_cobrado', '>', 0) // excluir cuotas liquidadas (cobro $0)
             ->selectRaw("COUNT(*) as num, COALESCE(SUM(monto_cobrado),0) as total")
             ->first();
 
@@ -84,6 +86,7 @@ class ReporteController extends Controller
         $cobros_rango = Pago::whereBetween('fecha_pago', [$fecha_desde, $fecha_hasta])
             ->whereIn('prestamo_id', $prestamoIds)
             ->whereIn('estatus', ['Pagado', 'Parcial'])
+            ->where('monto_cobrado', '>', 0) // excluir cuotas liquidadas (cobro $0) — no duplicar capital/interés
             ->selectRaw("
                 DATE(fecha_pago) as dia,
                 COALESCE(SUM(monto_cobrado),0) as total,
@@ -98,6 +101,7 @@ class ReporteController extends Controller
         $cobros_por_cobrador = Pago::whereBetween('fecha_pago', [$fecha_desde, $fecha_hasta])
             ->whereIn('prestamo_id', $prestamoIds)
             ->whereIn('estatus', ['Pagado', 'Parcial'])
+            ->where('monto_cobrado', '>', 0) // excluir cuotas liquidadas (cobro $0) — no duplicar capital/interés
             ->whereNotNull('cobrador_id')
             ->join('empleados', 'pagos.cobrador_id', '=', 'empleados.id')
             ->selectRaw("

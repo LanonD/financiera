@@ -130,13 +130,25 @@ class OwnerController extends Controller
                 ->whereIn('estatus', ['Pagado', 'Parcial'])->sum('monto_cobrado')
             : 0.0;
 
+        // Capital recuperado: sumar 'capital' SOLO de filas que cobraron dinero real
+        // (monto_cobrado > 0). Al liquidar un préstamo, sus cuotas 'plan' quedan en
+        // estatus Pagado con monto_cobrado = 0 pero conservan su capital/interes
+        // programado, y la fila 'extra' del cobro real ya carga ese mismo principal.
+        // Sumar todas las filas Pagado duplicaría el capital (mismo criterio que el
+        // cálculo de refinanciamiento, que excluye filas liquidadas/congeladas).
         $capitalRecuperado = $deployedIds->isNotEmpty()
             ? (float) Pago::whereIn('prestamo_id', $deployedIds)
-                ->whereIn('estatus', ['Pagado', 'Parcial'])->sum('capital')
+                ->whereIn('estatus', ['Pagado', 'Parcial'])
+                ->where('monto_cobrado', '>', 0)
+                ->sum('capital')
             : 0.0;
+        // Blindaje: nunca puede recuperarse más capital del que se prestó.
+        $capitalRecuperado = min($capitalRecuperado, $capitalDesplegado);
 
+        // Interés cobrado = todo lo cobrado por encima del capital recuperado
+        // (interés ordinario + moratorio realmente cobrado). Es la ganancia realizada.
         $interesCobranzaReal = max(0.0, round($totalCobrado - $capitalRecuperado, 2));
-        $gananciaNetaAprox   = max(0.0, round($totalCobrado - $capitalDesplegado, 2));
+        $gananciaNetaAprox   = $interesCobranzaReal;
         $roi = $capitalDesplegado > 0
             ? round($gananciaNetaAprox / $capitalDesplegado * 100, 2) : 0;
 
@@ -546,7 +558,17 @@ class OwnerController extends Controller
                     ->sum('monto_cobrado')
                 : 0.0;
 
-            $interes_cobrado = max(0.0, round($total_cobrado - $capital_desplegado, 2));
+            // Capital recuperado: sólo filas con cobro real (monto_cobrado > 0); sumar
+            // 'capital' sobre todas las filas Pagado duplica el principal cuando un
+            // préstamo se liquidó (las cuotas plan liquidadas conservan su capital).
+            $capital_recuperado = $pids->isNotEmpty()
+                ? (float) Pago::whereIn('prestamo_id', $pids)
+                    ->whereIn('estatus', ['Pagado', 'Parcial'])
+                    ->where('monto_cobrado', '>', 0)
+                    ->sum('capital')
+                : 0.0;
+            $capital_recuperado = min($capital_recuperado, $capital_desplegado);
+            $interes_cobrado = max(0.0, round($total_cobrado - $capital_recuperado, 2));
 
             // ── Breakdown por estatus (para filtro interactivo del donut) ──
             $pagosXEstatus = collect();

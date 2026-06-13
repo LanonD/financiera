@@ -103,8 +103,13 @@ $interesAcordado     = max(0, round($totalAcordado - $totalCapitalEnviado, 2));
 // Sumar desde los registros reales de pago
 $allPagos        = $prestamos->flatMap(fn($l) => $l->pagos->whereIn('estatus', ['Pagado','Parcial']));
 $totalCobrado    = (float) $allPagos->sum('monto_cobrado');
-$capitalCobrado  = (float) $allPagos->sum('capital');
-$interesCobrado  = (float) $allPagos->sum('interes');
+// Capital/interés cobrado: sólo filas con cobro real (monto_cobrado > 0). Las cuotas
+// liquidadas quedan en Pagado con monto_cobrado 0 pero conservan su capital/interes
+// programado, mientras la fila del cobro real ya lo carga; sumarlas todas duplicaría
+// el principal. Interés = residual para que capital + interés = total cobrado.
+$cobrosReales    = $allPagos->filter(fn($p) => (float) $p->monto_cobrado > 0);
+$capitalCobrado  = min((float) $cobrosReales->sum('capital'), $totalCapitalEnviado);
+$interesCobrado  = max(0.0, round($totalCobrado - $capitalCobrado, 2));
 
 // Pendiente de cobrar del total acordado
 $pendienteCobrar = max(0, round($totalAcordado - $totalCobrado, 2));
