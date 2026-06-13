@@ -14,7 +14,7 @@ use Carbon\Carbon;
 
 class ClienteController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         $user   = Auth::user();
         $puesto = $user->puesto;
@@ -22,7 +22,8 @@ class ClienteController extends Controller
         $adminId = $user->adminId();
 
         $query = Cliente::with(['promotor', 'prestamos.pagos'])
-            ->where('admin_id', $adminId);
+            ->where('admin_id', $adminId)
+            ->where('activo', true);
 
         if (in_array('promo', $user->getAllRoles()) && !in_array('admin', $user->getAllRoles())) {
             $empleado = $user->empleado;
@@ -31,14 +32,43 @@ class ClienteController extends Controller
             }
         }
 
-        $clientes = $query->where('activo', true)->orderBy('nombre')->get();
+        // ── Filtros server-side ───────────────────────────────
+        $filtros = [
+            'q'        => trim((string)$request->query('q', '')),
+            'prestamo' => $request->query('prestamo', 'todos'),   // todos | con | sin
+            'promotor' => trim((string)$request->query('promotor', '')),
+        ];
+
+        if ($filtros['q'] !== '') {
+            $term = $filtros['q'];
+            $query->where(function ($w) use ($term) {
+                $w->where('nombre', 'like', "%{$term}%")
+                  ->orWhere('celular', 'like', "%{$term}%")
+                  ->orWhere('curp', 'like', "%{$term}%")
+                  ->orWhereHas('promotor', fn ($p) => $p->where('nombre', 'like', "%{$term}%"));
+            });
+        }
+
+        $activos = ['Activo', 'Atrasado', 'Pendiente'];
+        if ($filtros['prestamo'] === 'con') {
+            $query->whereHas('prestamos', fn ($p) => $p->whereIn('estatus', $activos));
+        } elseif ($filtros['prestamo'] === 'sin') {
+            $query->whereDoesntHave('prestamos', fn ($p) => $p->whereIn('estatus', $activos));
+        }
+
+        if ($filtros['promotor'] !== '') {
+            $query->whereHas('promotor', fn ($p) => $p->where('nombre', $filtros['promotor']));
+        }
+
+        $clientes = $query->orderBy('nombre')->paginate(25)->withQueryString();
 
         $promotores = Empleado::whereJsonContains('roles', 'promo')
             ->where('admin_id', $adminId)
             ->where('activo', true)
+            ->orderBy('nombre')
             ->get();
 
-        return view('admin.clientes', compact('clientes', 'promotores', 'puesto'));
+        return view('admin.clientes', compact('clientes', 'promotores', 'puesto', 'filtros'));
     }
 
     public function create()

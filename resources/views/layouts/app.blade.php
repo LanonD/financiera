@@ -284,6 +284,27 @@
     /* ── Accesibilidad: focus visible coherente ── */
     :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
 
+    /* ── Paginación ── */
+    .pagination{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:14px 18px;border-top:1px solid var(--border)}
+    .pagination-info{font-size:12.5px;color:var(--text2)}
+    .pagination-info strong{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+    .pagination-controls{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+    .pg-btn{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:34px;padding:0 9px;
+        border-radius:9px;border:1px solid var(--border);background:var(--card);color:var(--text2);
+        font-size:13px;font-weight:600;font-family:var(--font);text-decoration:none;cursor:pointer;
+        transition:background .15s,color .15s,border-color .15s,transform .12s;font-variant-numeric:tabular-nums}
+    .pg-btn svg{width:15px;height:15px}
+    .pg-btn:hover:not(.pg-active):not(.pg-disabled){background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.35);color:var(--accent-hover);transform:translateY(-1px)}
+    .pg-active{background:linear-gradient(135deg,var(--accent),var(--accent-hover));border-color:transparent;color:#fff;
+        box-shadow:0 6px 14px -6px rgba(16,185,129,.6);cursor:default}
+    .pg-disabled{opacity:.4;cursor:not-allowed}
+    .pg-ellipsis{padding:0 4px;color:var(--text3);font-size:13px;user-select:none}
+    @media(max-width:640px){
+        .pagination{justify-content:center}
+        .pagination-info{width:100%;text-align:center;order:2}
+        .pagination-controls{order:1;justify-content:center}
+    }
+
     /* ── Alerts: entrada animada + botón de cierre ── */
     .alert{animation:alertIn .4s cubic-bezier(.2,.7,.2,1) both;position:relative}
     @keyframes alertIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}

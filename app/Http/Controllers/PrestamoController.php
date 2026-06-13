@@ -41,6 +41,10 @@ class PrestamoController extends Controller
             'monto_max'  => (float)$request->query('monto_max', 0),
             'desde'      => $request->query('desde', ''),
             'hasta'      => $request->query('hasta', ''),
+            'q'          => trim((string)$request->query('q', '')),
+            'estatus'    => array_values(array_filter((array)$request->query('estatus', []))),
+            'promotor'   => trim((string)$request->query('promotor', '')),
+            'cobrador'   => trim((string)$request->query('cobrador', '')),
         ];
 
         if (!empty($filtros['frecuencia'])) {
@@ -64,13 +68,39 @@ class PrestamoController extends Controller
             });
         }
 
-        $prestamos = $query->orderByDesc('id')->get()->map(function ($p) {
-            $next = $p->pagos()->whereIn('estatus', ['Pendiente', 'Atrasado'])->orderBy('fecha_programada')->first();
-            $p->proximo_pago = $next?->fecha_programada?->toDateString();
-            return $p;
-        });
+        // Búsqueda por cliente, ID o promotor/cobrador
+        if ($filtros['q'] !== '') {
+            $term = $filtros['q'];
+            $query->where(function ($q) use ($term) {
+                $q->whereHas('cliente', fn ($c) => $c->where('nombre', 'like', "%{$term}%"))
+                  ->orWhereHas('promotor', fn ($c) => $c->where('nombre', 'like', "%{$term}%"))
+                  ->orWhereHas('cobrador', fn ($c) => $c->where('nombre', 'like', "%{$term}%"));
+                if (ctype_digit($term)) {
+                    $q->orWhere('id', (int)$term);
+                }
+            });
+        }
+        if (!empty($filtros['estatus'])) {
+            $query->whereIn('estatus', $filtros['estatus']);
+        }
+        if ($filtros['promotor'] !== '') {
+            $query->whereHas('promotor', fn ($c) => $c->where('nombre', $filtros['promotor']));
+        }
+        if ($filtros['cobrador'] !== '') {
+            $query->whereHas('cobrador', fn ($c) => $c->where('nombre', $filtros['cobrador']));
+        }
 
-        return view('admin.prestamos', compact('prestamos', 'filtros', 'puesto'));
+        $prestamos = $query->orderByDesc('id')->paginate(25)->withQueryString();
+
+        // Listas para los selects de filtro (del tenant completo, no del set paginado)
+        $listaPromotores = Empleado::whereJsonContains('roles', 'promo')
+            ->where('admin_id', $adminId)->where('activo', true)
+            ->orderBy('nombre')->pluck('nombre')->filter()->unique()->values();
+        $listaCobradores = Empleado::whereJsonContains('roles', 'collector')
+            ->where('admin_id', $adminId)->where('activo', true)
+            ->orderBy('nombre')->pluck('nombre')->filter()->unique()->values();
+
+        return view('admin.prestamos', compact('prestamos', 'filtros', 'puesto', 'listaPromotores', 'listaCobradores'));
     }
 
     public function create()
