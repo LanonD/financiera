@@ -867,6 +867,7 @@ class PrestamoController extends Controller
         $prestamo->interes_activo      = false;
         $prestamo->interes_mora_activo = false;
         $prestamo->interes_diario      = 0;
+        $prestamo->skipStatusLog       = true; // log 'refinanciado' propio abajo; evita duplicado del hook
         $prestamo->save();
 
         PrestamoActividad::log($id, 'refinanciado',
@@ -999,7 +1000,8 @@ class PrestamoController extends Controller
             }
         }
 
-        $prestamo->estatus = 'Retirado';
+        $prestamo->estatus       = 'Retirado';
+        $prestamo->skipStatusLog = true; // mensaje propio abajo; evita duplicado del hook
         $prestamo->save();
 
         PrestamoActividad::log($id, 'estatus',

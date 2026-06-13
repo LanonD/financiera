@@ -18,12 +18,20 @@
     <p style="color:var(--text2);font-size:13px">Busca clientes y préstamos por nombre o teléfono</p>
 </div>
 
-<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;margin-bottom:20px">
+<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;margin-bottom:20px;box-shadow:var(--shadow-sm)">
     <form method="GET" action="{{ route('busqueda.index') }}" style="display:flex;gap:10px;align-items:flex-end;width:100%;flex-wrap:wrap">
         <div style="flex:1">
             <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:5px">Buscar por nombre o teléfono</label>
-            <input style="width:100%;padding:9px 12px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:var(--font);outline:none"
-                   name="q" value="{{ $q }}" placeholder="Ej: Laura Méndez ó 55 1234…">
+            <div style="position:relative">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                     style="position:absolute;left:11px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--text3);pointer-events:none">
+                    <circle cx="6.5" cy="6.5" r="4.5"/><path d="M11.5 11.5L15 15"/>
+                </svg>
+                <input style="width:100%;padding:9px 12px 9px 34px;background:#f9fafb;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--font);outline:none;transition:border-color .15s,box-shadow .15s"
+                       onfocus="this.style.borderColor='var(--accent)';this.style.boxShadow='0 0 0 3px rgba(16,185,129,.12)'"
+                       onblur="this.style.borderColor='var(--border)';this.style.boxShadow='none'"
+                       name="q" value="{{ $q }}" placeholder="Ej: Laura Méndez ó 55 1234…" autofocus autocomplete="off">
+            </div>
         </div>
         <button type="submit" class="btn btn-primary">Buscar</button>
     </form>
@@ -98,8 +106,10 @@
     </div>
 </div>
 @else
-<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:60px 24px;text-align:center;color:var(--text3)">
-    <div style="font-size:15px;font-weight:500;color:var(--text2)">Ingresa un término de búsqueda</div>
+<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:60px 24px;text-align:center;color:var(--text3);box-shadow:var(--shadow-sm)">
+    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto 14px;display:block;opacity:.3"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+    <div style="font-size:15px;font-weight:600;color:var(--text2);margin-bottom:6px">Ingresa un término de búsqueda</div>
+    <div style="font-size:13px;max-width:38ch;margin:0 auto">Puedes buscar por nombre de cliente, número de teléfono o CURP. Los resultados incluirán sus préstamos relacionados.</div>
 </div>
 @endif
 

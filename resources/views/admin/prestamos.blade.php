@@ -45,12 +45,6 @@
     @endif
 </div>
 
-@if(session('success'))
-<div class="alert alert-success" style="margin-bottom:16px">{{ session('success') }}</div>
-@elseif(session('error'))
-<div class="alert alert-error" style="margin-bottom:16px">{{ session('error') }}</div>
-@endif
-
 {{-- Server-side filters --}}
 @php
 $hayFiltros = !empty($filtros['frecuencia']) || $filtros['monto_min'] > 0 || $filtros['monto_max'] > 0
@@ -239,7 +233,11 @@ $listaCobradoresP = $prestamos->pluck('cobrador.nombre')->filter()->unique()->so
             </td>
         </tr>
         @empty
-        <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text3)">No hay préstamos con los filtros seleccionados</td></tr>
+        <tr><td colspan="8" style="text-align:center;padding:48px 24px;color:var(--text3)">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto 12px;display:block;opacity:.3"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10h10M7 14h6"/></svg>
+            <p style="font-size:14px;font-weight:600;color:var(--text2);margin-bottom:4px">No hay préstamos con los filtros seleccionados</p>
+            <p style="font-size:12px">Prueba ajustando o limpiando los filtros.</p>
+        </td></tr>
         @endforelse
         </tbody>
     </table>

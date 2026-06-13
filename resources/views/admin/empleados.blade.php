@@ -260,12 +260,6 @@
     </button>
 </div>
 
-@if(session('success'))
-    <div class="alert alert-success">{{ session('success') }}</div>
-@elseif(session('error'))
-    <div class="alert alert-error">{{ session('error') }}</div>
-@endif
-
 <div class="filter-panel">
     <div class="filter-group" style="flex:1">
         <label>Búsqueda inteligente</label>

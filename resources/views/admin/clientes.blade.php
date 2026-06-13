@@ -34,12 +34,6 @@
     </div>
 </div>
 
-@if(session('success'))
-<div class="alert alert-success" style="margin-bottom:16px">{{ session('success') }}</div>
-@elseif(session('error'))
-<div class="alert alert-error" style="margin-bottom:16px">{{ session('error') }}</div>
-@endif
-
 {{-- Filtros JS --}}
 <div class="cl-filter-wrap">
     <div class="cl-filter-field">
@@ -231,7 +225,11 @@
             </td>
         </tr>
         @empty
-        <tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text3)">No hay clientes registrados</td></tr>
+        <tr><td colspan="6" style="text-align:center;padding:48px 24px;color:var(--text3)">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto 12px;display:block;opacity:.3"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.582-7 8-7s8 3 8 7"/></svg>
+            <p style="font-size:14px;font-weight:600;color:var(--text2);margin-bottom:4px">No hay clientes registrados</p>
+            <p style="font-size:12px">Crea el primero con el botón «Cliente + préstamo» de arriba.</p>
+        </td></tr>
         @endforelse
         </tbody>
     </table>

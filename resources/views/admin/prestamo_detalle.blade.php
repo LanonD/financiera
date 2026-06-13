@@ -179,6 +179,24 @@ $esMiPrestamo   = $empDetalle && $prestamo->promotor_id == $empDetalle->id;
     // Evita que saldo_actual desincronizado muestre un número diferente a lo que desglosa abajo.
     $principalRestante = max(0, (float)$prestamo->monto_entregado - $capitalCobrado);
     $balanceRestante   = $principalRestante + $interesRestante + $interesPendiente;
+
+    // ── Atraso: cuotas con fecha vencida aún sin saldar (para "Ponerse al día") ──
+    $hoyDate            = \Carbon\Carbon::today();
+    $cuotasVencidas     = $pagos->filter(function ($p) use ($hoyDate) {
+        return in_array($p->estatus, ['Pendiente', 'Atrasado', 'Parcial'])
+            && $p->fecha_programada
+            && \Carbon\Carbon::parse($p->fecha_programada)->lt($hoyDate);
+    });
+    $numCuotasVencidas   = $cuotasVencidas->count();
+    $montoCuotasVencidas = round($cuotasVencidas->sum(fn($p) => max(0, (float)$p->monto_cuota - (float)($p->monto_cobrado ?? 0))), 2);
+    $moraAtraso          = (float)($prestamo->interes_acumulado ?? 0);
+    $totalAtraso         = round($montoCuotasVencidas + $moraAtraso, 2);
+    // Próxima cuota futura (a partir de hoy) → siguiente fecha de cobro tras ponerse al día
+    $proximaFutura       = $pagos->filter(function ($p) use ($hoyDate) {
+        return in_array($p->estatus, ['Pendiente', 'Atrasado', 'Parcial'])
+            && $p->fecha_programada
+            && \Carbon\Carbon::parse($p->fecha_programada)->gte($hoyDate);
+    })->sortBy('fecha_programada')->first();
 @endphp
 
 {{-- KPI cards — scroll horizontal en móvil --}}
@@ -254,6 +272,40 @@ $esMiPrestamo   = $empDetalle && $prestamo->promotor_id == $empDetalle->id;
 }
 </style>
 @endpush
+
+{{-- ── Banner de atraso: cuotas vencidas fuera de la fecha acordada ───────── --}}
+@if($numCuotasVencidas > 0 && in_array($prestamo->estatus, ['Activo','Atrasado']) && in_array($puesto, ['admin','promo']))
+<div class="card" style="padding:0;overflow:hidden;margin-bottom:16px;border:1.5px solid #fca5a5">
+    <div style="padding:12px 18px;border-bottom:1px solid #fecaca;background:#fef2f2;font-size:13px;font-weight:700;color:#991b1b;display:flex;align-items:center;gap:8px">
+        ⚠ Cuenta atrasada — {{ $numCuotasVencidas }} cuota(s) fuera de fecha
+    </div>
+    <div style="padding:16px 18px;display:flex;gap:20px;flex-wrap:wrap;align-items:center;justify-content:space-between">
+        <div style="display:flex;gap:24px;flex-wrap:wrap">
+            <div>
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Cuotas vencidas</div>
+                <div style="font-size:18px;font-weight:800;font-family:monospace;color:#dc2626">${{ number_format($montoCuotasVencidas, 2, '.', ',') }}</div>
+            </div>
+            @if($moraAtraso > 0)
+            <div>
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Mora acumulada</div>
+                <div style="font-size:18px;font-weight:800;font-family:monospace;color:#c2410c">${{ number_format($moraAtraso, 2, '.', ',') }}</div>
+            </div>
+            @endif
+            <div>
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Total atrasado</div>
+                <div style="font-size:18px;font-weight:800;font-family:monospace;color:#991b1b">${{ number_format($totalAtraso, 2, '.', ',') }}</div>
+            </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:160px">
+            <button onclick="document.getElementById('modal-ponerse-al-dia').showModal()"
+                style="padding:9px 18px;border-radius:8px;border:none;background:#dc2626;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font);white-space:nowrap">
+                ✓ Ponerse al día
+            </button>
+            <span style="font-size:11px;color:var(--text3);padding:0 2px">Cobra el atraso, liquida las cuotas vencidas y deja la cuenta activa.</span>
+        </div>
+    </div>
+</div>
+@endif
 
 {{-- Actions panel: cobro extra, agendar, pago diferido, cambiar frecuencia --}}
 @if(in_array($prestamo->estatus, ['Activo','Atrasado']) && in_array($puesto, ['admin','promo']))
@@ -1269,6 +1321,77 @@ function confirmarRefinanciar() {
     </form>
 </dialog>
 
+{{-- Modal: Ponerse al día --}}
+@if($numCuotasVencidas > 0)
+<dialog id="modal-ponerse-al-dia" style="border:none;border-radius:16px;padding:0;box-shadow:0 8px 40px rgba(0,0,0,.18);max-width:440px;width:100%">
+    <div style="padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <div>
+            <div style="font-size:15px;font-weight:700;color:#991b1b">Ponerse al día</div>
+            <div style="font-size:12px;color:var(--text2);margin-top:2px">Cobra el atraso y deja la cuenta al corriente</div>
+        </div>
+        <button onclick="document.getElementById('modal-ponerse-al-dia').close()"
+            style="background:#f1f5f9;border:none;width:28px;height:28px;border-radius:50%;font-size:17px;cursor:pointer;color:var(--text3);display:flex;align-items:center;justify-content:center">&times;</button>
+    </div>
+    <form method="POST" action="{{ route('prestamos.ponerseAlDia', $prestamo->id) }}" onsubmit="return submitOnce(this)">
+        @csrf
+        <div style="padding:20px 24px;display:grid;gap:14px">
+
+            {{-- Desglose del atraso --}}
+            <div style="padding:14px 16px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;display:grid;gap:8px">
+                <div style="display:flex;justify-content:space-between;font-size:13px">
+                    <span style="color:#7f1d1d">{{ $numCuotasVencidas }} cuota(s) vencida(s)</span>
+                    <span style="font-family:monospace;font-weight:700;color:#dc2626">${{ number_format($montoCuotasVencidas, 2, '.', ',') }}</span>
+                </div>
+                @if($moraAtraso > 0)
+                <div style="display:flex;justify-content:space-between;font-size:13px">
+                    <span style="color:#7f1d1d">Mora acumulada</span>
+                    <span style="font-family:monospace;font-weight:700;color:#c2410c">${{ number_format($moraAtraso, 2, '.', ',') }}</span>
+                </div>
+                @endif
+                <div style="display:flex;justify-content:space-between;font-size:14px;border-top:1px solid #fecaca;padding-top:8px">
+                    <span style="font-weight:700;color:#991b1b">Total atrasado</span>
+                    <span style="font-family:monospace;font-weight:800;color:#991b1b">${{ number_format($totalAtraso, 2, '.', ',') }}</span>
+                </div>
+            </div>
+
+            {{-- Monto --}}
+            <div>
+                <label style="font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:5px">Monto a cobrar *</label>
+                <div style="display:flex;align-items:center;gap:6px">
+                    <span style="font-size:14px;color:var(--text2);font-weight:600">$</span>
+                    <input type="number" name="monto" id="pad-monto" step="0.01" min="0.01" max="{{ $totalAtraso }}"
+                        value="{{ number_format($totalAtraso, 2, '.', '') }}" required
+                        style="flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:16px;font-family:monospace;outline:none">
+                </div>
+                <div style="font-size:11px;color:var(--text3);margin-top:5px">
+                    Se aplica primero a mora, luego a las cuotas vencidas (de la más antigua a la más reciente).
+                    @if($proximaFutura)
+                    Siguiente cobro tras ponerse al día: <strong>{{ \Carbon\Carbon::parse($proximaFutura->fecha_programada)->format('d/m/Y') }}</strong>.
+                    @endif
+                </div>
+            </div>
+
+            {{-- Nota --}}
+            <div>
+                <label style="font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:5px">Nota (opcional)</label>
+                <input type="text" name="nota" maxlength="255" placeholder="Ej. Pago de atraso en efectivo"
+                    style="width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
+            </div>
+        </div>
+        <div style="padding:14px 24px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end;background:#f9fafb;border-radius:0 0 16px 16px">
+            <button type="button" onclick="document.getElementById('modal-ponerse-al-dia').close()"
+                style="padding:8px 18px;border-radius:8px;border:1px solid var(--border);background:#fff;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">
+                Cancelar
+            </button>
+            <button type="submit"
+                style="padding:8px 20px;border-radius:8px;border:none;background:#dc2626;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font)">
+                Cobrar atraso
+            </button>
+        </div>
+    </form>
+</dialog>
+@endif
+
 @php
 $pagosPendientesJs = $pagos
     ->whereIn('estatus', ['Pendiente','Atrasado'])
@@ -1283,7 +1406,7 @@ $pagosPendientesJs = $pagos
 <script>
 const PAGOS_PENDIENTES = {!! json_encode($pagosPendientesJs) !!};
 
-['modal-cobro-extra','modal-agendar','modal-frecuencia','modal-pagar-cuota'].forEach(function(id){
+['modal-cobro-extra','modal-agendar','modal-frecuencia','modal-pagar-cuota','modal-ponerse-al-dia'].forEach(function(id){
     var el = document.getElementById(id);
     if(!el) return;
     el.addEventListener('click', function(e){ if(e.target === el) el.close(); });

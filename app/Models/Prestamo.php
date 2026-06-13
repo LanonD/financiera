@@ -10,6 +10,13 @@ class Prestamo extends Model
 {
     use HasFactory;
 
+    /**
+     * Cuando un flujo ya registra su propio mensaje descriptivo del cambio de
+     * estatus (cancelación, refinanciamiento, liquidación), activa esta bandera
+     * ANTES de guardar para que el registro automático no genere un duplicado.
+     */
+    public bool $skipStatusLog = false;
+
     protected static function booted(): void
     {
         // El formulario de nuevo préstamo y el dashboard cachean qué clientes
@@ -21,6 +28,44 @@ class Prestamo extends Model
                 Cache::forget("dashboard_prestamos_{$prestamo->admin_id}");
             }
         });
+
+        // Registrar en la actividad del préstamo CUALQUIER cambio de estatus
+        // (Pendiente→Activo, Activo→Atrasado, →Finalizado, etc.) de forma
+        // centralizada, sin depender de que cada controlador lo registre.
+        static::updated(function (self $prestamo) {
+            if (!$prestamo->wasChanged('estatus') || $prestamo->skipStatusLog) {
+                return;
+            }
+            $de = $prestamo->getOriginal('estatus');
+            $a  = $prestamo->estatus;
+
+            PrestamoActividad::log(
+                $prestamo->id,
+                'estatus',
+                self::mensajeCambioEstatus($de, $a),
+                ['de' => $de, 'a' => $a, 'automatico' => true]
+            );
+        });
+    }
+
+    /**
+     * Texto legible para un cambio de estatus, según el destino.
+     */
+    public static function mensajeCambioEstatus(?string $de, string $a): string
+    {
+        $de = $de ?: '—';
+
+        return match ($a) {
+            'Atrasado'     => "El préstamo pasó a Atrasado por cuotas vencidas (antes: {$de}).",
+            'Activo'       => $de === 'Atrasado'
+                ? 'El préstamo se puso al corriente (Atrasado → Activo).'
+                : "El préstamo pasó a Activo (antes: {$de}).",
+            'Finalizado'   => "Préstamo finalizado — deuda saldada (antes: {$de}).",
+            'Retirado'     => "Préstamo retirado (antes: {$de}).",
+            'Refinanciado' => "Préstamo refinanciado (antes: {$de}).",
+            'Pendiente'    => "El préstamo pasó a Pendiente (antes: {$de}).",
+            default        => "Estatus actualizado: {$de} → {$a}.",
+        };
     }
 
     protected $table = 'prestamos';
@@ -156,7 +201,9 @@ class Prestamo extends Model
         $this->payment_hold        = false;
         $this->interes_mora_activo = false;
         $this->interes_diario      = 0;
+        $this->skipStatusLog       = true; // mensaje propio abajo; evita duplicado del hook
         $this->save();
+        $this->skipStatusLog       = false;
 
         PrestamoActividad::log($this->id, 'estatus',
             'Préstamo finalizado automáticamente — deuda liquidada.',

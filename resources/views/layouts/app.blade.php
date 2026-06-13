@@ -10,12 +10,12 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="PrestaCRM">
-    <meta name="theme-color" content="#0f1623">
+    <meta name="theme-color" content="#0b0f17">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=Sora:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
-    :root{--bg:#f0f2f5;--sidebar:#0f1623;--sidebar-hover:rgba(255,255,255,0.06);--sidebar-active:rgba(59,130,246,0.15);--accent:#3b82f6;--accent-hover:#2563eb;--card:#fff;--border:rgba(0,0,0,0.07);--text:#111827;--text2:#6b7280;--text3:#9ca3af;--font:'DM Sans',sans-serif;--radius:10px}
+    :root{--bg:#f5f6f3;--sidebar:#0b0f17;--sidebar-2:#0e1320;--sidebar-hover:rgba(255,255,255,0.055);--sidebar-active:rgba(16,185,129,0.14);--accent:#10b981;--accent-hover:#059669;--teal:#2dd4bf;--gold:#f6b73c;--card:#ffffff;--border:rgba(15,22,35,0.08);--text:#0f1623;--text2:#5b6472;--text3:#9aa3b2;--font:'Sora',-apple-system,'Segoe UI',sans-serif;--display:'Fraunces',Georgia,serif;--font-mono:'DM Mono',ui-monospace,monospace;--radius:12px;--radius-sm:8px;--radius-lg:18px;--shadow-sm:0 1px 2px rgba(15,30,24,.05),0 1px 3px rgba(15,30,24,.06);--shadow-md:0 8px 22px -10px rgba(15,30,24,.18);--shadow-lg:0 24px 50px -24px rgba(13,30,24,.3)}
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     html{overflow-x:hidden}
     body{font-family:var(--font);background:var(--bg);color:var(--text);display:flex;min-height:100vh;overflow-x:hidden;max-width:100vw}
@@ -144,10 +144,179 @@
         .kpi-grid{grid-template-columns:1fr}
         .content{padding:12px}
     }
+    /* ═══════════════════════════════════════════════════════════
+       UPGRADE — sistema de diseño premium (esmeralda · Sora/Fraunces)
+       Reglas posteriores; sobrescriben las base por orden de cascada.
+    ═══════════════════════════════════════════════════════════ */
+    body{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+        background:
+            radial-gradient(120% 70% at 100% 0%,rgba(16,185,129,.05),transparent 55%),
+            radial-gradient(90% 60% at 0% 100%,rgba(45,212,191,.045),transparent 55%),
+            var(--bg)}
+
+    /* ── Sidebar ── */
+    .sidebar{background:linear-gradient(180deg,var(--sidebar),var(--sidebar-2));border-right:1px solid rgba(255,255,255,.05)}
+    .logo-mark{position:relative;background:linear-gradient(140deg,var(--accent),var(--accent-hover));
+        box-shadow:0 5px 16px -4px rgba(16,185,129,.6),0 0 0 1px rgba(255,255,255,.1) inset}
+    .logo-mark::before{content:'';position:absolute;inset:-2px;border-radius:10px;z-index:-1;
+        background:conic-gradient(from 0deg,var(--teal),var(--accent),var(--gold),var(--teal));
+        opacity:.5;filter:blur(3px);animation:spin 8s linear infinite}
+    .logo-text{letter-spacing:-.01em}
+    .nav-item{position:relative;transition:background .18s,color .18s,transform .18s}
+    .nav-item:hover{transform:translateX(2px)}
+    .nav-item.active{background:var(--sidebar-active);color:#fff;font-weight:600}
+    .nav-item.active::before{content:'';position:absolute;left:0;top:6px;bottom:6px;width:3px;
+        border-radius:0 3px 3px 0;background:linear-gradient(var(--accent),var(--teal));box-shadow:0 0 12px rgba(16,185,129,.7)}
+    .nav-item.active svg{color:var(--accent)}
+    .nav-section{color:rgba(155,168,188,.45)}
+    .user-avatar{background:linear-gradient(140deg,rgba(16,185,129,.28),rgba(45,212,191,.18));color:var(--teal)}
+
+    /* ── Topbar ── */
+    .topbar{background:rgba(255,255,255,.82);backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);box-shadow:0 1px 0 rgba(15,22,35,.04)}
+    .topbar-title{font-family:var(--display);font-weight:500;font-size:17px;letter-spacing:-.01em}
+
+    /* ── Cards ── */
+    .card{box-shadow:var(--shadow-sm)}
+    .card-title{letter-spacing:-.01em}
+
+    /* ── KPI ── */
+    .kpi{position:relative;overflow:hidden;box-shadow:var(--shadow-sm);transition:transform .25s cubic-bezier(.2,.7,.2,1),box-shadow .25s}
+    .kpi::after{content:'';position:absolute;inset:0 0 auto 0;height:3px;background:linear-gradient(90deg,var(--accent),var(--teal));transform:scaleX(0);transform-origin:left;transition:transform .35s cubic-bezier(.2,.7,.2,1)}
+    .kpi:hover{transform:translateY(-3px);box-shadow:var(--shadow-md)}
+    .kpi:hover::after{transform:scaleX(1)}
+    .kpi-value{font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+
+    /* ── Tablas ── */
+    tbody tr{transition:background .15s}
+    tbody tr:hover{background:rgba(16,185,129,.045)}
+    thead th{background:rgba(15,22,35,.015)}
+
+    /* ── Botones ── */
+    .btn{transition:transform .15s cubic-bezier(.2,.7,.2,1),box-shadow .22s,background .18s,filter .18s}
+    .btn:active{transform:translateY(0) scale(.99)}
+    .btn-primary{position:relative;overflow:hidden;background:linear-gradient(135deg,var(--accent),var(--accent-hover));
+        box-shadow:0 8px 18px -10px rgba(16,185,129,.7),0 1px 0 rgba(255,255,255,.15) inset}
+    .btn-primary::before{content:'';position:absolute;top:0;left:-130%;width:55%;height:100%;
+        background:linear-gradient(100deg,transparent,rgba(255,255,255,.4),transparent);transform:skewX(-20deg);transition:left .6s ease}
+    .btn-primary:hover{transform:translateY(-1px);box-shadow:0 13px 24px -10px rgba(16,185,129,.85)}
+    .btn-primary:hover::before{left:150%}
+
+    /* ── Badges / Alerts ── */
+    .badge{font-weight:600}
+    .badge-green{background:#d1fae5;color:#047857}
+    .alert{display:flex;align-items:center;gap:9px;border-radius:var(--radius-sm);box-shadow:var(--shadow-sm);font-weight:500}
+
+    /* ── Barra de introducción + revelado ── */
+    .intro-bar{position:fixed;top:0;left:0;height:3px;width:100%;z-index:9999;transform:scaleX(0);transform-origin:left;
+        background:linear-gradient(90deg,var(--accent),var(--teal) 55%,var(--gold));box-shadow:0 0 16px rgba(16,185,129,.55);
+        animation:introLoad .9s cubic-bezier(.65,0,.35,1) forwards,introFade .5s ease .95s forwards}
+    @keyframes introLoad{to{transform:scaleX(1)}}
+    @keyframes introFade{to{opacity:0}}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .content{animation:contentIn .5s cubic-bezier(.2,.7,.2,1) both}
+    @keyframes contentIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+    .sidebar-nav>*{animation:navIn .45s ease both}
+    .sidebar-nav>*:nth-child(1){animation-delay:.03s}
+    .sidebar-nav>*:nth-child(2){animation-delay:.06s}
+    .sidebar-nav>*:nth-child(3){animation-delay:.09s}
+    .sidebar-nav>*:nth-child(4){animation-delay:.12s}
+    .sidebar-nav>*:nth-child(5){animation-delay:.15s}
+    .sidebar-nav>*:nth-child(6){animation-delay:.18s}
+    .sidebar-nav>*:nth-child(7){animation-delay:.21s}
+    .sidebar-nav>*:nth-child(8){animation-delay:.24s}
+    .sidebar-nav>*:nth-child(9){animation-delay:.27s}
+    .sidebar-nav>*:nth-child(n+10){animation-delay:.3s}
+    @keyframes navIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
+
+    /* ── Bienvenida post-login (overlay de marca) ── */
+    .welcome-overlay{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;
+        background:#080b12;color:#fff;overflow:hidden;isolation:isolate;clip-path:inset(0 0 0 0);
+        animation:welcomeOut .75s cubic-bezier(.7,0,.3,1) 2.1s forwards}
+    .welcome-overlay::before{content:'';position:absolute;inset:-40%;z-index:-1;filter:blur(40px);opacity:.85;
+        background:
+            radial-gradient(35% 45% at 30% 35%, rgba(16,185,129,.5), transparent 60%),
+            radial-gradient(30% 40% at 70% 40%, rgba(45,212,191,.35), transparent 60%),
+            radial-gradient(40% 45% at 55% 80%, rgba(246,183,60,.18), transparent 60%);
+        animation:wAurora 8s ease-in-out infinite alternate}
+    .welcome-overlay::after{content:'';position:absolute;inset:0;z-index:-1;opacity:.45;
+        background-image:linear-gradient(rgba(255,255,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.06) 1px,transparent 1px);
+        background-size:36px 36px;
+        mask-image:radial-gradient(70% 60% at 50% 45%,#000 30%,transparent 75%)}
+    @keyframes wAurora{from{transform:translate3d(-3%,-2%,0) scale(1)}to{transform:translate3d(3%,3%,0) scale(1.12)}}
+    .welcome-inner{text-align:center;padding:24px;animation:wInnerOut .55s ease 2s forwards}
+    .welcome-logo{width:64px;height:64px;margin:0 auto 22px;border-radius:18px;position:relative;
+        display:flex;align-items:center;justify-content:center;
+        background:linear-gradient(140deg,var(--accent),var(--accent-hover));
+        box-shadow:0 14px 34px -10px rgba(16,185,129,.65),0 0 0 1px rgba(255,255,255,.12) inset;
+        opacity:0;animation:wPop .65s cubic-bezier(.2,.9,.3,1.35) .12s forwards}
+    .welcome-logo::before{content:'';position:absolute;inset:-3px;border-radius:21px;z-index:-1;
+        background:conic-gradient(from 0deg,var(--teal),var(--accent),var(--gold),var(--teal));
+        opacity:.6;filter:blur(5px);animation:spin 5s linear infinite}
+    .welcome-logo svg{width:30px;height:30px;fill:#fff}
+    .welcome-hello{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.24em;color:rgba(206,214,226,.55);
+        opacity:0;animation:wRise .6s cubic-bezier(.2,.7,.2,1) .42s forwards}
+    .welcome-name{font-family:var(--display);font-size:clamp(30px,6vw,46px);font-weight:500;letter-spacing:-.02em;line-height:1.15;margin:10px 0 18px;
+        opacity:0;animation:wRise .65s cubic-bezier(.2,.7,.2,1) .55s forwards}
+    .welcome-name em{font-style:italic;background:linear-gradient(100deg,var(--teal),var(--gold));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+    .welcome-role{display:inline-flex;align-items:center;gap:7px;padding:6px 15px;border-radius:999px;
+        background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);font-size:12px;font-weight:600;color:rgba(206,214,226,.85);text-transform:capitalize;
+        opacity:0;animation:wRise .6s cubic-bezier(.2,.7,.2,1) .7s forwards}
+    .welcome-role b{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px rgba(16,185,129,.9)}
+    .welcome-bar{position:absolute;left:50%;bottom:13vh;transform:translateX(-50%);width:150px;height:3px;border-radius:99px;background:rgba(255,255,255,.1);overflow:hidden;
+        opacity:0;animation:wFade .4s ease .8s forwards}
+    .welcome-bar i{position:absolute;inset:0;border-radius:99px;background:linear-gradient(90deg,var(--accent),var(--teal));
+        transform:scaleX(0);transform-origin:left;animation:wLoad 1.3s cubic-bezier(.65,0,.35,1) .8s forwards}
+    @keyframes wPop{from{opacity:0;transform:scale(.5) rotate(-8deg)}to{opacity:1;transform:none}}
+    @keyframes wRise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+    @keyframes wFade{to{opacity:1}}
+    @keyframes wLoad{to{transform:scaleX(1)}}
+    @keyframes wInnerOut{to{opacity:0;transform:translateY(-18px) scale(.98);filter:blur(4px)}}
+    @keyframes welcomeOut{to{clip-path:inset(0 0 100% 0);visibility:hidden}}
+
+    /* ── Scrollbars refinadas ── */
+    ::-webkit-scrollbar{width:10px;height:10px}
+    ::-webkit-scrollbar-track{background:transparent}
+    ::-webkit-scrollbar-thumb{background:rgba(15,22,35,.16);border-radius:99px;border:2.5px solid var(--bg)}
+    ::-webkit-scrollbar-thumb:hover{background:rgba(15,22,35,.3)}
+    .sidebar::-webkit-scrollbar{width:5px}
+    .sidebar::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border:none}
+
+    /* ── Accesibilidad: focus visible coherente ── */
+    :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+
+    /* ── Alerts: entrada animada + botón de cierre ── */
+    .alert{animation:alertIn .4s cubic-bezier(.2,.7,.2,1) both;position:relative}
+    @keyframes alertIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+    .alert.is-dismissing{opacity:0;transform:translateY(-8px);transition:opacity .3s,transform .3s,margin .3s,max-height .3s;max-height:0!important;margin-bottom:0!important;overflow:hidden}
+    .alert-close{margin-left:auto;flex-shrink:0;background:none;border:none;cursor:pointer;color:inherit;opacity:.55;font-size:16px;line-height:1;padding:2px 4px;border-radius:4px;transition:opacity .15s}
+    .alert-close:hover{opacity:1}
+
+    @media(prefers-reduced-motion:reduce){
+        .intro-bar{display:none}
+        .welcome-overlay{display:none}
+        *,*::before,*::after{animation:none!important;transition-duration:.01ms!important}
+    }
     </style>
     @stack('styles')
 </head>
 <body>
+@if(session('just_logged_in'))
+@php
+    $wHora   = now()->hour;
+    $wSaludo = $wHora < 12 ? 'Buenos días' : ($wHora < 19 ? 'Buenas tardes' : 'Buenas noches');
+    $wNombre = auth()->user()->alias ?: (auth()->user()->nombre ?: auth()->user()->usuario);
+@endphp
+<div class="welcome-overlay" id="welcomeOverlay" role="status" aria-live="polite">
+    <div class="welcome-inner">
+        <div class="welcome-logo"><svg viewBox="0 0 14 14"><path d="M7 1L2 4v6l5 3 5-3V4L7 1z"/></svg></div>
+        <div class="welcome-hello">{{ $wSaludo }}</div>
+        <div class="welcome-name"><em>{{ $wNombre }}</em></div>
+        <div class="welcome-role"><b></b>{{ implode(' · ', auth()->user()->getAllRoles()) }}</div>
+    </div>
+    <div class="welcome-bar" aria-hidden="true"><i></i></div>
+</div>
+@endif
+<div class="intro-bar" aria-hidden="true"></div>
 
 {{-- Sidebar --}}
 <aside class="sidebar">
@@ -444,6 +613,67 @@ if ('serviceWorker' in navigator) {
         item.addEventListener('click', function () {
             if (window.innerWidth <= 768) closeSidebar();
         });
+    });
+})();
+
+// ── Overlay de bienvenida: retirar del DOM al terminar ──
+(function () {
+    var w = document.getElementById('welcomeOverlay');
+    if (w) setTimeout(function () { w.remove(); }, 3100);
+})();
+
+// ── KPIs: contador animado (respeta prefijo $/+/− y sufijo %) ──
+(function () {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    var sels = '.kpi-value,.ow-kpi-value,.rnd-kpi-value';
+    document.querySelectorAll(sels).forEach(function (el) {
+        // Solo nodos de texto plano (sin hijos HTML)
+        if (el.children.length > 0) return;
+        var raw = el.textContent.trim();
+        var m = raw.match(/^([$+−-]*)([\d,]+(?:\.\d+)?)(%?)$/);
+        if (!m) return;
+        var prefix = m[1], suffix = m[3];
+        var target = parseFloat(m[2].replace(/,/g, ''));
+        if (!isFinite(target) || target === 0) return;
+        var decimals = (m[2].split('.')[1] || '').length;
+        var hasCommas = m[2].indexOf(',') !== -1;
+        var dur = 850, t0 = null;
+        function fmt(v) {
+            var s = v.toFixed(decimals);
+            if (hasCommas || target >= 1000) {
+                s = Number(s).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+            }
+            return prefix + s + suffix;
+        }
+        function step(ts) {
+            if (!t0) t0 = ts;
+            var p = Math.min(1, (ts - t0) / dur);
+            var eased = 1 - Math.pow(1 - p, 3); // easeOutCubic
+            el.textContent = fmt(target * eased);
+            if (p < 1) requestAnimationFrame(step);
+            else el.textContent = raw;
+        }
+        el.textContent = fmt(0);
+        requestAnimationFrame(step);
+    });
+})();
+
+// ── Alerts: botón de cierre + auto-dismiss de éxitos ──
+(function () {
+    document.querySelectorAll('.alert').forEach(function (alert) {
+        alert.style.maxHeight = alert.scrollHeight + 24 + 'px';
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'alert-close';
+        btn.setAttribute('aria-label', 'Cerrar aviso');
+        btn.innerHTML = '&times;';
+        btn.addEventListener('click', dismiss);
+        alert.appendChild(btn);
+        function dismiss() {
+            alert.classList.add('is-dismissing');
+            setTimeout(function () { alert.remove(); }, 350);
+        }
+        if (alert.classList.contains('alert-success')) setTimeout(dismiss, 6000);
     });
 })();
 </script>

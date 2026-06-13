@@ -41,12 +41,6 @@
     </span>
 </div>
 
-@if(session('success'))
-<div style="background:#dcfce7;border:1px solid #bbf7d0;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:13px;color:#166534;font-weight:500">
-    {{ session('success') }}
-</div>
-@endif
-
 @if($prestamos_pendientes->isEmpty())
 <div class="card" style="text-align:center;padding:60px 24px;color:var(--text3)">
     <svg width="40" height="40" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto 12px;display:block;opacity:.3"><rect x="6" y="6" width="28" height="28" rx="4"/><path d="M20 14v12M14 20h12"/></svg>

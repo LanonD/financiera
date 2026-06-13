@@ -55,7 +55,8 @@ class AuthController extends Controller
         RateLimiter::clear($throttleKey);
         $request->session()->regenerate();
 
-        return redirect()->route(Auth::user()->dashboardRoute());
+        return redirect()->route(Auth::user()->dashboardRoute())
+            ->with('just_logged_in', true);
     }
 
     public function logout(Request $request)

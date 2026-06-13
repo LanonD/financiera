@@ -230,13 +230,6 @@
     </div>
 </div>
 
-{{-- Success Alert with better style --}}
-@if(session('success'))
-    <div style="background: #10b981; color: #fff; padding: 14px 24px; border-radius: 16px; margin-bottom: 24px; font-weight: 600; font-size: 14px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);">
-        {{ session('success') }}
-    </div>
-@endif
-
 {{-- Smart Filters --}}
 <div class="filter-card">
     <form method="GET" action="{{ route('cobros.asignar') }}" id="formFiltro" class="filter-grid">

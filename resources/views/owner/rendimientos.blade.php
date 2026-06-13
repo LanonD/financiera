@@ -38,16 +38,16 @@
 .rnd-pill{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:99px;font-size:10px;font-weight:700;white-space:nowrap}
 .rnd-pill-blue{background:#eff6ff;color:#1d4ed8}
 .rnd-pill-red{background:#fef2f2;color:#dc2626}
-.rnd-pill-green{background:#f0fdf4;color:#16a34a}
+.rnd-pill-green{background:#f0fdf4;color:#10b981}
 .rnd-pill-yellow{background:#fefce8;color:#ca8a04}
 .rnd-pill-gray{background:#f3f4f6;color:#6b7280}
 
 /* % badge */
 .rnd-pct-badge{display:inline-flex;align-items:center;justify-content:center;padding:4px 10px;border-radius:8px;font-size:14px;font-weight:800;min-width:56px}
-.rnd-pct-green{background:#f0fdf4;color:#16a34a}
+.rnd-pct-green{background:#f0fdf4;color:#10b981}
 .rnd-pct-yellow{background:#fefce8;color:#d97706}
 .rnd-pct-red{background:#fef2f2;color:#dc2626}
-.rnd-pct-blue{background:#eff6ff;color:#2563eb}
+.rnd-pct-blue{background:#eff6ff;color:#4f46e5}
 .rnd-pct-gray{background:#f3f4f6;color:#9ca3af}
 
 /* Chevron */
@@ -110,6 +110,46 @@
     .rnd-kpi-grid{grid-template-columns:1fr}
     .rnd-detail-grid{grid-template-columns:1fr}
 }
+
+/* ═══════════════════════ PULIDO — sistema de gráficas profesional ═══════════════════════ */
+.rnd-kpi{box-shadow:var(--shadow-sm);transition:transform .25s cubic-bezier(.2,.7,.2,1),box-shadow .25s}
+.rnd-kpi:hover{transform:translateY(-3px);box-shadow:var(--shadow-md)}
+.rnd-kpi-accent{box-shadow:0 0 14px 0 currentColor;opacity:.95}
+.rnd-kpi-value{font-variant-numeric:tabular-nums}
+
+/* Secciones de gráficas: tarjeta elevada con cabecera sutil */
+.pf-section{box-shadow:var(--shadow-sm);border-radius:var(--radius-lg);transition:box-shadow .25s}
+.pf-section:hover{box-shadow:var(--shadow-md)}
+.pf-title{font-family:var(--display);font-weight:500;font-size:17px;letter-spacing:-.01em}
+.pf-chart-wrap{height:320px}
+
+/* Controles: pills de rango y modo */
+.pf-qbtn{border-radius:8px;transition:background .15s,color .15s,transform .12s}
+.pf-qbtn:hover{transform:translateY(-1px)}
+.pf-qbtn.active{box-shadow:0 6px 14px -6px rgba(16,185,129,.6)}
+.pf-mode-btns{border-radius:9px}
+.pf-mbtn.active{box-shadow:inset 0 0 0 1px rgba(255,255,255,.15)}
+.pf-select:focus,.pf-date:focus{box-shadow:0 0 0 3px rgba(16,185,129,.12)}
+
+/* Leyendas tipo "chip" */
+.pf-legend-item{padding:3px 10px 3px 8px;background:#f6f7f5;border:1px solid var(--border);border-radius:99px}
+.pf-legend-dot{height:8px;width:8px;border-radius:99px}
+
+/* Cajas de gráfica internas (donut / línea por admin) */
+.rnd-chart-box{box-shadow:var(--shadow-sm);border-radius:12px}
+.rnd-stat-box{transition:transform .2s,box-shadow .2s}
+.rnd-stat-box:hover{transform:translateY(-2px);box-shadow:var(--shadow-sm)}
+.rnd-stat-value{font-variant-numeric:tabular-nums}
+
+/* Tarjetas de admin: realce esmeralda al hover/activar */
+.rnd-card{box-shadow:var(--shadow-sm);transition:box-shadow .2s,border-color .2s}
+.rnd-card:hover{box-shadow:var(--shadow-md);border-color:rgba(16,185,129,.25)}
+.rnd-card-header:hover .rnd-admin-name{color:var(--accent)}
+.rnd-pct-badge{font-variant-numeric:tabular-nums}
+
+@media(prefers-reduced-motion:reduce){
+    .rnd-kpi,.pf-section,.rnd-stat-box,.pf-qbtn{transition:none}
+}
 </style>
 @endpush
 
@@ -134,15 +174,15 @@
 {{-- ── KPIs globales ───────────────────────────────────────── --}}
 <div class="rnd-kpi-grid">
     <div class="rnd-kpi">
-        <div class="rnd-kpi-accent" style="background:#3b82f6"></div>
+        <div class="rnd-kpi-accent" style="background:#6366f1"></div>
         <div class="rnd-kpi-label">Capital desplegado</div>
-        <div class="rnd-kpi-value" style="color:#2563eb">${{ number_format($globales['capital_desplegado'], 0, '.', ',') }}</div>
+        <div class="rnd-kpi-value" style="color:#4f46e5">${{ number_format($globales['capital_desplegado'], 0, '.', ',') }}</div>
         <div class="rnd-kpi-sub">{{ $globales['total_prestamos'] }} préstamos</div>
     </div>
     <div class="rnd-kpi">
-        <div class="rnd-kpi-accent" style="background:#16a34a"></div>
+        <div class="rnd-kpi-accent" style="background:#10b981"></div>
         <div class="rnd-kpi-label">Total cobrado</div>
-        <div class="rnd-kpi-value" style="color:#16a34a">${{ number_format($globales['total_cobrado'], 0, '.', ',') }}</div>
+        <div class="rnd-kpi-value" style="color:#10b981">${{ number_format($globales['total_cobrado'], 0, '.', ',') }}</div>
         <div class="rnd-kpi-sub">{{ $globales['recuperado_pct'] }}% del acordado</div>
     </div>
     <div class="rnd-kpi">
@@ -166,7 +206,7 @@
 </div>
 
 {{-- ── Barra de cobranza global ────────────────────────────── --}}
-@php $gPct = $globales['recuperado_pct']; $gBarColor = $gPct>=75?'#16a34a':($gPct>=40?'#f59e0b':'#ef4444'); @endphp
+@php $gPct = $globales['recuperado_pct']; $gBarColor = $gPct>=75?'#10b981':($gPct>=40?'#f59e0b':'#ef4444'); @endphp
 <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 20px;margin-bottom:22px;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
     <div style="flex:1;min-width:200px">
         <div style="display:flex;justify-content:space-between;margin-bottom:6px">
@@ -192,7 +232,7 @@
         </div>
         <div style="text-align:center">
             <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Rendimiento real</div>
-            <div style="font-size:16px;font-weight:800;color:{{ $globales['rendimiento_pct']>0?'#16a34a':($globales['rendimiento_pct']===0.0?'#9ca3af':'#dc2626') }}">{{ $globales['rendimiento_pct'] > 0 ? '+' : '' }}{{ $globales['rendimiento_pct'] }}%</div>
+            <div style="font-size:16px;font-weight:800;color:{{ $globales['rendimiento_pct']>0?'#10b981':($globales['rendimiento_pct']===0.0?'#9ca3af':'#dc2626') }}">{{ $globales['rendimiento_pct'] > 0 ? '+' : '' }}{{ $globales['rendimiento_pct'] }}%</div>
         </div>
     </div>
 </div>
@@ -236,8 +276,8 @@
 
     {{-- Leyenda dinámica --}}
     <div class="pf-legend" id="pf-legend">
-        <span class="pf-legend-item"><span class="pf-legend-dot" style="background:#ef4444"></span>Desembolsos</span>
-        <span class="pf-legend-item"><span class="pf-legend-dot" style="background:#16a34a"></span>Cobros</span>
+        <span class="pf-legend-item"><span class="pf-legend-dot" style="background:#6366f1"></span>Desembolsos</span>
+        <span class="pf-legend-item"><span class="pf-legend-dot" style="background:#10b981"></span>Cobros</span>
     </div>
 
     {{-- Canvas --}}
@@ -262,8 +302,8 @@
         </div>
     </div>
     <div class="pf-legend">
-        <span class="pf-legend-item"><span class="pf-legend-dot" style="background:#16a34a"></span>Zona positiva (cobros &gt; desembolsos)</span>
-        <span class="pf-legend-item"><span class="pf-legend-dot" style="background:#ef4444"></span>Zona negativa (desembolsos &gt; cobros)</span>
+        <span class="pf-legend-item"><span class="pf-legend-dot" style="background:#10b981"></span>Zona positiva (cobros &gt; desembolsos)</span>
+        <span class="pf-legend-item"><span class="pf-legend-dot" style="background:#f43f5e"></span>Zona negativa (desembolsos &gt; cobros)</span>
     </div>
     <div class="pf-chart-wrap">
         <canvas id="accumChart"></canvas>
@@ -311,10 +351,10 @@
 @foreach($stats as $i => $s)
 @php
     $admin    = $s['admin'];
-    $colors   = ['#3b82f6','#6366f1','#8b5cf6','#ec4899','#10b981','#f59e0b','#ef4444','#0ea5e9'];
+    $colors   = ['#6366f1','#10b981','#8b5cf6','#ec4899','#0ea5e9','#f59e0b','#14b8a6','#f43f5e'];
     $color    = $colors[crc32($admin->usuario) % count($colors)];
     $pct      = $s['recuperado_pct'];
-    $barColor = $pct>=75?'#16a34a':($pct>=40?'#f59e0b':'#ef4444');
+    $barColor = $pct>=75?'#10b981':($pct>=40?'#f59e0b':'#ef4444');
     // Rentabilidad pactada: tasa de rendimiento acordada (interés/capital)
     $rentab    = $s['rentabilidad_pct'] ?? 0;
     $rentabColor = $rentab >= 40 ? 'rnd-pct-green' : ($rentab >= 20 ? 'rnd-pct-blue' : ($rentab > 0 ? 'rnd-pct-yellow' : 'rnd-pct-gray'));
@@ -325,7 +365,7 @@
 
     // Pie chart data (only non-zero statuses)
     $pieLabels = []; $pieValues = []; $pieColors = [];
-    $statusColors = ['Activo'=>'#3b82f6','Atrasado'=>'#ef4444','Finalizado'=>'#16a34a','Pendiente'=>'#f59e0b','Retirado'=>'#9ca3af'];
+    $statusColors = ['Activo'=>'#6366f1','Atrasado'=>'#f43f5e','Finalizado'=>'#10b981','Pendiente'=>'#f59e0b','Retirado'=>'#94a3b8'];
     foreach($s['por_estatus'] as $est => $cnt) {
         if ($cnt > 0) {
             $pieLabels[] = $est;
@@ -361,7 +401,7 @@
         {{-- Total cobrado --}}
         <div class="rnd-col-hide" style="padding-right:16px">
             <div class="rnd-col-label">Total cobrado</div>
-            <div class="rnd-col-value" style="color:#16a34a">${{ number_format($s['total_cobrado'],0,'.',',') }}</div>
+            <div class="rnd-col-value" style="color:#10b981">${{ number_format($s['total_cobrado'],0,'.',',') }}</div>
             <div class="rnd-col-sub">de ${{ number_format($s['total_acordado'],0,'.',',') }}</div>
         </div>
 
@@ -384,7 +424,7 @@
         {{-- Mora --}}
         <div class="rnd-col-hide" style="text-align:center;padding-right:12px">
             <div class="rnd-col-label">Mora</div>
-            <div style="font-size:13px;font-weight:700;color:{{ $s['mora_pendiente']>0?'#dc2626':'#16a34a' }}">${{ number_format($s['mora_pendiente'],0,'.',',') }}</div>
+            <div style="font-size:13px;font-weight:700;color:{{ $s['mora_pendiente']>0?'#dc2626':'#10b981' }}">${{ number_format($s['mora_pendiente'],0,'.',',') }}</div>
         </div>
 
         {{-- Rentabilidad pactada --}}
@@ -424,8 +464,8 @@
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
                     <div class="rnd-chart-title" style="margin-bottom:0">Flujo diario — últimos 90 días</div>
                     <div style="display:flex;gap:12px;font-size:11px">
-                        <span style="display:flex;align-items:center;gap:4px"><span style="width:20px;height:2px;background:#ef4444;display:inline-block;border-radius:2px"></span>Desembolsos</span>
-                        <span style="display:flex;align-items:center;gap:4px"><span style="width:20px;height:2px;background:#16a34a;display:inline-block;border-radius:2px"></span>Cobros</span>
+                        <span style="display:flex;align-items:center;gap:4px"><span style="width:20px;height:2px;background:#6366f1;display:inline-block;border-radius:2px"></span>Desembolsos</span>
+                        <span style="display:flex;align-items:center;gap:4px"><span style="width:20px;height:2px;background:#10b981;display:inline-block;border-radius:2px"></span>Cobros</span>
                     </div>
                 </div>
                 <div style="position:relative;height:210px">
@@ -439,7 +479,7 @@
         <div class="rnd-detail-grid" id="stats-{{ $admin->id }}">
             <div class="rnd-stat-box">
                 <div class="rnd-stat-label">Capital desplegado</div>
-                <div class="rnd-stat-value" style="color:#2563eb" id="sv-{{ $admin->id }}-capdes">${{ number_format($s['capital_desplegado'],2,'.',',') }}</div>
+                <div class="rnd-stat-value" style="color:#4f46e5" id="sv-{{ $admin->id }}-capdes">${{ number_format($s['capital_desplegado'],2,'.',',') }}</div>
                 <div class="rnd-stat-sub">dinero entregado a clientes</div>
             </div>
             <div class="rnd-stat-box">
@@ -449,9 +489,9 @@
             </div>
             <div class="rnd-stat-box">
                 <div class="rnd-stat-label">Interés cobrado</div>
-                <div class="rnd-stat-value" style="color:#16a34a" id="sv-{{ $admin->id }}-intcob">${{ number_format($s['interes_cobrado'],2,'.',',') }}</div>
+                <div class="rnd-stat-value" style="color:#10b981" id="sv-{{ $admin->id }}-intcob">${{ number_format($s['interes_cobrado'],2,'.',',') }}</div>
                 <div class="rnd-stat-sub" id="sv-{{ $admin->id }}-intcob-sub">{{ $ip }}% del interés acordado</div>
-                <div class="rnd-bar-wrap" style="margin-top:7px"><div class="rnd-bar-fill" id="sv-{{ $admin->id }}-intcob-bar" style="width:{{ min(100,$ip) }}%;background:#16a34a"></div></div>
+                <div class="rnd-bar-wrap" style="margin-top:7px"><div class="rnd-bar-fill" id="sv-{{ $admin->id }}-intcob-bar" style="width:{{ min(100,$ip) }}%;background:#10b981"></div></div>
             </div>
             <div class="rnd-stat-box">
                 <div class="rnd-stat-label">Total cobrado</div>
@@ -466,17 +506,17 @@
             </div>
             <div class="rnd-stat-box">
                 <div class="rnd-stat-label">Mora acumulada</div>
-                <div class="rnd-stat-value" id="sv-{{ $admin->id }}-mora" style="color:{{ $s['mora_pendiente']>0?'#dc2626':'#16a34a' }}">${{ number_format($s['mora_pendiente'],2,'.',',') }}</div>
+                <div class="rnd-stat-value" id="sv-{{ $admin->id }}-mora" style="color:{{ $s['mora_pendiente']>0?'#dc2626':'#10b981' }}">${{ number_format($s['mora_pendiente'],2,'.',',') }}</div>
                 <div class="rnd-stat-sub">interés moratorio sin cobrar</div>
             </div>
             <div class="rnd-stat-box" style="border-color:rgba(59,130,246,.2);background:rgba(59,130,246,.03)">
-                <div class="rnd-stat-label" style="color:#2563eb">Rentabilidad promedio</div>
-                <div class="rnd-stat-value" style="color:#2563eb" id="sv-{{ $admin->id }}-rentab">{{ $rentab }}%</div>
+                <div class="rnd-stat-label" style="color:#4f46e5">Rentabilidad promedio</div>
+                <div class="rnd-stat-value" style="color:#4f46e5" id="sv-{{ $admin->id }}-rentab">{{ $rentab }}%</div>
                 <div class="rnd-stat-sub">interés acordado / capital desplegado</div>
             </div>
             <div class="rnd-stat-box" style="border-color:rgba(124,58,237,.2);background:rgba(124,58,237,.03)">
                 <div class="rnd-stat-label" style="color:#7c3aed">Rendimiento real</div>
-                <div class="rnd-stat-value" id="sv-{{ $admin->id }}-rnd" style="color:{{ $rndVal > 0 ? '#16a34a' : ($rndVal < 0 ? '#dc2626' : '#9ca3af') }}">{{ $rndVal > 0 ? '+' : '' }}{{ $rndVal }}%</div>
+                <div class="rnd-stat-value" id="sv-{{ $admin->id }}-rnd" style="color:{{ $rndVal > 0 ? '#10b981' : ($rndVal < 0 ? '#dc2626' : '#9ca3af') }}">{{ $rndVal > 0 ? '+' : '' }}{{ $rndVal }}%</div>
                 <div class="rnd-stat-sub">(cobrado − capital) / capital</div>
             </div>
         </div>
@@ -520,6 +560,57 @@
 @push('scripts')
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script>
+// ════════════════════════════════════════════════════════════
+// SISTEMA DE GRÁFICAS — paleta, tipografía y helpers profesionales
+// ════════════════════════════════════════════════════════════
+const CHART_FONT = "Sora, system-ui, sans-serif";
+// Paleta cohesiva con la marca (esmeralda) + acentos profesionales
+const CC = {
+    cobro:     '#10b981',  // ingresos / cobros (verde marca)
+    desembolso:'#6366f1',  // capital desplegado / desembolsos (índigo)
+    pos:       '#10b981',  // zona positiva
+    neg:       '#f43f5e',  // zona negativa (rosa, menos agresivo que rojo puro)
+    grid:      'rgba(15,22,35,.05)',
+    gridZero:  'rgba(15,22,35,.16)',
+    tick:      '#9aa3b2',
+    tipBg:     'rgba(11,15,23,.94)',
+};
+if (window.Chart) {
+    Chart.defaults.font.family = CHART_FONT;
+    Chart.defaults.font.size   = 11;
+    Chart.defaults.color       = CC.tick;
+    Chart.defaults.animation.duration = 700;
+    Chart.defaults.animation.easing   = 'easeOutQuart';
+}
+// hex → rgba con alfa
+function rgba(hex, a){ const n=parseInt(hex.slice(1),16); return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`; }
+// Degradado vertical para el área bajo la línea (firma de gráfica profesional)
+function areaFill(hex, a0){
+    a0 = a0 || 0.26;
+    return function(context){
+        const chart = context.chart, area = chart.chartArea;
+        if(!area) return rgba(hex, a0*0.4);
+        const g = chart.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+        g.addColorStop(0, rgba(hex, a0));
+        g.addColorStop(1, rgba(hex, 0));
+        return g;
+    };
+}
+// Tooltip profesional reutilizable
+const TIP = {
+    backgroundColor: CC.tipBg,
+    titleColor: '#f1f5f9',
+    bodyColor: '#cbd5e1',
+    borderColor: 'rgba(255,255,255,.08)',
+    borderWidth: 1,
+    padding: 12,
+    cornerRadius: 10,
+    boxPadding: 6,
+    usePointStyle: true,
+    titleFont:{ family: CHART_FONT, weight: '600', size: 12 },
+    bodyFont:{ family: CHART_FONT, size: 12 },
+};
+
 // ── Buscador de admins ────────────────────────────────────────
 function filtrarRendimientos(q) {
     q = q.toLowerCase().trim();
@@ -552,10 +643,10 @@ function setPfMode(btn) {
     // Actualizar leyenda
     const legend = document.getElementById('pf-legend');
     if (pfMode === 'comparar') {
-        legend.innerHTML = '<span class="pf-legend-item"><span class="pf-legend-dot" style="background:#ef4444"></span>Desembolsos</span>' +
-                           '<span class="pf-legend-item"><span class="pf-legend-dot" style="background:#16a34a"></span>Cobros</span>';
+        legend.innerHTML = '<span class="pf-legend-item"><span class="pf-legend-dot" style="background:#6366f1"></span>Desembolsos</span>' +
+                           '<span class="pf-legend-item"><span class="pf-legend-dot" style="background:#10b981"></span>Cobros</span>';
     } else {
-        legend.innerHTML = '<span class="pf-legend-item"><span class="pf-legend-dot" style="background:#7c3aed"></span>Flujo neto (Cobros − Desembolsos) · verde=positivo · rojo=negativo</span>';
+        legend.innerHTML = '<span class="pf-legend-item"><span class="pf-legend-dot" style="background:linear-gradient(90deg,#10b981,#f43f5e)"></span>Flujo neto (Cobros − Desembolsos) · verde=positivo · rosa=negativo</span>';
     }
     updatePortfolioChart();
 }
@@ -615,40 +706,45 @@ function updatePortfolioChart() {
             {
                 label: 'Desembolsos',
                 data: filtDes,
-                borderColor: '#ef4444',
-                backgroundColor: 'rgba(239,68,68,.08)',
-                fill: true, tension: 0.38, pointRadius: 0, pointHoverRadius: 5,
-                pointHoverBackgroundColor: '#ef4444', borderWidth: 2,
+                borderColor: CC.desembolso,
+                backgroundColor: areaFill(CC.desembolso),
+                fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 5,
+                pointHoverBackgroundColor: CC.desembolso, pointHoverBorderColor:'#fff', pointHoverBorderWidth:2,
+                borderWidth: 2.4, borderCapStyle:'round',
             },
             {
                 label: 'Cobros',
                 data: filtCob,
-                borderColor: '#16a34a',
-                backgroundColor: 'rgba(22,163,74,.08)',
-                fill: true, tension: 0.38, pointRadius: 0, pointHoverRadius: 5,
-                pointHoverBackgroundColor: '#16a34a', borderWidth: 2,
+                borderColor: CC.cobro,
+                backgroundColor: areaFill(CC.cobro),
+                fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 5,
+                pointHoverBackgroundColor: CC.cobro, pointHoverBorderColor:'#fff', pointHoverBorderWidth:2,
+                borderWidth: 2.4, borderCapStyle:'round',
             }
         ];
     } else {
         // Flujo neto: cobros - desembolsos (positivo = ganamos ese día, negativo = salió más dinero)
         const netData = filtCob.map((c, i) => c - filtDes[i]);
-        // Color dinámico por punto: verde si >= 0, rojo si < 0
-        const pointColors = netData.map(v => v >= 0 ? '#16a34a' : '#ef4444');
+        // Color dinámico por punto: verde si >= 0, rosa si < 0
+        const pointColors = netData.map(v => v >= 0 ? CC.pos : CC.neg);
         datasets = [
             {
                 label: 'Flujo neto',
                 data: netData,
-                borderColor: '#7c3aed',
-                backgroundColor: netData.map(v => v >= 0 ? 'rgba(22,163,74,.06)' : 'rgba(239,68,68,.06)'),
-                fill: false,
-                tension: 0.35,
-                pointRadius: netData.map(v => v !== 0 ? 3 : 0),
+                borderColor: CC.pos,
+                backgroundColor: areaFill(CC.pos, 0.18),
+                fill: 'origin',
+                tension: 0.4,
+                pointRadius: netData.map(v => v !== 0 ? 2.5 : 0),
                 pointBackgroundColor: pointColors,
-                pointBorderColor: pointColors,
+                pointBorderColor: '#fff',
+                pointBorderWidth: 1,
                 pointHoverRadius: 6,
-                borderWidth: 2,
+                pointHoverBorderColor: '#fff',
+                borderWidth: 2.4,
+                borderCapStyle:'round',
                 segment: {
-                    borderColor: ctx => ctx.p0.parsed.y >= 0 ? '#16a34a' : '#ef4444',
+                    borderColor: ctx => ctx.p0.parsed.y >= 0 ? CC.pos : CC.neg,
                 }
             }
         ];
@@ -676,13 +772,10 @@ function updatePortfolioChart() {
             plugins: {
                 legend: { display: false },
                 tooltip: {
-                    backgroundColor: 'rgba(15,23,42,.92)',
-                    titleColor: '#e2e8f0',
-                    bodyColor: '#94a3b8',
-                    padding: 12,
-                    cornerRadius: 8,
+                    ...TIP,
                     callbacks: {
                         title: items => items[0].label,
+                        labelColor: ctx => ({ borderColor:'transparent', backgroundColor: ctx.dataset.borderColor, borderRadius:3 }),
                         label: ctx => {
                             if (ctx.raw === 0) return null;
                             if (pfMode === 'sumatoria') {
@@ -700,13 +793,13 @@ function updatePortfolioChart() {
             scales: {
                 x: {
                     grid: { display: false },
-                    ticks: { maxTicksLimit: 12, font: { size: 10 }, color: '#9ca3af', maxRotation: 0 },
+                    ticks: { maxTicksLimit: 12, font: { size: 10 }, color: CC.tick, maxRotation: 0, padding: 6 },
                     border: { display: false },
                 },
                 y: {
-                    grid: { color: 'rgba(0,0,0,.04)' },
+                    grid: { color: CC.grid },
                     ticks: {
-                        font: { size: 10 }, color: '#9ca3af', maxTicksLimit: 6,
+                        font: { size: 10 }, color: CC.tick, maxTicksLimit: 6, padding: 8,
                         callback: v => v === 0 ? '$0' : (v >= 1000 ? '$'+(v/1000).toFixed(0)+'k' : '$'+v)
                     },
                     border: { display: false },
@@ -756,26 +849,29 @@ function updateAccumChart(labels, rawDes, rawCob) {
     }
 
     // Colores por punto
-    const ptColors = accumData.map(v => v >= 0 ? '#16a34a' : '#ef4444');
+    const ptColors = accumData.map(v => v >= 0 ? CC.pos : CC.neg);
 
     const dataset = {
         label: 'Posición acumulada',
         data: accumData,
         fill: {
             target: 'origin',
-            above: 'rgba(22,163,74,.13)',
-            below: 'rgba(239,68,68,.13)',
+            above: rgba(CC.pos, .14),
+            below: rgba(CC.neg, .14),
         },
         segment: {
-            borderColor: ctx => ctx.p0.parsed.y >= 0 ? '#16a34a' : '#ef4444',
+            borderColor: ctx => ctx.p0.parsed.y >= 0 ? CC.pos : CC.neg,
         },
-        tension: 0.35,
-        pointRadius: accumData.map(v => v !== 0 ? 3 : 0),
+        tension: 0.4,
+        pointRadius: accumData.map(v => v !== 0 ? 2.5 : 0),
         pointBackgroundColor: ptColors,
-        pointBorderColor: ptColors,
+        pointBorderColor: '#fff',
+        pointBorderWidth: 1,
         pointHoverRadius: 6,
-        borderWidth: 2.5,
-        borderColor: '#16a34a', // fallback; segment overrides per-segment
+        pointHoverBorderColor: '#fff',
+        borderWidth: 2.6,
+        borderCapStyle: 'round',
+        borderColor: CC.pos, // fallback; segment overrides per-segment
     };
 
     if (accumChart) {
@@ -796,13 +892,10 @@ function updateAccumChart(labels, rawDes, rawCob) {
             plugins: {
                 legend: { display: false },
                 tooltip: {
-                    backgroundColor: 'rgba(15,23,42,.92)',
-                    titleColor: '#e2e8f0',
-                    bodyColor: '#94a3b8',
-                    padding: 12,
-                    cornerRadius: 8,
+                    ...TIP,
                     callbacks: {
                         title: items => items[0].label,
+                        labelColor: ctx => ({ borderColor:'transparent', backgroundColor: ctx.raw >= 0 ? CC.pos : CC.neg, borderRadius:3 }),
                         label: ctx => {
                             const v   = ctx.raw;
                             const abs = Math.abs(v);
@@ -817,16 +910,16 @@ function updateAccumChart(labels, rawDes, rawCob) {
             scales: {
                 x: {
                     grid: { display: false },
-                    ticks: { maxTicksLimit: 12, font: { size: 10 }, color: '#9ca3af', maxRotation: 0 },
+                    ticks: { maxTicksLimit: 12, font: { size: 10 }, color: CC.tick, maxRotation: 0, padding: 6 },
                     border: { display: false },
                 },
                 y: {
                     grid: {
-                        color: ctx => ctx.tick.value === 0 ? 'rgba(0,0,0,.25)' : 'rgba(0,0,0,.04)',
+                        color: ctx => ctx.tick.value === 0 ? CC.gridZero : CC.grid,
                         lineWidth: ctx => ctx.tick.value === 0 ? 1.5 : 1,
                     },
                     ticks: {
-                        font: { size: 10 }, color: '#9ca3af', maxTicksLimit: 6,
+                        font: { size: 10 }, color: CC.tick, maxTicksLimit: 6, padding: 8,
                         callback: v => {
                             if (v === 0) return '$0';
                             const abs = Math.abs(v);
@@ -881,7 +974,7 @@ function recalcStats(adminId, chart, byEstatus) {
     var pct  = capAcord > 0 ? Math.round(cobrado / capAcord * 1000) / 10 : 0;
     var rentab = capDes > 0 ? Math.round(intEsp / capDes * 1000) / 10 : 0;
     var rnd    = capDes > 0 ? Math.round((cobrado - capDes) / capDes * 1000) / 10 : 0;
-    var barColor = pct >= 75 ? '#16a34a' : pct >= 40 ? '#f59e0b' : '#ef4444';
+    var barColor = pct >= 75 ? '#10b981' : pct >= 40 ? '#f59e0b' : '#ef4444';
 
     var set = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; };
     var setStyle = function(id, prop, val) { var el = document.getElementById(id); if (el) el.style[prop] = val; };
@@ -899,10 +992,10 @@ function recalcStats(adminId, chart, byEstatus) {
     setStyle(p + 'totcob-bar', 'background', barColor);
     set(p + 'saldo',       fmt(saldo));
     set(p + 'mora',        fmt(mora));
-    setStyle(p + 'mora',   'color', mora > 0 ? '#dc2626' : '#16a34a');
+    setStyle(p + 'mora',   'color', mora > 0 ? '#dc2626' : '#10b981');
     set(p + 'rentab',      rentab + '%');
     set(p + 'rnd',         (rnd > 0 ? '+' : '') + rnd + '%');
-    setStyle(p + 'rnd',    'color', rnd > 0 ? '#16a34a' : rnd < 0 ? '#dc2626' : '#9ca3af');
+    setStyle(p + 'rnd',    'color', rnd > 0 ? '#10b981' : rnd < 0 ? '#dc2626' : '#9ca3af');
 }
 
 // ── Toggle panel + lazy chart init ───────────────────────
@@ -941,24 +1034,28 @@ function initCharts(adminId) {
                     datasets: [{
                         data: pd.values,
                         backgroundColor: pd.colors,
-                        borderWidth: 3,
-                        borderColor: '#f9fafb',
-                        hoverOffset: 6,
+                        borderWidth: 4,
+                        borderColor: '#ffffff',
+                        borderRadius: 5,
+                        hoverOffset: 8,
+                        spacing: 1,
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    cutout: '62%',
+                    cutout: '70%',
                     plugins: {
                         legend: {
                             position: 'bottom',
                             labels: {
-                                font: { size: 11, family: 'DM Sans, sans-serif' },
-                                padding: 12,
-                                boxWidth: 10,
+                                font: { size: 11, family: CHART_FONT },
+                                padding: 14,
+                                boxWidth: 8,
+                                boxHeight: 8,
                                 usePointStyle: true,
                                 pointStyle: 'circle',
+                                color: '#5b6472',
                             },
                             onClick: function(e, legendItem, legend) {
                                 var chart = legend.chart;
@@ -969,7 +1066,9 @@ function initCharts(adminId) {
                             }
                         },
                         tooltip: {
+                            ...TIP,
                             callbacks: {
+                                labelColor: ctx => ({ borderColor:'transparent', backgroundColor: ctx.element.options.backgroundColor, borderRadius:3 }),
                                 label: function(ctx) {
                                     // Solo sumar los segmentos visibles para que los % sumen 100%
                                     var chart = ctx.chart;
@@ -1001,26 +1100,28 @@ function initCharts(adminId) {
                     {
                         label: 'Desembolsos',
                         data: ld.desembolsos,
-                        borderColor: '#ef4444',
-                        backgroundColor: 'rgba(239,68,68,.07)',
+                        borderColor: CC.desembolso,
+                        backgroundColor: areaFill(CC.desembolso, 0.2),
                         fill: true,
-                        tension: 0.38,
+                        tension: 0.4,
                         pointRadius: 0,
                         pointHoverRadius: 5,
-                        pointHoverBackgroundColor: '#ef4444',
-                        borderWidth: 2,
+                        pointHoverBackgroundColor: CC.desembolso,
+                        pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2,
+                        borderWidth: 2.2, borderCapStyle: 'round',
                     },
                     {
                         label: 'Cobros',
                         data: ld.cobros,
-                        borderColor: '#16a34a',
-                        backgroundColor: 'rgba(22,163,74,.07)',
+                        borderColor: CC.cobro,
+                        backgroundColor: areaFill(CC.cobro, 0.2),
                         fill: true,
-                        tension: 0.38,
+                        tension: 0.4,
                         pointRadius: 0,
                         pointHoverRadius: 5,
-                        pointHoverBackgroundColor: '#16a34a',
-                        borderWidth: 2,
+                        pointHoverBackgroundColor: CC.cobro,
+                        pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2,
+                        borderWidth: 2.2, borderCapStyle: 'round',
                     }
                 ]
             },
@@ -1031,13 +1132,10 @@ function initCharts(adminId) {
                 plugins: {
                     legend: { display: false },
                     tooltip: {
-                        backgroundColor: 'rgba(15,23,42,.92)',
-                        titleColor: '#e2e8f0',
-                        bodyColor: '#94a3b8',
-                        padding: 10,
-                        cornerRadius: 8,
+                        ...TIP,
                         callbacks: {
                             title: function(items) { return items[0].label; },
+                            labelColor: ctx => ({ borderColor:'transparent', backgroundColor: ctx.dataset.borderColor, borderRadius:3 }),
                             label: function(ctx) {
                                 if (ctx.raw === 0) return null;
                                 var sym = ctx.datasetIndex === 0 ? '↑ ' : '↓ ';
@@ -1051,17 +1149,17 @@ function initCharts(adminId) {
                         grid: { display: false },
                         ticks: {
                             maxTicksLimit: 10,
-                            font: { size: 10, family: 'DM Sans, sans-serif' },
-                            color: '#9ca3af',
-                            maxRotation: 0,
+                            font: { size: 10, family: CHART_FONT },
+                            color: CC.tick,
+                            maxRotation: 0, padding: 6,
                         },
                         border: { display: false },
                     },
                     y: {
-                        grid: { color: 'rgba(0,0,0,.04)', drawBorder: false },
+                        grid: { color: CC.grid, drawBorder: false },
                         ticks: {
-                            font: { size: 10, family: 'DM Sans, sans-serif' },
-                            color: '#9ca3af',
+                            font: { size: 10, family: CHART_FONT },
+                            color: CC.tick, padding: 8,
                             callback: function(v) {
                                 if (v === 0) return '$0';
                                 return v >= 1000 ? '$' + (v/1000).toFixed(0) + 'k' : '$' + v;

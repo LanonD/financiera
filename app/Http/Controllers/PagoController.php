@@ -8,6 +8,7 @@ use App\Models\Prestamo;
 use App\Models\Empleado;
 use App\Models\PrestamoActividad;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class PagoController extends Controller
 {
@@ -970,6 +971,175 @@ class PagoController extends Controller
             'saldo'         => $prestamo->saldo_actual,
             'carry_forward' => $carryForward,
         ]);
+
+        return redirect()->back()->with('success', $msg);
+    }
+
+    /**
+     * Admin / Promo: "Ponerse al día".
+     * Cobra el atraso (cuotas vencidas + mora) y LIQUIDA las cuotas vencidas
+     * de la más antigua a la más reciente, devolviendo el préstamo a estado
+     * Activo con la próxima cuota futura como siguiente cobro.
+     *
+     * A diferencia de pagarCuota, no empuja excedentes a cuotas futuras: solo
+     * salda lo que está fuera de la fecha acordada, evitando que el estado de la
+     * cuenta quede mal interpretado.
+     */
+    public function ponerseAlDia(Request $request, $prestamoId)
+    {
+        $request->validate([
+            'monto' => 'required|numeric|min:0.01',
+            'nota'  => 'nullable|string|max:255',
+        ]);
+
+        $user     = Auth::user();
+        $empleado = $user->empleado;
+        $adminId  = $user->adminId();
+        $prestamo = Prestamo::where('id', $prestamoId)->where('admin_id', $adminId)->firstOrFail();
+
+        if (!in_array($prestamo->estatus, ['Activo', 'Atrasado'])) {
+            return redirect()->back()->with('error', 'El préstamo no está activo.');
+        }
+
+        $hoy = now()->toDateString();
+
+        // ── Poner la mora al día primero (igual que el resto del sistema) ────
+        if ((float)$prestamo->interes_diario > 0
+            && ($prestamo->interes_mora_activo || $prestamo->estatus === 'Atrasado')) {
+            $desde = $prestamo->fecha_ultimo_interes ? $prestamo->fecha_ultimo_interes->toDateString() : $hoy;
+            $dias  = (int) \Carbon\Carbon::parse($desde)->diffInDays($hoy);
+            if ($dias > 0) {
+                $prestamo->interes_acumulado    = round((float)$prestamo->interes_acumulado + ($dias * (float)$prestamo->interes_diario), 2);
+                $prestamo->fecha_ultimo_interes = $hoy;
+            }
+        }
+
+        // ── Cuotas vencidas (fecha pasada) aún sin saldar, más antiguas primero ──
+        $vencidas = Pago::where('prestamo_id', $prestamoId)
+            ->whereIn('estatus', ['Pendiente', 'Atrasado', 'Parcial'])
+            ->whereDate('fecha_programada', '<', $hoy)
+            ->orderBy('fecha_programada')
+            ->orderBy('numero_pago')
+            ->get();
+
+        $moraPendiente   = (float)$prestamo->interes_acumulado;
+        $totalCuotasVenc = round($vencidas->sum(fn($p) => max(0, (float)$p->monto_cuota - (float)($p->monto_cobrado ?? 0))), 2);
+        $totalAtraso     = round($totalCuotasVenc + $moraPendiente, 2);
+
+        if ($vencidas->isEmpty() || $totalAtraso <= 0) {
+            $prestamo->save(); // por si se actualizó la mora
+            return redirect()->back()->with('error', 'Este préstamo no tiene cuotas atrasadas que cubrir.');
+        }
+
+        // Tope: "ponerse al día" no cobra de más; el excedente se ignora aquí
+        // (para abonos por adelantado existe "Cobro inmediato").
+        $montoRecibido = min((float)$request->monto, $totalAtraso);
+        $nota          = trim((string)($request->nota ?? ''));
+
+        DB::beginTransaction();
+        try {
+            // 1. Mora primero
+            $pagoMora = 0.0;
+            if ($moraPendiente > 0 && $montoRecibido > 0) {
+                $pagoMora                    = min($montoRecibido, $moraPendiente);
+                $prestamo->interes_acumulado = round($moraPendiente - $pagoMora, 2);
+                $montoRecibido               = round($montoRecibido - $pagoMora, 2);
+            }
+
+            // 2. Cubrir cuotas vencidas, de la más antigua a la más reciente
+            $cuotasLiquidadas = 0;
+            $aplicadoCuotas   = 0.0;
+            foreach ($vencidas as $cuota) {
+                if ($montoRecibido <= 0.005) break;
+
+                $yaCobrado = (float)($cuota->monto_cobrado ?? 0);
+                $restante  = round((float)$cuota->monto_cuota - $yaCobrado, 2);
+                if ($restante <= 0) continue;
+
+                if ($montoRecibido >= $restante - 0.005) {
+                    // Cuota saldada por completo
+                    $cuota->monto_cobrado = (float)$cuota->monto_cuota;
+                    $cuota->tipo_cobro    = 'completo';
+                    $cuota->estatus       = 'Pagado';
+                    $cuota->fecha_pago    = $hoy;
+                    $cuota->cobrador_id   = $empleado?->id;
+                    $cuota->nota_cobro    = trim('Ponerse al día' . ($nota ? ' — ' . $nota : ''));
+                    $cuota->save();
+
+                    $montoRecibido   = round($montoRecibido - $restante, 2);
+                    $aplicadoCuotas += $restante;
+                    $cuotasLiquidadas++;
+                } else {
+                    // Abono parcial sobre la cuota vencida más antigua restante
+                    $cuota->monto_cobrado = round($yaCobrado + $montoRecibido, 2);
+                    $cuota->tipo_cobro    = 'parcial';
+                    $cuota->estatus       = 'Parcial';
+                    $cuota->fecha_pago    = $hoy;
+                    $cuota->cobrador_id   = $empleado?->id;
+                    $cuota->nota_cobro    = trim('Ponerse al día (parcial)' . ($nota ? ' — ' . $nota : ''));
+                    $cuota->save();
+
+                    $aplicadoCuotas += $montoRecibido;
+                    $montoRecibido   = 0;
+                    break;
+                }
+            }
+
+            // 3. Reducir el saldo por lo aplicado a cuotas (la mora va aparte)
+            if ($aplicadoCuotas > 0) {
+                $prestamo->saldo_actual = max(0, round((float)$prestamo->saldo_actual - $aplicadoCuotas, 2));
+            }
+
+            // 4. Estado autoritativo según si AÚN quedan cuotas fuera de fecha.
+            //    Corrige también préstamos mal etiquetados (Activo con vencidas, o
+            //    Atrasado ya al corriente). El hook del modelo registra el cambio.
+            $quedanVencidas = Pago::where('prestamo_id', $prestamoId)
+                ->whereIn('estatus', ['Pendiente', 'Atrasado', 'Parcial'])
+                ->whereDate('fecha_programada', '<', $hoy)
+                ->exists();
+            if ($quedanVencidas && $prestamo->estatus === 'Activo') {
+                $prestamo->estatus = 'Atrasado';
+            } elseif (!$quedanVencidas && $prestamo->estatus === 'Atrasado') {
+                $prestamo->estatus = 'Activo';
+            }
+
+            $prestamo->save();
+
+            // Si con esto quedó todo liquidado, finalizar
+            $prestamo->finalizarSiLiquidado();
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            report($e);
+            return redirect()->back()->with('error', 'No se pudo registrar el pago de atraso. No se realizó ningún cambio.');
+        }
+
+        $totalAplicado = round($aplicadoCuotas + $pagoMora, 2);
+        $quien         = $empleado?->nombre ?? $user->usuario;
+
+        $desc = 'Ponerse al día por ' . $quien . ': $' . number_format($totalAplicado, 2) .
+                ' — ' . $cuotasLiquidadas . ' cuota(s) atrasada(s) cubierta(s)' .
+                ($pagoMora > 0 ? ', mora $' . number_format($pagoMora, 2) : '') . '.';
+        if ($prestamo->estatus === 'Finalizado') {
+            $desc .= ' ✓ Préstamo finalizado.';
+        } elseif (!$quedanVencidas) {
+            $desc .= ' Préstamo al corriente.';
+        }
+        PrestamoActividad::log($prestamo->id, 'pago', $desc, [
+            'tipo'              => 'ponerse_al_dia',
+            'monto'             => $totalAplicado,
+            'mora'              => $pagoMora,
+            'cuotas_liquidadas' => $cuotasLiquidadas,
+            'saldo'             => $prestamo->saldo_actual,
+            'cobrador_id'       => $empleado?->id,
+        ]);
+
+        $msg = 'Atraso cobrado: $' . number_format($totalAplicado, 2) . '. ' .
+               $cuotasLiquidadas . ' cuota(s) liquidada(s).';
+        if ($prestamo->estatus === 'Finalizado')  $msg .= ' El préstamo quedó finalizado.';
+        elseif (!$quedanVencidas)                  $msg .= ' El préstamo está al corriente.';
+        else                                       $msg .= ' Aún quedan cuotas atrasadas por cubrir.';
 
         return redirect()->back()->with('success', $msg);
     }
