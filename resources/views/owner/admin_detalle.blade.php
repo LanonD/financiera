@@ -128,6 +128,26 @@
 .ad-search{padding:7px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:13px;font-family:var(--font);outline:none;background:var(--card);color:var(--text);transition:border-color .15s}
 .ad-search:focus{border-color:var(--accent)}
 
+/* ── Resumen numérico de sección (con detalle expandible) ──── */
+.ad-sum{display:flex;align-items:stretch;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;flex-wrap:wrap}
+.ad-sum-grid{display:flex;flex:1;flex-wrap:wrap;min-width:0}
+.ad-sum-item{flex:1;min-width:140px;padding:15px 20px;border-right:1px solid var(--border)}
+.ad-sum-item:last-child{border-right:none}
+.ad-sum-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:7px}
+.ad-sum-value{font-size:21px;font-weight:800;letter-spacing:-.03em;color:var(--text);line-height:1}
+.ad-sum-sub{font-size:11px;color:var(--text2);margin-top:4px}
+.ad-sum-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:15px 20px;flex:1;min-width:0}
+.ad-sum-foot{display:flex;align-items:center;border-left:1px solid var(--border)}
+.ad-toggle{display:inline-flex;align-items:center;gap:6px;padding:0 18px;height:100%;min-height:52px;border:none;background:transparent;font-size:12px;font-weight:700;color:var(--accent);cursor:pointer;font-family:var(--font);white-space:nowrap;transition:background .15s}
+.ad-toggle:hover{background:var(--blue-bg)}
+.ad-toggle svg{width:13px;height:13px;transition:transform .25s}
+.ad-toggle.open svg{transform:rotate(180deg)}
+.ad-detail{margin-top:12px}
+@media(max-width:640px){
+    .ad-sum-foot{border-left:none;border-top:1px solid var(--border);width:100%}
+    .ad-toggle{justify-content:center;width:100%;min-height:46px}
+}
+
 /* ── Responsive ─────────────────────────────────────────── */
 @media(max-width:1100px){
     .ad-kpi-grid{grid-template-columns:repeat(2,1fr)}
@@ -459,6 +479,44 @@ $parBarColor = fn($v) => $v < 5 ? '#16a34a' : ($v < 15 ? '#d97706' : '#dc2626');
         Clientes Activos — Cartera
         <span class="ad-section-badge" style="background:var(--blue-bg);color:var(--blue-dk)">{{ $clientesActivos->count() }}</span>
     </div>
+    @php
+        $clientesConActivo   = $activos->pluck('cliente_id')->unique()->count();
+        $montoPrestadoActivo = (float) $activos->sum('monto_entregado');
+        $saldoCartera        = (float) $activos->sum('saldo_actual');
+        $cuotaTotalActiva    = (float) $activos->sum('cuota');
+        $clientesAlDia       = max(0, $nActivos - $nAtrasados);
+    @endphp
+    <div class="ad-sum">
+        <div class="ad-sum-grid">
+            <div class="ad-sum-item">
+                <div class="ad-sum-label">Clientes Activos</div>
+                <div class="ad-sum-value" style="color:var(--blue)">{{ $clientesActivos->count() }}</div>
+                <div class="ad-sum-sub">{{ $clientesConActivo }} con préstamo vigente</div>
+            </div>
+            <div class="ad-sum-item">
+                <div class="ad-sum-label">Préstamos Activos</div>
+                <div class="ad-sum-value">{{ $nActivos }}</div>
+                <div class="ad-sum-sub">{{ $clientesAlDia }} al día · <span style="color:var(--red)">{{ $nAtrasados }} atrasados</span></div>
+            </div>
+            <div class="ad-sum-item">
+                <div class="ad-sum-label">Monto Prestado</div>
+                <div class="ad-sum-value">{{ $fmt($montoPrestadoActivo) }}</div>
+                <div class="ad-sum-sub">capital activo colocado</div>
+            </div>
+            <div class="ad-sum-item">
+                <div class="ad-sum-label">Saldo en Cartera</div>
+                <div class="ad-sum-value" style="color:var(--yellow)">{{ $fmt($saldoCartera) }}</div>
+                <div class="ad-sum-sub">cuota total {{ $fmt($cuotaTotalActiva) }}</div>
+            </div>
+        </div>
+        <div class="ad-sum-foot">
+            <button class="ad-toggle" type="button" onclick="toggleDetail('clientesDetail', this)">
+                <span class="ad-toggle-txt">Ver detalle</span>
+                <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 5l4 4 4-4"/></svg>
+            </button>
+        </div>
+    </div>
+    <div class="ad-detail" id="clientesDetail" style="display:none">
     <div class="ad-table-wrap">
         <div class="ad-table-head">
             <div style="font-size:13px;font-weight:600;color:var(--text)">Clientes con préstamos activos</div>
@@ -528,6 +586,7 @@ $parBarColor = fn($v) => $v < 5 ? '#16a34a' : ($v < 15 ? '#d97706' : '#dc2626');
             </table>
         </div>
     </div>
+    </div>
 </div>
 
 {{-- ── Próximos cobros (30 días) ────────────────────────────── --}}
@@ -537,6 +596,33 @@ $parBarColor = fn($v) => $v < 5 ? '#16a34a' : ($v < 15 ? '#d97706' : '#dc2626');
         Próximos Cobros — 30 Días
         <span class="ad-section-badge" style="background:var(--purple-bg);color:var(--purple)">{{ $proximosPagos->count() }}</span>
     </div>
+    @php
+        $totalCobrar30   = (float) $proximosPagos->sum('monto_cuota');
+        $cobroPromedio30 = $proximosPagos->count() > 0 ? $totalCobrar30 / $proximosPagos->count() : 0;
+    @endphp
+    <div class="ad-sum">
+        <div class="ad-sum-grid">
+            <div class="ad-sum-item">
+                <div class="ad-sum-label">A Cobrar — 30 Días</div>
+                <div class="ad-sum-value" style="color:var(--purple)">{{ $fmt($totalCobrar30) }}</div>
+                <div class="ad-sum-sub">monto total programado</div>
+            </div>
+            <div class="ad-sum-item">
+                <div class="ad-sum-label">Cobros Programados</div>
+                <div class="ad-sum-value">{{ $proximosPagos->count() }}</div>
+                <div class="ad-sum-sub">cobro promedio {{ $fmt($cobroPromedio30) }}</div>
+            </div>
+        </div>
+        @if($proximosPagos->isNotEmpty())
+        <div class="ad-sum-foot">
+            <button class="ad-toggle" type="button" onclick="toggleDetail('cobrosDetail', this)">
+                <span class="ad-toggle-txt">Ver detalle</span>
+                <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 5l4 4 4-4"/></svg>
+            </button>
+        </div>
+        @endif
+    </div>
+    <div class="ad-detail" id="cobrosDetail" style="display:none">
     <div class="ad-table-wrap">
         @if($proximosPagos->isEmpty())
         <div class="ad-empty">Sin cobros programados en los próximos 30 días.</div>
@@ -582,6 +668,7 @@ $parBarColor = fn($v) => $v < 5 ? '#16a34a' : ($v < 15 ? '#d97706' : '#dc2626');
         @endif
         @endif
     </div>
+    </div>
 </div>
 
 {{-- ── Empleados ──────────────────────────────────────────────── --}}
@@ -592,6 +679,26 @@ $parBarColor = fn($v) => $v < 5 ? '#16a34a' : ($v < 15 ? '#d97706' : '#dc2626');
         Equipo de Trabajo
         <span class="ad-section-badge" style="background:#f3f4f6;color:var(--text2)">{{ $empleados->count() }}</span>
     </div>
+    @php $porPuesto = $empleados->groupBy(fn($e) => ucfirst($e->puesto ?: '—'))->map->count()->sortDesc(); @endphp
+    <div class="ad-sum">
+        <div class="ad-sum-item" style="flex:0 0 auto;border-right:1px solid var(--border)">
+            <div class="ad-sum-label">Integrantes</div>
+            <div class="ad-sum-value">{{ $empleados->count() }}</div>
+            <div class="ad-sum-sub">{{ $porPuesto->count() }} {{ $porPuesto->count() === 1 ? 'puesto' : 'puestos' }}</div>
+        </div>
+        <div class="ad-sum-chips">
+            @foreach($porPuesto as $puesto => $cnt)
+            <span class="pill pill-gray" style="font-size:12px">{{ $puesto }} <strong style="margin-left:3px;color:var(--text)">{{ $cnt }}</strong></span>
+            @endforeach
+        </div>
+        <div class="ad-sum-foot">
+            <button class="ad-toggle" type="button" onclick="toggleDetail('equipoDetail', this)">
+                <span class="ad-toggle-txt">Ver detalle</span>
+                <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 5l4 4 4-4"/></svg>
+            </button>
+        </div>
+    </div>
+    <div class="ad-detail" id="equipoDetail" style="display:none">
     <div class="ad-table-wrap" style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
         <div class="ad-tbl-wrap">
             <table class="ad-tbl">
@@ -614,6 +721,7 @@ $parBarColor = fn($v) => $v < 5 ? '#16a34a' : ($v < 15 ? '#d97706' : '#dc2626');
             </table>
         </div>
     </div>
+    </div>
 </div>
 @endif
 
@@ -624,6 +732,37 @@ $parBarColor = fn($v) => $v < 5 ? '#16a34a' : ($v < 15 ? '#d97706' : '#dc2626');
         Todos los Préstamos
         <span class="ad-section-badge" style="background:var(--yellow-bg);color:var(--yellow)">{{ $totalPrestamos }}</span>
     </div>
+    <div class="ad-sum">
+        <div class="ad-sum-grid">
+            <div class="ad-sum-item">
+                <div class="ad-sum-label">Total Préstamos</div>
+                <div class="ad-sum-value">{{ $totalPrestamos }}</div>
+                <div class="ad-sum-sub">historial completo</div>
+            </div>
+            <div class="ad-sum-item">
+                <div class="ad-sum-label">Activos</div>
+                <div class="ad-sum-value" style="color:var(--blue)">{{ $porEstatus['Activo'] }}</div>
+                <div class="ad-sum-sub"><span style="color:var(--red)">{{ $porEstatus['Atrasado'] }} atrasados</span></div>
+            </div>
+            <div class="ad-sum-item">
+                <div class="ad-sum-label">Finalizados</div>
+                <div class="ad-sum-value" style="color:var(--green)">{{ $porEstatus['Finalizado'] }}</div>
+                <div class="ad-sum-sub">{{ $porEstatus['Pendiente'] }} pendientes · {{ $porEstatus['Retirado'] }} retirados</div>
+            </div>
+            <div class="ad-sum-item">
+                <div class="ad-sum-label">Capital Colocado</div>
+                <div class="ad-sum-value">{{ $fmt($capitalDesplegado) }}</div>
+                <div class="ad-sum-sub">desembolsado histórico</div>
+            </div>
+        </div>
+        <div class="ad-sum-foot">
+            <button class="ad-toggle" type="button" onclick="toggleDetail('prestamosDetail', this)">
+                <span class="ad-toggle-txt">Ver detalle</span>
+                <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 5l4 4 4-4"/></svg>
+            </button>
+        </div>
+    </div>
+    <div class="ad-detail" id="prestamosDetail" style="display:none">
     <div class="ad-table-wrap">
         <div class="ad-table-head">
             <div style="font-size:13px;font-weight:600;color:var(--text)">Historial completo</div>
@@ -662,6 +801,7 @@ $parBarColor = fn($v) => $v < 5 ? '#16a34a' : ($v < 15 ? '#d97706' : '#dc2626');
                 </tbody>
             </table>
         </div>
+    </div>
     </div>
 </div>
 
@@ -824,6 +964,17 @@ $parBarColor = fn($v) => $v < 5 ? '#16a34a' : ($v < 15 ? '#d97706' : '#dc2626');
         }
     });
 })();
+
+// ── Expandir / contraer detalle de sección ───────────────────
+function toggleDetail(id, btn) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const show = el.style.display === 'none' || !el.style.display;
+    el.style.display = show ? 'block' : 'none';
+    btn.classList.toggle('open', show);
+    const txt = btn.querySelector('.ad-toggle-txt');
+    if (txt) txt.textContent = show ? 'Ocultar detalle' : 'Ver detalle';
+}
 
 // ── Buscador clientes ─────────────────────────────────────────
 function filtrarClientes(q) {
