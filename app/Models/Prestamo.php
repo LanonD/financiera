@@ -212,4 +212,34 @@ class Prestamo extends Model
 
         return true;
     }
+
+    /**
+     * Recalcula el atraso según las cuotas del plan:
+     * - 'Atrasado' si hay alguna cuota Pendiente/Atrasado con fecha vencida.
+     * - 'Activo'   si no quedan cuotas vencidas (p. ej. tras reprogramar
+     *   las fechas a futuro con "cambiar frecuencia").
+     * Solo aplica a préstamos en curso (Activo/Atrasado); no toca
+     * Pendiente, Finalizado ni Retirado. Devuelve true si cambió el estatus.
+     */
+    public function recalcularAtraso(): bool
+    {
+        if (!in_array($this->estatus, ['Activo', 'Atrasado'])) {
+            return false;
+        }
+
+        $hayVencidos = Pago::where('prestamo_id', $this->id)
+            ->whereIn('estatus', ['Pendiente', 'Atrasado'])
+            ->where('fecha_programada', '<', now()->toDateString())
+            ->exists();
+
+        $nuevo = $hayVencidos ? 'Atrasado' : 'Activo';
+        if ($this->estatus === $nuevo) {
+            return false;
+        }
+
+        $this->estatus = $nuevo;
+        $this->save(); // el hook de saved() registra el cambio en la actividad
+
+        return true;
+    }
 }

@@ -425,20 +425,10 @@ class PrestamoController extends Controller
         // Self-heal: finalizar préstamos ya liquidados que quedaron con estatus activo
         $prestamo->finalizarSiLiquidado();
 
-        // Auto-change status to Atrasado when there are overdue payments
+        // Auto-sincronizar el estatus con las cuotas: Atrasado si hay cuotas
+        // vencidas, Activo si ya no las hay (bidireccional).
         // NOTE: mora interest (interes_diario) is NOT auto-set — admin activates it manually
-        if (in_array($prestamo->estatus, ['Activo', 'Atrasado'])) {
-            $primerVencido = Pago::where('prestamo_id', $id)
-                ->whereIn('estatus', ['Pendiente', 'Atrasado'])
-                ->where('fecha_programada', '<', now()->toDateString())
-                ->orderBy('fecha_programada')
-                ->first();
-
-            if ($primerVencido && $prestamo->estatus === 'Activo') {
-                $prestamo->estatus = 'Atrasado';
-                $prestamo->save();
-            }
-        }
+        $prestamo->recalcularAtraso();
 
         // Accumulate daily mora — only for active loans (never for Finalizado/Retirado)
         if ((float)$prestamo->interes_diario > 0
@@ -1119,6 +1109,10 @@ class PrestamoController extends Controller
         $frecAnterior     = $prestamo->frecuencia;
         $prestamo->frecuencia = $request->frecuencia;
         $prestamo->save();
+
+        // Reprogramar puede mover las cuotas a futuro (sale del atraso) o al pasado
+        // (entra en atraso): recalcular el estatus para que refleje las nuevas fechas.
+        $prestamo->recalcularAtraso();
 
         PrestamoActividad::log($id, 'configuracion',
             'Frecuencia cambiada de ' . $frecAnterior . ' a ' . $request->frecuencia .
