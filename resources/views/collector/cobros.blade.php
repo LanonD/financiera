@@ -55,6 +55,32 @@ tr.cobro-parcial{background:#fffbeb}
     .cobro-modal-grid-2{grid-template-columns:1fr!important;}
     .cobrador-stat{flex:1 1 calc(50% - 10px);}
 }
+
+/* ── Ficha de cliente (pestaña emergente) ─────────────────── */
+.ficha-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ficha-item{background:#f9fafb;border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+.ficha-item-full{grid-column:1 / -1}
+.ficha-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:4px}
+.ficha-val{font-size:14px;font-weight:600}
+.ficha-avatar{width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.tap-note{display:none;padding:8px 18px;font-size:11px;color:var(--text3);border-bottom:1px solid var(--border);align-items:center;gap:6px;background:#fafafa}
+.cuota-cell{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.tap-chevron{display:none;color:var(--text3);font-size:18px;line-height:1;flex-shrink:0}
+
+/* ── Vista compacta en celular ────────────────────────────── */
+@media(max-width:768px){
+    /* Ocultar columnas secundarias: solo Cobro + Cliente + Cuota */
+    .cob-extra{display:none!important;}
+    /* Filas tocables abren la ficha */
+    tr.cobro-row{cursor:pointer}
+    tr.cobro-row:active td{background:#eff6ff}
+    .tap-note{display:flex}
+    .tap-chevron{display:inline}
+    /* El panel de stats se acomoda en cuadrícula legible */
+    .cobrador-bar{display:grid!important;grid-template-columns:1fr 1fr;gap:10px;padding:14px!important;align-items:stretch}
+    .cobrador-stat{min-width:0!important;flex:none!important;background:#f9fafb;border:1px solid var(--border);border-radius:10px;padding:10px 12px;justify-content:center}
+    .cobrador-stat.cobrado-stat{grid-column:1 / -1}
+}
 </style>
 @endpush
 
@@ -92,8 +118,8 @@ $totalHoy      = $cobrosHoy->sum(fn($p) => (float)($p->cuota ?? 0) + (float)($p-
         <div class="cobrador-stat-label">Meta de hoy</div>
         <div class="cobrador-stat-value" style="color:var(--accent)">${{ number_format($totalHoy,0,'.',',') }}</div>
     </div>
-    <div class="cobrador-stat" style="flex:1;min-width:140px">
-        <div style="display:flex;align-items:baseline;justify-content:space-between">
+    <div class="cobrador-stat cobrado-stat" style="flex:1;min-width:140px">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
             <div class="cobrador-stat-label">Cobrado hoy</div>
             <div style="font-size:10px;font-weight:600;color:var(--text3)" id="pctLabel">0%</div>
         </div>
@@ -139,18 +165,22 @@ $totalHoy      = $cobrosHoy->sum(fn($p) => (float)($p->cuota ?? 0) + (float)($p-
         </div>
     </div>
 
+    <div class="tap-note">
+        <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M5 2.5v5M5 7.5l2.5 5.5 1-2.5 2.5-1L5 7.5z"/></svg>
+        Toca una fila para ver la ficha completa del cliente.
+    </div>
     <div class="table-wrap">
     <table>
         <thead>
             <tr>
                 <th style="width:90px">Cobro</th>
                 <th>Cliente</th>
-                <th>Celular</th>
+                <th class="cob-extra">Celular</th>
                 <th style="text-align:right">Cuota</th>
-                <th style="text-align:right">Saldo</th>
-                <th>Fecha / Atraso</th>
-                <th>Estatus</th>
-                <th></th>
+                <th class="cob-extra" style="text-align:right">Saldo</th>
+                <th class="cob-extra">Fecha / Atraso</th>
+                <th class="cob-extra">Estatus</th>
+                <th class="cob-extra"></th>
             </tr>
         </thead>
         <tbody id="tableBodyHoy">
@@ -171,14 +201,22 @@ $totalHoy      = $cobrosHoy->sum(fn($p) => (float)($p->cuota ?? 0) + (float)($p-
             $nombre     = $row->cliente?->nombre ?? '—';
         @endphp
         @php $mora = (float)($row->interes_acumulado ?? 0); @endphp
-        <tr data-status="{{ $row->estatus }}"
+        <tr class="cobro-row" onclick="fichaClick(event, this)"
+            data-status="{{ $row->estatus }}"
             data-id="{{ $row->id }}"
             data-pago="{{ $row->cuota }}"
             data-mora="{{ number_format($mora, 2, '.', '') }}"
             data-nombre="{{ $nombre }}"
+            data-celular="{{ $row->cliente?->celular ?? '—' }}"
+            data-saldo="{{ number_format($row->saldo_actual, 2, '.', '') }}"
+            data-estatus="{{ $row->estatus }}"
+            data-fecha="{{ $fechaTxt }}"
+            data-fechacolor="{{ $fechaColor }}"
+            data-verurl="{{ route('clientes.showCobrador', $row->cliente_id) }}"
+            data-tipo="hoy"
             data-lat="{{ $row->cliente?->latitud }}"
             data-lng="{{ $row->cliente?->longitud }}">
-            <td>
+            <td onclick="event.stopPropagation()">
                 <div style="display:flex;align-items:center;justify-content:center;gap:6px">
                     <button class="check-btn" onclick="toggleCheck(this)" title="Pago completo">
                         <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6l3 3 5-5"/></svg>
@@ -195,17 +233,22 @@ $totalHoy      = $cobrosHoy->sum(fn($p) => (float)($p->cuota ?? 0) + (float)($p-
                     {{ $nombre }}
                 </div>
             </td>
-            <td style="font-family:monospace;font-size:12px">{{ $row->cliente?->celular ?? '—' }}</td>
+            <td class="cob-extra" style="font-family:monospace;font-size:12px">{{ $row->cliente?->celular ?? '—' }}</td>
             <td style="text-align:right;font-family:monospace;font-size:13px;font-weight:600">
-                ${{ number_format($row->cuota,2,'.',',') }}
-                @if($mora > 0)
-                <div style="font-size:10px;color:#dc2626;font-weight:700;margin-top:1px">+${{ number_format($mora,2,'.',',') }} mora</div>
-                @endif
+                <div class="cuota-cell">
+                    <div>
+                        ${{ number_format($row->cuota,2,'.',',') }}
+                        @if($mora > 0)
+                        <div style="font-size:10px;color:#dc2626;font-weight:700;margin-top:1px">+${{ number_format($mora,2,'.',',') }} mora</div>
+                        @endif
+                    </div>
+                    <span class="tap-chevron">›</span>
+                </div>
             </td>
-            <td style="text-align:right;font-family:monospace;font-size:13px">${{ number_format($row->saldo_actual,2,'.',',') }}</td>
-            <td style="font-weight:600;color:{{ $fechaColor }};font-size:12px">{{ $fechaTxt }}</td>
-            <td><span class="badge {{ $badgeClass }}">{{ $row->estatus }}</span></td>
-            <td>
+            <td class="cob-extra" style="text-align:right;font-family:monospace;font-size:13px">${{ number_format($row->saldo_actual,2,'.',',') }}</td>
+            <td class="cob-extra" style="font-weight:600;color:{{ $fechaColor }};font-size:12px">{{ $fechaTxt }}</td>
+            <td class="cob-extra"><span class="badge {{ $badgeClass }}">{{ $row->estatus }}</span></td>
+            <td class="cob-extra">
                 <a href="{{ route('clientes.showCobrador', $row->cliente_id) }}" class="btn btn-sm" style="background:#f3f4f6;color:var(--text);font-size:11px">Ver cliente</a>
             </td>
         </tr>
@@ -234,18 +277,22 @@ $totalHoy      = $cobrosHoy->sum(fn($p) => (float)($p->cuota ?? 0) + (float)($p-
         </div>
     </div>
 
+    <div class="tap-note">
+        <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M5 2.5v5M5 7.5l2.5 5.5 1-2.5 2.5-1L5 7.5z"/></svg>
+        Toca una fila para ver la ficha completa del cliente.
+    </div>
     <div class="table-wrap">
     <table>
         <thead>
             <tr>
                 <th>Cliente</th>
-                <th>Celular</th>
+                <th class="cob-extra">Celular</th>
                 <th style="text-align:right">Cuota</th>
-                <th style="text-align:right">Saldo</th>
-                <th>Próximo pago</th>
-                <th>Días para cobrar</th>
-                <th>Estatus</th>
-                <th></th>
+                <th class="cob-extra" style="text-align:right">Saldo</th>
+                <th class="cob-extra">Próximo pago</th>
+                <th class="cob-extra">Días para cobrar</th>
+                <th class="cob-extra">Estatus</th>
+                <th class="cob-extra"></th>
             </tr>
         </thead>
         <tbody id="tableBodyFuturos">
@@ -260,31 +307,43 @@ $totalHoy      = $cobrosHoy->sum(fn($p) => (float)($p->cuota ?? 0) + (float)($p-
                 ? max(0, (int)((strtotime($row->proximo_pago) - strtotime(date('Y-m-d'))) / 86400))
                 : null;
             $urgente   = $diasFalta !== null && $diasFalta <= 2;
+            $proximoTxt = $row->proximo_pago ? \Carbon\Carbon::parse($row->proximo_pago)->format('d/m/Y') : '—';
+            $diasTxt    = $diasFalta === null ? '—' : ($diasFalta === 0 ? 'Hoy' : ($diasFalta === 1 ? 'Mañana' : "{$diasFalta} días"));
         @endphp
-        <tr data-nombre-f="{{ $nombre }}">
+        <tr class="cobro-row" data-nombre-f="{{ $nombre }}" onclick="fichaClick(event, this)"
+            data-nombre="{{ $nombre }}"
+            data-celular="{{ $row->cliente?->celular ?? '—' }}"
+            data-cuota="{{ number_format($row->cuota, 2, '.', '') }}"
+            data-saldo="{{ number_format($row->saldo_actual, 2, '.', '') }}"
+            data-estatus="{{ $row->estatus }}"
+            data-proximo="{{ $proximoTxt }}"
+            data-dias="{{ $diasTxt }}"
+            data-verurl="{{ route('clientes.showCobrador', $row->cliente_id) }}"
+            data-tipo="futuro">
             <td>
                 <div style="display:flex;align-items:center;gap:8px">
                     <span style="width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">{{ strtoupper(substr($nombre,0,2)) }}</span>
                     {{ $nombre }}
                 </div>
             </td>
-            <td style="font-family:monospace;font-size:12px">{{ $row->cliente?->celular ?? '—' }}</td>
-            <td style="text-align:right;font-family:monospace;font-size:13px;font-weight:600">${{ number_format($row->cuota,2,'.',',') }}</td>
-            <td style="text-align:right;font-family:monospace;font-size:13px">${{ number_format($row->saldo_actual,2,'.',',') }}</td>
-            <td style="font-family:monospace;font-size:12px;font-weight:500">
-                {{ $row->proximo_pago ? \Carbon\Carbon::parse($row->proximo_pago)->format('d/m/Y') : '—' }}
+            <td class="cob-extra" style="font-family:monospace;font-size:12px">{{ $row->cliente?->celular ?? '—' }}</td>
+            <td style="text-align:right;font-family:monospace;font-size:13px;font-weight:600">
+                <div class="cuota-cell">
+                    <div>${{ number_format($row->cuota,2,'.',',') }}</div>
+                    <span class="tap-chevron">›</span>
+                </div>
             </td>
-            <td>
+            <td class="cob-extra" style="text-align:right;font-family:monospace;font-size:13px">${{ number_format($row->saldo_actual,2,'.',',') }}</td>
+            <td class="cob-extra" style="font-family:monospace;font-size:12px;font-weight:500">{{ $proximoTxt }}</td>
+            <td class="cob-extra">
                 @if($diasFalta !== null)
-                <span style="font-weight:600;color:{{ $urgente ? '#ca8a04' : '#3b82f6' }};font-size:12px">
-                    {{ $diasFalta === 0 ? 'Hoy' : ($diasFalta === 1 ? 'Mañana' : "{$diasFalta} días") }}
-                </span>
+                <span style="font-weight:600;color:{{ $urgente ? '#ca8a04' : '#3b82f6' }};font-size:12px">{{ $diasTxt }}</span>
                 @else
                 <span style="color:var(--text3)">—</span>
                 @endif
             </td>
-            <td><span class="badge {{ $badgeClass }}">{{ $row->estatus }}</span></td>
-            <td>
+            <td class="cob-extra"><span class="badge {{ $badgeClass }}">{{ $row->estatus }}</span></td>
+            <td class="cob-extra">
                 <a href="{{ route('clientes.showCobrador', $row->cliente_id) }}" class="btn btn-sm" style="background:#f3f4f6;color:var(--text);font-size:11px">Ver cliente</a>
             </td>
         </tr>
@@ -355,6 +414,54 @@ $totalHoy      = $cobrosHoy->sum(fn($p) => (float)($p->cuota ?? 0) + (float)($p-
     </div>
 </div>
 
+{{-- Ficha de cliente (pestaña emergente) --}}
+<div class="modal-overlay" id="modalFicha" onclick="if(event.target===this)cerrarFicha()">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 style="display:flex;align-items:center;gap:8px">
+                <span class="ficha-avatar" id="fIni"></span>
+                <span id="fNombre">—</span>
+            </h3>
+            <button class="modal-close" onclick="cerrarFicha()">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="ficha-grid">
+                <div class="ficha-item ficha-item-full">
+                    <div class="ficha-label">Celular</div>
+                    <div class="ficha-val" id="fCelular" style="font-family:monospace">—</div>
+                </div>
+                <div class="ficha-item">
+                    <div class="ficha-label">Cuota</div>
+                    <div class="ficha-val" id="fCuota" style="font-family:monospace">—</div>
+                </div>
+                <div class="ficha-item">
+                    <div class="ficha-label">Saldo</div>
+                    <div class="ficha-val" id="fSaldo" style="font-family:monospace">—</div>
+                </div>
+                <div class="ficha-item" id="fMoraItem" style="display:none">
+                    <div class="ficha-label" style="color:#dc2626">Mora acumulada</div>
+                    <div class="ficha-val" id="fMora" style="font-family:monospace;color:#dc2626">—</div>
+                </div>
+                <div class="ficha-item">
+                    <div class="ficha-label" id="fFechaLabel">Vencimiento</div>
+                    <div class="ficha-val" id="fFecha" style="font-size:13px">—</div>
+                </div>
+                <div class="ficha-item">
+                    <div class="ficha-label">Estatus</div>
+                    <div class="ficha-val"><span id="fEstatus" class="badge">—</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a id="fVerCliente" href="#" class="btn" style="background:#f3f4f6;color:var(--text)">Ver cliente</a>
+            <button id="fPagar" class="btn btn-primary" onclick="pagarDesdeFicha()">
+                <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 4h12M1 7h12M3 10h4"/></svg>
+                Pagar
+            </button>
+        </div>
+    </div>
+</div>
+
 @push('scripts')
 <script>
 const META_HOY = {{ $totalHoy > 0 ? $totalHoy : 1 }};   // total a cobrar hoy (cuotas + mora)
@@ -414,7 +521,77 @@ function openModal(btn) {
 }
 
 function cerrarModal() { document.getElementById('modalParcial').classList.remove('open'); modalRow = null; }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { cerrarModal(); cerrarFicha(); } });
+
+// ── Ficha de cliente (pestaña emergente) ─────────────────────
+let fichaRow = null;
+
+function fichaClick(e, row) {
+    // No abrir la ficha si se tocó un botón/enlace (ej. el botón de cobro)
+    if (e.target.closest('.check-btn, .parcial-btn, a, button, input')) return;
+    abrirFicha(row);
+}
+
+function fmtMoney(n) {
+    return '$' + Number(n || 0).toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+function abrirFicha(row) {
+    fichaRow = row;
+    const d = row.dataset;
+    const nombre = d.nombre || '—';
+    const esFuturo = d.tipo === 'futuro';
+
+    document.getElementById('fNombre').textContent  = nombre;
+    document.getElementById('fIni').textContent     = nombre.substring(0, 2).toUpperCase();
+    document.getElementById('fCelular').textContent = d.celular || '—';
+    document.getElementById('fCuota').textContent   = fmtMoney(d.cuota || d.pago);
+    document.getElementById('fSaldo').textContent   = fmtMoney(d.saldo);
+
+    // Mora (solo cobros de hoy con interés acumulado)
+    const mora = parseFloat(d.mora || '0');
+    const moraItem = document.getElementById('fMoraItem');
+    if (mora > 0) {
+        document.getElementById('fMora').textContent = fmtMoney(mora);
+        moraItem.style.display = '';
+    } else {
+        moraItem.style.display = 'none';
+    }
+
+    // Estatus
+    const est   = d.estatus || '—';
+    const badge = document.getElementById('fEstatus');
+    badge.textContent = est;
+    badge.className   = 'badge ' + (est === 'Activo' ? 'badge-green' : est === 'Atrasado' ? 'badge-red' : 'badge-yellow');
+
+    // Fecha: vencimiento (hoy) o próximo pago (futuro)
+    const fechaLabel = document.getElementById('fFechaLabel');
+    const fecha      = document.getElementById('fFecha');
+    if (esFuturo) {
+        fechaLabel.textContent = 'Próximo pago';
+        fecha.innerHTML = (d.proximo || '—') + (d.dias ? ` <span style="color:var(--text3);font-weight:500">· ${d.dias}</span>` : '');
+    } else {
+        fechaLabel.textContent = 'Vencimiento';
+        fecha.innerHTML = `<span style="color:${d.fechacolor || 'var(--text)'}">${d.fecha || 'Hoy'}</span>`;
+    }
+
+    // Acciones
+    document.getElementById('fVerCliente').href     = d.verurl || '#';
+    document.getElementById('fPagar').style.display = esFuturo ? 'none' : '';
+
+    document.getElementById('modalFicha').classList.add('open');
+}
+
+function cerrarFicha() { document.getElementById('modalFicha').classList.remove('open'); fichaRow = null; }
+
+function pagarDesdeFicha() {
+    const row = fichaRow;
+    cerrarFicha();
+    if (row) {
+        const btn = row.querySelector('.parcial-btn');
+        if (btn) openModal(btn);
+    }
+}
 
 function getModalTotal() {
     if (!modalRow) return 0;
