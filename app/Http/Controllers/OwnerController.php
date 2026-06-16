@@ -492,10 +492,23 @@ class OwnerController extends Controller
     /**
      * Dashboard de rendimientos: métricas financieras por administrador.
      */
-    public function rendimientos()
+    public function rendimientos(Request $request)
     {
         $deployedStatuses = ['Activo', 'Atrasado', 'Finalizado'];
         $activeStatuses   = ['Activo', 'Atrasado'];
+
+        // ── Filtro de fechas para la contabilidad consolidada (flujo del periodo) ──
+        $periodoActivo = false;
+        $pDesde = $pHasta = null;
+        if ($request->filled('desde') && $request->filled('hasta')) {
+            try {
+                $pDesde = \Carbon\Carbon::parse($request->query('desde'))->startOfDay();
+                $pHasta = \Carbon\Carbon::parse($request->query('hasta'))->endOfDay();
+                $periodoActivo = $pDesde->lte($pHasta);
+            } catch (\Throwable $e) {
+                $periodoActivo = false;
+            }
+        }
 
         $admins   = User::where('puesto', 'admin')->orderBy('created_at', 'desc')->get();
         $adminIds = $admins->pluck('id')->all();
@@ -764,7 +777,70 @@ class OwnerController extends Controller
             'chart_from'         => $chartFrom,
         ];
 
-        return view('owner.rendimientos', compact('stats', 'globales'));
+        // ── Contabilidad consolidada: histórico completo o flujo del periodo ──
+        if ($periodoActivo) {
+            $rngDesde = $pDesde->toDateString();
+            $rngHasta = $pHasta->toDateString();
+
+            $capDesPeriodo = (float) Prestamo::whereIn('admin_id', $adminIds)
+                ->whereIn('estatus', $deployedStatuses)
+                ->whereNotNull('fecha_entrega')
+                ->whereBetween('fecha_entrega', [$rngDesde, $rngHasta])
+                ->sum('monto_entregado');
+
+            $nPrestPeriodo = (int) Prestamo::whereIn('admin_id', $adminIds)
+                ->whereIn('estatus', $deployedStatuses)
+                ->whereNotNull('fecha_entrega')
+                ->whereBetween('fecha_entrega', [$rngDesde, $rngHasta])
+                ->count();
+
+            // Cobranza del periodo agrupada por estatus del préstamo (origen)
+            $cobXEstatus = DB::table('pagos')
+                ->join('prestamos', 'pagos.prestamo_id', '=', 'prestamos.id')
+                ->whereIn('prestamos.admin_id', $adminIds)
+                ->whereIn('pagos.estatus', ['Pagado', 'Parcial'])
+                ->whereBetween('pagos.fecha_pago', [$rngDesde, $rngHasta])
+                ->selectRaw('prestamos.estatus as est,
+                    SUM(pagos.monto_cobrado) as cobrado,
+                    SUM(CASE WHEN pagos.monto_cobrado > 0 THEN pagos.capital ELSE 0 END) as capital')
+                ->groupBy('prestamos.estatus')
+                ->get()->keyBy('est');
+
+            $totCobPeriodo = (float) $cobXEstatus->sum('cobrado');
+            $capRecPeriodo = min((float) $cobXEstatus->sum('capital'), $totCobPeriodo);
+            $intCobPeriodo = max(0.0, round($totCobPeriodo - $capRecPeriodo, 2));
+
+            $cobAbP = $capAbP = $cobFinP = $capFinP = 0.0;
+            foreach (['Activo', 'Atrasado'] as $e) {
+                if ($r = $cobXEstatus->get($e)) { $cobAbP += (float) $r->cobrado; $capAbP += (float) $r->capital; }
+            }
+            if ($r = $cobXEstatus->get('Finalizado')) { $cobFinP = (float) $r->cobrado; $capFinP = (float) $r->capital; }
+
+            $cuenta = [
+                'modo'                => 'periodo',
+                'desde'               => $rngDesde,
+                'hasta'               => $rngHasta,
+                'capital_desplegado'  => $capDesPeriodo,
+                'capital_recuperado'  => $capRecPeriodo,
+                'interes_cobrado'     => $intCobPeriodo,
+                'total_cobrado'       => $totCobPeriodo,
+                'total_prestamos'     => $nPrestPeriodo,
+                'cobrado_abiertas'    => round($cobAbP, 2),
+                'cobrado_finalizadas' => round($cobFinP, 2),
+                'interes_abiertas'    => round(max(0.0, $cobAbP  - $capAbP), 2),
+                'interes_finalizadas' => round(max(0.0, $cobFinP - $capFinP), 2),
+                // Cifras "a hoy": no aplican a un periodo → se ocultan en la vista
+                'saldo_pendiente'     => 0.0,
+                'mora_pendiente'      => 0.0,
+                'total_acordado'      => 0.0,
+                'n_abiertas'          => null,
+                'n_finalizadas'       => null,
+            ];
+        } else {
+            $cuenta = array_merge($globales, ['modo' => 'historico', 'desde' => null, 'hasta' => null]);
+        }
+
+        return view('owner.rendimientos', compact('stats', 'globales', 'cuenta'));
     }
 
     /**

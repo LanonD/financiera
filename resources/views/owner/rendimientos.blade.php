@@ -183,6 +183,14 @@
 @media(max-width:1200px){.acc-grid{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:768px){.acc-grid{grid-template-columns:repeat(2,1fr)}.acc-dual{grid-template-columns:1fr}}
 @media(max-width:480px){.acc-grid{grid-template-columns:1fr}}
+/* Modo periodo: 4 KPIs (sin saldo ni mora) */
+.acc-grid.cols-4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:1100px){.acc-grid.cols-4{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:480px){.acc-grid.cols-4{grid-template-columns:1fr}}
+/* Filtro de fechas de la contabilidad consolidada */
+.acc-filtro{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;margin-bottom:14px}
+.acc-filtro-badge{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:99px;background:#eff6ff;color:#1d4ed8;font-size:11px;font-weight:700}
+@media(max-width:640px){.acc-filtro{align-items:stretch}.acc-filtro .acc-filtro-controls{margin-left:0!important;width:100%}}
 </style>
 @endpush
 
@@ -204,9 +212,42 @@
     </div>
 </div>
 
+{{-- ── Filtro de fechas · contabilidad consolidada ─────────── --}}
+<form method="GET" action="{{ route('owner.rendimientos') }}" id="accFiltro" class="acc-filtro">
+    <div>
+        <div style="font-size:14px;font-weight:800;letter-spacing:-.01em;color:var(--text)">Contabilidad consolidada</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">
+            @if($cuenta['modo'] === 'periodo')
+                <span class="acc-filtro-badge">📅 Flujo del periodo · {{ \Carbon\Carbon::parse($cuenta['desde'])->format('d/m/Y') }} – {{ \Carbon\Carbon::parse($cuenta['hasta'])->format('d/m/Y') }}</span>
+            @else
+                Histórico completo · todas las fechas
+            @endif
+        </div>
+    </div>
+    <div class="acc-filtro-controls" style="display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;margin-left:auto">
+        <div class="pf-quick-btns" style="margin-right:4px">
+            <button type="button" class="pf-qbtn" onclick="accQuick(30)">30D</button>
+            <button type="button" class="pf-qbtn" onclick="accQuick(90)">90D</button>
+            <button type="button" class="pf-qbtn" onclick="accQuick('year')">Año</button>
+        </div>
+        <label style="display:flex;flex-direction:column;gap:3px">
+            <span class="pf-filter-label">Desde</span>
+            <input type="date" name="desde" value="{{ request('desde') }}" class="pf-date">
+        </label>
+        <label style="display:flex;flex-direction:column;gap:3px">
+            <span class="pf-filter-label">Hasta</span>
+            <input type="date" name="hasta" value="{{ request('hasta') }}" class="pf-date">
+        </label>
+        <button type="submit" class="btn btn-primary" style="font-size:12px">Aplicar</button>
+        @if($cuenta['modo'] === 'periodo')
+        <a href="{{ route('owner.rendimientos') }}" class="btn" style="background:#f3f4f6;color:var(--text2);font-size:12px">Ver histórico</a>
+        @endif
+    </div>
+</form>
+
 {{-- ── Contabilidad consolidada · KPIs ─────────────────────── --}}
 @php
-    $g                = $globales;
+    $g                = $cuenta;
     // Modelo contable capital-primero: lo cobrado primero regresa el capital, el excedente es interés.
     $capRecuperado    = max(0, $g['total_cobrado'] - $g['interes_cobrado']);
     $capPendiente     = max(0, $g['capital_desplegado'] - $capRecuperado);
@@ -219,57 +260,74 @@
     $wInt             = round($g['interes_cobrado'] / $totCobBase * 100, 2);
 @endphp
 
-<div class="acc-grid">
+@php $esPeriodo = $g['modo'] === 'periodo'; @endphp
+<div class="acc-grid {{ $esPeriodo ? 'cols-4' : '' }}">
     {{-- Capital desplegado --}}
     <div class="acc-kpi">
         <div class="acc-accent" style="color:#6366f1;background:#6366f1"></div>
         <div class="acc-label">Capital desplegado</div>
         <div class="acc-value" style="color:#4f46e5">${{ number_format($g['capital_desplegado'],0,'.',',') }}</div>
-        <div class="acc-sub">{{ $g['total_prestamos'] }} préstamos · dinero prestado</div>
+        <div class="acc-sub">{{ $g['total_prestamos'] }} préstamos · {{ $esPeriodo ? 'entregados en el periodo' : 'dinero prestado' }}</div>
     </div>
     {{-- Capital recuperado --}}
     <div class="acc-kpi">
         <div class="acc-accent" style="color:#0ea5e9;background:#0ea5e9"></div>
         <div class="acc-label">Capital recuperado</div>
         <div class="acc-value" style="color:#0284c7">${{ number_format($capRecuperado,0,'.',',') }}</div>
+        @if($esPeriodo)
+        <div class="acc-sub">capital cobrado en el periodo</div>
+        @else
         <div class="acc-sub">{{ $capRecPct }}% del capital ya regresó</div>
         <div class="acc-mini"><div class="acc-mini-fill" style="width:{{ min(100,$capRecPct) }}%;background:#0ea5e9"></div></div>
+        @endif
     </div>
-    {{-- Interés cobrado --}}
+    {{-- Interés cobrado / ganado --}}
     <div class="acc-kpi">
         <div class="acc-accent" style="color:#7c3aed;background:#7c3aed"></div>
-        <div class="acc-label">Interés cobrado</div>
+        <div class="acc-label">Interés {{ $esPeriodo ? 'ganado' : 'cobrado' }}</div>
         <div class="acc-value" style="color:#7c3aed">${{ number_format($g['interes_cobrado'],0,'.',',') }}</div>
+        @if($esPeriodo)
+        <div class="acc-sub">ganancia del periodo</div>
+        @else
         <div class="acc-sub">ganancia real · {{ $interesPct }}% del esperado</div>
         <div class="acc-mini"><div class="acc-mini-fill" style="width:{{ min(100,$interesPct) }}%;background:#7c3aed"></div></div>
+        @endif
     </div>
     {{-- Total cobrado --}}
     <div class="acc-kpi">
         <div class="acc-accent" style="color:#10b981;background:#10b981"></div>
         <div class="acc-label">Total cobrado</div>
         <div class="acc-value" style="color:#10b981">${{ number_format($g['total_cobrado'],0,'.',',') }}</div>
-        <div class="acc-sub">capital + interés · entró a caja</div>
+        <div class="acc-sub">capital + interés · {{ $esPeriodo ? 'cobrado en el periodo' : 'entró a caja' }}</div>
     </div>
-    {{-- En cartera (por cobrar) --}}
+    @unless($esPeriodo)
+    {{-- En cartera (por cobrar) · solo histórico (es saldo a hoy) --}}
     <div class="acc-kpi">
         <div class="acc-accent" style="color:#f59e0b;background:#f59e0b"></div>
         <div class="acc-label">En cartera (por cobrar)</div>
         <div class="acc-value" style="color:#d97706">${{ number_format($g['saldo_pendiente'],0,'.',',') }}</div>
         <div class="acc-sub">saldo vivo · activos + atrasados</div>
     </div>
-    {{-- Mora acumulada --}}
+    {{-- Mora acumulada · solo histórico (es saldo a hoy) --}}
     <div class="acc-kpi">
         <div class="acc-accent" style="color:#ef4444;background:#ef4444"></div>
         <div class="acc-label">Mora acumulada</div>
         <div class="acc-value" style="color:#dc2626">${{ number_format($g['mora_pendiente'],0,'.',',') }}</div>
         <div class="acc-sub">interés moratorio sin cobrar</div>
     </div>
+    @endunless
 </div>
 
 {{-- ── Estado de cuenta: composición de caja + progreso ────── --}}
 <div class="acc-panel">
     <div class="acc-panel-title">Estado de cuenta consolidado</div>
-    <div class="acc-panel-sub">Cómo se compone el dinero que ya entró a caja y cuánto falta por recuperar</div>
+    <div class="acc-panel-sub">
+        @if($esPeriodo)
+            Composición de lo cobrado entre el {{ \Carbon\Carbon::parse($g['desde'])->format('d/m/Y') }} y el {{ \Carbon\Carbon::parse($g['hasta'])->format('d/m/Y') }}
+        @else
+            Cómo se compone el dinero que ya entró a caja y cuánto falta por recuperar
+        @endif
+    </div>
 
     @if($g['total_cobrado'] > 0)
     {{-- Barra apilada: Total cobrado = Capital recuperado + Interés ganado --}}
@@ -284,7 +342,8 @@
     </div>
     @endif
 
-    {{-- Progreso dual: recuperación de capital + cobro de interés --}}
+    {{-- Progreso dual: recuperación de capital + cobro de interés (solo histórico) --}}
+    @unless($esPeriodo)
     <div class="acc-dual">
         <div>
             <div class="acc-prog-head">
@@ -309,6 +368,7 @@
             </div>
         </div>
     </div>
+    @endunless
 
     {{-- Origen de lo cobrado: cuentas abiertas (en curso) vs finalizadas (liquidadas) --}}
     @php
@@ -334,7 +394,7 @@
             <div class="acc-leg">
                 <span class="acc-leg-dot" style="background:#6366f1"></span>
                 <div>
-                    <div class="acc-leg-k">Cuentas abiertas · {{ $g['n_abiertas'] ?? 0 }}</div>
+                    <div class="acc-leg-k">Cuentas abiertas{{ isset($g['n_abiertas']) ? ' · '.$g['n_abiertas'] : '' }}</div>
                     <div class="acc-leg-v">${{ number_format($cobAb,0,'.',',') }}</div>
                     <div style="font-size:10px;color:var(--text3);margin-top:1px">capital ${{ number_format($capAb,0,'.',',') }} · interés ${{ number_format($intAb,0,'.',',') }}</div>
                 </div>
@@ -342,7 +402,7 @@
             <div class="acc-leg">
                 <span class="acc-leg-dot" style="background:#10b981"></span>
                 <div>
-                    <div class="acc-leg-k">Cuentas finalizadas · {{ $g['n_finalizadas'] ?? 0 }}</div>
+                    <div class="acc-leg-k">Cuentas finalizadas{{ isset($g['n_finalizadas']) ? ' · '.$g['n_finalizadas'] : '' }}</div>
                     <div class="acc-leg-v">${{ number_format($cobFin,0,'.',',') }}</div>
                     <div style="font-size:10px;color:var(--text3);margin-top:1px">capital ${{ number_format($capFin,0,'.',',') }} · interés ${{ number_format($intFin,0,'.',',') }}</div>
                 </div>
@@ -774,6 +834,23 @@ function filtrarRendimientos(q) {
     const header = document.querySelector('.rnd-list-header');
     if (noRes) noRes.style.display = visible === 0 ? '' : 'none';
     if (header) header.style.display = visible === 0 ? 'none' : '';
+}
+
+// ── Rango rápido para el filtro de la contabilidad consolidada ──
+function accQuick(r) {
+    var form  = document.getElementById('accFiltro');
+    var hasta = new Date();
+    var desde = new Date();
+    if (r === 'year') { desde = new Date(hasta.getFullYear(), 0, 1); }
+    else { desde.setDate(hasta.getDate() - (r - 1)); }
+    var iso = function(d) {
+        return d.getFullYear() + '-' +
+               String(d.getMonth() + 1).padStart(2, '0') + '-' +
+               String(d.getDate()).padStart(2, '0');
+    };
+    form.querySelector('[name=desde]').value = iso(desde);
+    form.querySelector('[name=hasta]').value = iso(hasta);
+    form.submit();
 }
 
 // ════════════════════════════════════════════════════════════
