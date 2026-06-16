@@ -309,6 +309,47 @@
             </div>
         </div>
     </div>
+
+    {{-- Origen de lo cobrado: cuentas abiertas (en curso) vs finalizadas (liquidadas) --}}
+    @php
+        $cobAb     = $g['cobrado_abiertas']    ?? 0;
+        $cobFin    = $g['cobrado_finalizadas'] ?? 0;
+        $intAb     = $g['interes_abiertas']    ?? 0;
+        $intFin    = $g['interes_finalizadas'] ?? 0;
+        $capAb     = max(0, $cobAb  - $intAb);
+        $capFin    = max(0, $cobFin - $intFin);
+        $origenTot = max(1, $cobAb + $cobFin);
+        $wAb       = round($cobAb  / $origenTot * 100, 2);
+        $wFin      = round($cobFin / $origenTot * 100, 2);
+    @endphp
+    @if(($cobAb + $cobFin) > 0)
+    <div style="margin-top:16px;padding-top:15px;border-top:1px dashed var(--border)">
+        <div class="acc-panel-title" style="font-size:12px;margin-bottom:1px">Origen de lo cobrado</div>
+        <div class="acc-panel-sub" style="margin-bottom:11px">Cuánto del dinero que entró viene de cuentas abiertas (en curso) vs finalizadas (liquidadas)</div>
+        <div class="acc-stack">
+            <div class="acc-stack-seg" style="flex:0 0 {{ $wAb }}%;background:#6366f1" title="Cuentas abiertas: ${{ number_format($cobAb,2,'.',',') }}">{{ $wAb >= 16 ? '$'.number_format($cobAb,0,'.',',') : '' }}</div>
+            <div class="acc-stack-seg" style="flex:0 0 {{ $wFin }}%;background:#10b981" title="Cuentas finalizadas: ${{ number_format($cobFin,2,'.',',') }}">{{ $wFin >= 16 ? '$'.number_format($cobFin,0,'.',',') : '' }}</div>
+        </div>
+        <div class="acc-stack-legend" style="margin-bottom:0">
+            <div class="acc-leg">
+                <span class="acc-leg-dot" style="background:#6366f1"></span>
+                <div>
+                    <div class="acc-leg-k">Cuentas abiertas · {{ $g['n_abiertas'] ?? 0 }}</div>
+                    <div class="acc-leg-v">${{ number_format($cobAb,0,'.',',') }}</div>
+                    <div style="font-size:10px;color:var(--text3);margin-top:1px">capital ${{ number_format($capAb,0,'.',',') }} · interés ${{ number_format($intAb,0,'.',',') }}</div>
+                </div>
+            </div>
+            <div class="acc-leg">
+                <span class="acc-leg-dot" style="background:#10b981"></span>
+                <div>
+                    <div class="acc-leg-k">Cuentas finalizadas · {{ $g['n_finalizadas'] ?? 0 }}</div>
+                    <div class="acc-leg-v">${{ number_format($cobFin,0,'.',',') }}</div>
+                    <div style="font-size:10px;color:var(--text3);margin-top:1px">capital ${{ number_format($capFin,0,'.',',') }} · interés ${{ number_format($intFin,0,'.',',') }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
 </div>
 
 {{-- ── Barra de cobranza global ────────────────────────────── --}}
@@ -638,9 +679,11 @@
 ], JSON_UNESCAPED_UNICODE) !!}</script>
 
 <script type="application/json" id="line-data-{{ $admin->id }}">{!! json_encode([
-    'labels'      => $s['chart_labels'],
-    'desembolsos' => $s['chart_desembolsos'],
-    'cobros'      => $s['chart_cobros'],
+    'labels'         => $s['chart_labels'],
+    'desembolsos'    => $s['chart_desembolsos'],
+    'cobros'         => $s['chart_cobros'],
+    'des_by_estatus' => $s['chart_des_by_estatus'],
+    'cob_by_estatus' => $s['chart_cob_by_estatus'],
 ], JSON_UNESCAPED_UNICODE) !!}</script>
 
 @endforeach
@@ -1104,6 +1147,27 @@ function recalcStats(adminId, chart, byEstatus) {
     setStyle(p + 'rnd',    'color', rnd > 0 ? '#10b981' : rnd < 0 ? '#dc2626' : '#9ca3af');
 }
 
+// ── Filtrar la gráfica de "Flujo diario" según los estatus visibles del donut ──
+function updateLineFromStatus(adminId, donut) {
+    var oc = ownerCharts[adminId];
+    if (!oc || !oc.line || !oc.lineData) return;
+    var ld     = oc.lineData;
+    var labels = donut.data.labels;            // nombres de estatus (mismos del donut)
+    var n      = ld.labels.length;
+    var des = new Array(n).fill(0);
+    var cob = new Array(n).fill(0);
+    labels.forEach(function(est, i) {
+        if (!donut.getDataVisibility(i)) return;   // estatus oculto → no suma
+        var ds = ld.des_by_estatus[est];
+        var cs = ld.cob_by_estatus[est];
+        if (ds) for (var k = 0; k < n; k++) des[k] += ds[k] || 0;
+        if (cs) for (var k = 0; k < n; k++) cob[k] += cs[k] || 0;
+    });
+    oc.line.data.datasets[0].data = des;
+    oc.line.data.datasets[1].data = cob;
+    oc.line.update('active');
+}
+
 // ── Toggle panel + lazy chart init ───────────────────────
 function toggleDetalle(adminId) {
     var panel = document.getElementById('detail-' + adminId);
@@ -1169,6 +1233,7 @@ function initCharts(adminId) {
                                 chart.toggleDataVisibility(legendItem.index);
                                 chart.update();
                                 recalcStats(adminId, chart, pd.by_estatus);
+                                updateLineFromStatus(adminId, chart);
                             }
                         },
                         tooltip: {
@@ -1197,6 +1262,7 @@ function initCharts(adminId) {
     var lineRaw = document.getElementById('line-data-' + adminId);
     if (lineEl && lineRaw) {
         var ld = JSON.parse(lineRaw.textContent);
+        ownerCharts[adminId].lineData = ld;   // guardar para el filtro por estatus
 
         ownerCharts[adminId].line = new Chart(lineEl, {
             type: 'line',

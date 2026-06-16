@@ -503,29 +503,28 @@ class OwnerController extends Controller
         // ── Chart: últimos 90 días de desembolsos y cobros por admin ──
         $chartFrom = now()->subDays(89)->toDateString();
 
-        // Desembolsos diarios por admin
+        // Desembolsos diarios por admin y estatus (el estatus permite filtrar el flujo
+        // diario al togglear el donut de "Distribución por estatus")
         $desembolsosRaw = DB::table('prestamos')
-            ->selectRaw('admin_id, DATE(fecha_entrega) as fecha, SUM(monto_entregado) as total')
+            ->selectRaw('admin_id, estatus, DATE(fecha_entrega) as fecha, SUM(monto_entregado) as total')
             ->whereIn('admin_id', $adminIds)
             ->whereNotNull('fecha_entrega')
             ->where('fecha_entrega', '>=', $chartFrom)
-            ->groupBy('admin_id', DB::raw('DATE(fecha_entrega)'))
+            ->groupBy('admin_id', 'estatus', DB::raw('DATE(fecha_entrega)'))
             ->get()
-            ->groupBy('admin_id')
-            ->map(fn($rows) => $rows->keyBy('fecha'));
+            ->groupBy('admin_id');
 
-        // Cobros diarios por admin
+        // Cobros diarios por admin y estatus (del préstamo)
         $cobrosRaw = DB::table('pagos')
             ->join('prestamos', 'pagos.prestamo_id', '=', 'prestamos.id')
-            ->selectRaw('prestamos.admin_id, DATE(pagos.fecha_pago) as fecha, SUM(pagos.monto_cobrado) as total')
+            ->selectRaw('prestamos.admin_id, prestamos.estatus as estatus, DATE(pagos.fecha_pago) as fecha, SUM(pagos.monto_cobrado) as total')
             ->whereIn('prestamos.admin_id', $adminIds)
             ->whereNotNull('pagos.fecha_pago')
             ->where('pagos.fecha_pago', '>=', $chartFrom)
             ->whereIn('pagos.estatus', ['Pagado', 'Parcial'])
-            ->groupBy('prestamos.admin_id', DB::raw('DATE(pagos.fecha_pago)'))
+            ->groupBy('prestamos.admin_id', 'prestamos.estatus', DB::raw('DATE(pagos.fecha_pago)'))
             ->get()
-            ->groupBy('admin_id')
-            ->map(fn($rows) => $rows->keyBy('fecha'));
+            ->groupBy('admin_id');
 
         // Rango de 90 días
         $dateRange = [];
@@ -636,18 +635,41 @@ class OwnerController extends Controller
             $n_atrasados = $byEstatus->get('Atrasado', collect())->count();
             $par         = $n_activos > 0 ? round($n_atrasados / $n_activos * 100, 1) : 0;
 
-            // ── Series de tiempo para gráfica de línea ───────────────
-            $adminD = $desembolsosRaw->get($admin->id, collect());
-            $adminC = $cobrosRaw->get($admin->id, collect());
+            // ── Series de tiempo para gráfica de línea (con desglose por estatus) ──
+            $adminDRows = $desembolsosRaw->get($admin->id, collect());
+            $adminCRows = $cobrosRaw->get($admin->id, collect());
 
-            $chartLabels      = [];
-            $chartDesembolsos = [];
-            $chartCobros      = [];
+            // Lookup [estatus][fecha] => total
+            $dLookup = [];
+            foreach ($adminDRows as $r) { $dLookup[$r->estatus][$r->fecha] = (float) $r->total; }
+            $cLookup = [];
+            foreach ($adminCRows as $r) { $cLookup[$r->estatus][$r->fecha] = (float) $r->total; }
+
+            // Sólo los estatus con préstamos (los mismos que aparecen en el donut)
+            $statusesPresentes = $byEstatus->keys()->all();
+
+            $chartLabels       = [];
+            $chartDesembolsos  = [];
+            $chartCobros       = [];
+            $chartDesByEstatus = [];
+            $chartCobByEstatus = [];
+            foreach ($statusesPresentes as $est) {
+                $chartDesByEstatus[$est] = [];
+                $chartCobByEstatus[$est] = [];
+            }
 
             foreach ($dateRange as $date) {
-                $chartLabels[]      = \Carbon\Carbon::parse($date)->format('d/m');
-                $chartDesembolsos[] = isset($adminD[$date]) ? (float) $adminD[$date]->total : 0;
-                $chartCobros[]      = isset($adminC[$date]) ? (float) $adminC[$date]->total : 0;
+                $chartLabels[] = \Carbon\Carbon::parse($date)->format('d/m');
+                $sumD = 0.0; $sumC = 0.0;
+                foreach ($statusesPresentes as $est) {
+                    $dv = $dLookup[$est][$date] ?? 0.0;
+                    $cv = $cLookup[$est][$date] ?? 0.0;
+                    $chartDesByEstatus[$est][] = $dv;
+                    $chartCobByEstatus[$est][] = $cv;
+                    $sumD += $dv; $sumC += $cv;
+                }
+                $chartDesembolsos[] = $sumD;
+                $chartCobros[]      = $sumC;
             }
 
             return [
@@ -673,12 +695,33 @@ class OwnerController extends Controller
                 'par'                => $activos->count() > 0
     ? round($byEstatus->get('Atrasado', collect())->count() / $activos->count() * 100, 1)
     : 0,
-                'chart_labels'       => $chartLabels,
-                'chart_desembolsos'  => $chartDesembolsos,
-                'chart_cobros'       => $chartCobros,
-                'by_estatus'         => $estatusData,
+                'chart_labels'         => $chartLabels,
+                'chart_desembolsos'    => $chartDesembolsos,
+                'chart_cobros'         => $chartCobros,
+                'chart_des_by_estatus' => $chartDesByEstatus,
+                'chart_cob_by_estatus' => $chartCobByEstatus,
+                'by_estatus'           => $estatusData,
             ];
         });
+
+        // ── Cobranza por origen: cuentas abiertas (Activo/Atrasado) vs finalizadas ──
+        $cobAbiertas = 0.0; $cobFinalizadas = 0.0;
+        $intAbiertas = 0.0; $intFinalizadas = 0.0;
+        $nAbiertas   = 0;   $nFinalizadas   = 0;
+        foreach ($stats as $s) {
+            foreach (['Activo', 'Atrasado'] as $e) {
+                if (isset($s['by_estatus'][$e])) {
+                    $cobAbiertas += $s['by_estatus'][$e]['cobrado'];
+                    $intAbiertas += $s['by_estatus'][$e]['intCob'];
+                }
+            }
+            if (isset($s['by_estatus']['Finalizado'])) {
+                $cobFinalizadas += $s['by_estatus']['Finalizado']['cobrado'];
+                $intFinalizadas += $s['by_estatus']['Finalizado']['intCob'];
+            }
+            $nAbiertas    += $s['por_estatus']['Activo'] + $s['por_estatus']['Atrasado'];
+            $nFinalizadas += $s['por_estatus']['Finalizado'];
+        }
 
         $sumCapital  = $stats->sum('capital_desplegado');
         $sumCobrado  = $stats->sum('total_cobrado');
@@ -702,6 +745,13 @@ class OwnerController extends Controller
             'saldo_pendiente'    => $stats->sum('saldo_pendiente'),
             'mora_pendiente'     => $stats->sum('mora_pendiente'),
             'total_prestamos'    => $stats->sum('total'),
+            // Origen de lo cobrado: cuentas abiertas (Activo/Atrasado) vs finalizadas
+            'cobrado_abiertas'    => round($cobAbiertas, 2),
+            'cobrado_finalizadas' => round($cobFinalizadas, 2),
+            'interes_abiertas'    => round($intAbiertas, 2),
+            'interes_finalizadas' => round($intFinalizadas, 2),
+            'n_abiertas'          => $nAbiertas,
+            'n_finalizadas'       => $nFinalizadas,
             // Rendimiento real global = (cobrado - capital) / capital
             'rendimiento_pct'    => $sumCapital > 0 ? round(($sumCobrado - $sumCapital) / $sumCapital * 100, 1) : 0,
             'recuperado_pct'     => $sumAcordado > 0
