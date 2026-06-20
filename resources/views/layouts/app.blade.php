@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>PrestaCRM — @yield('title', 'Panel')</title>
-    <link rel="manifest" href="/financiera_laravel/public/manifest.webmanifest">
+    <link rel="manifest" href="{{ asset('manifest.webmanifest') }}">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -312,9 +312,9 @@ document.getElementById('modalOwnPassword').addEventListener('click', function(e
 
 <script src="{{ asset('js/offline-sync.js') }}"></script>
 <script>
-// Register Service Worker
+// Register Service Worker (ruta dinámica: funciona en subcarpeta local y en dominio de producción)
 if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+    navigator.serviceWorker.register('{{ asset('sw.js') }}')
         .catch(err => console.warn('SW registration failed:', err));
 }
 

@@ -767,7 +767,7 @@
 ], JSON_UNESCAPED_UNICODE) !!}</script>
 
 @push('scripts')
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="{{ asset('js/chart.umd.min.js') }}"></script>
 <script>
 // ════════════════════════════════════════════════════════════
 // SISTEMA DE GRÁFICAS — paleta, tipografía y helpers profesionales

@@ -877,7 +877,7 @@ $parBarColor = fn($v) => $v < 5 ? '#16a34a' : ($v < 15 ? '#d97706' : '#dc2626');
 </div>
 
 @push('scripts')
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="{{ asset('js/chart.umd.min.js') }}"></script>
 <script>
 // ── Chart: Flujo mensual ─────────────────────────────────────
 (function(){

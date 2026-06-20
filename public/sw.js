@@ -1,14 +1,11 @@
-const CACHE = 'financiera-v2';
+// Bump de versión: limpia automáticamente la caché vieja en todos los dispositivos
+const CACHE = 'financiera-v3';
 
-const PRECACHE = [
-    '/financiera_laravel/public/dashboard',
-    '/financiera_laravel/public/cobros',
-    '/financiera_laravel/public/clientes',
-    '/financiera_laravel/public/prestamos',
-    '/financiera_laravel/public/icons/icon.svg',
-];
+// Sin precache de rutas fijas: el SW vive en distinta ruta según el entorno
+// (subcarpeta en local, raíz en producción). Las páginas se cachean al visitarse.
+const PRECACHE = [];
 
-// Install: cache key pages immediately
+// Install: preparar caché y activar de inmediato
 self.addEventListener('install', e => {
     e.waitUntil(
         caches.open(CACHE)
@@ -17,7 +14,7 @@ self.addEventListener('install', e => {
     );
 });
 
-// Activate: drop old caches
+// Activate: borrar cachés de versiones anteriores
 self.addEventListener('activate', e => {
     e.waitUntil(
         caches.keys()
@@ -37,12 +34,13 @@ self.addEventListener('fetch', e => {
     if (url.origin !== self.location.origin) return;
 
     if (req.mode === 'navigate') {
-        // HTML: network-first, fall back to cache, then offline page
+        // HTML: network-first, con respaldo a caché y página offline
         e.respondWith(
             fetch(req)
                 .then(resp => {
                     if (resp.ok) {
-                        caches.open(CACHE).then(c => c.put(req, resp.clone()));
+                        const copy = resp.clone();           // clonar ANTES de devolver
+                        caches.open(CACHE).then(c => c.put(req, copy));
                     }
                     return resp;
                 })
@@ -58,12 +56,13 @@ self.addEventListener('fetch', e => {
         return;
     }
 
-    // Static assets: cache-first
+    // Assets estáticos: cache-first
     e.respondWith(
         caches.match(req).then(cached =>
             cached || fetch(req).then(resp => {
                 if (resp.ok) {
-                    caches.open(CACHE).then(c => c.put(req, resp.clone()));
+                    const copy = resp.clone();               // clonar ANTES de devolver
+                    caches.open(CACHE).then(c => c.put(req, copy));
                 }
                 return resp;
             })
@@ -71,7 +70,7 @@ self.addEventListener('fetch', e => {
     );
 });
 
-// Background sync: relay to all open tabs so page JS handles it
+// Background sync: avisar a las pestañas abiertas para que el JS de la página sincronice
 self.addEventListener('sync', e => {
     if (e.tag === 'sync-prestamos' || e.tag === 'sync-all') {
         e.waitUntil(
