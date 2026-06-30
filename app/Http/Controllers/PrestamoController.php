@@ -11,6 +11,7 @@ use App\Models\PrestamoActividad;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use App\Models\PrestamoArchivo;
+use App\Support\PaymentSchedule;
 use Carbon\Carbon;
 
 class PrestamoController extends Controller
@@ -87,14 +88,18 @@ class PrestamoController extends Controller
 
         $clientes = $query->with('promotor')->orderBy('nombre')->get();
 
-        // Map: client_id => promotor_nombre for clients with active loans (UI warning)
+        // Map: client_id => ['promotor' => nombre, 'id' => prestamo_id] — mismo admin, préstamo activo
         $clientesConPrestamo = Cache::remember("clientes_con_prestamo_{$adminId}", 60, fn() =>
             Prestamo::whereIn('cliente_id', $clientes->pluck('id'))
+                ->where('admin_id', $adminId)
                 ->whereIn('estatus', ['Activo', 'Atrasado', 'Pendiente'])
                 ->with('promotor')
                 ->get()
                 ->keyBy('cliente_id')
-                ->map(fn($p) => $p->promotor?->nombre ?? 'otro promotor')
+                ->map(fn($p) => [
+                    'promotor' => $p->promotor?->nombre ?? 'otro promotor',
+                    'id'       => $p->id,
+                ])
                 ->toArray()
         );
 
@@ -158,6 +163,7 @@ class PrestamoController extends Controller
             'monto_retornar'      => 'required|numeric|min:1',
             'num_pagos'           => 'required|integer|min:1',
             'frecuencia'          => 'required|in:Diario,Semanal,Quincenal,Mensual',
+            'descanso_domingos'   => 'nullable|boolean',
             // Allow up to 1 year in the past to support offline sync
             'fecha_inicio'        => 'required|date|after_or_equal:' . now()->subYear()->toDateString(),
             'fecha_primer_cobro'  => 'required|date|after_or_equal:' . now()->subYear()->toDateString(),
@@ -183,22 +189,26 @@ class PrestamoController extends Controller
         $empleado = $user->empleado;
         $isAdmin  = in_array('admin', $user->getAllRoles());
 
-        // ── Block: One active loan per client ────────────────────────────────
-        $prestamoActivo = Prestamo::where('cliente_id', $data['cliente_id'])
+        // ── Warn / Redirect: mismo admin ya tiene préstamo activo → refinanciamiento ─────────
+        $prestamoActivoMismo = Prestamo::where('cliente_id', $data['cliente_id'])
+            ->where('admin_id', auth()->user()->adminId())
             ->whereIn('estatus', ['Activo', 'Atrasado', 'Pendiente'])
             ->with('promotor')
             ->first();
 
-        if ($prestamoActivo) {
-            $promotorNombre = $prestamoActivo->promotor?->nombre ?? 'otro promotor';
+        if ($prestamoActivoMismo) {
+            if ($request->input('confirmar_mismo_admin')) {
+                // Admin confirmó → llevarlo al préstamo activo para refinanciar
+                return redirect()->route('prestamos.show', $prestamoActivoMismo->id)
+                    ->with('abrir_refinanciar', true);
+            }
+            $promotorNombre = $prestamoActivoMismo->promotor?->nombre ?? 'otro promotor';
             return redirect()->back()
                 ->withInput()
-                ->withErrors(['cliente_id' =>
-                    "Este cliente ya tiene un préstamo activo asignado al promotor \u201c{$promotorNombre}\u201d. "
-                  . 'No se puede crear otro préstamo mientras haya uno en curso.'
-                ]);
+                ->with('warning_mismo_admin', $promotorNombre)
+                ->with('warning_mismo_admin_id', $prestamoActivoMismo->id);
         }
-        // ────────────────────────────────────────────────────────────────────
+        // ─────────────────────────────────────────────────────────────────────────────────────
 
         // Warn (not block): Active loan with a DIFFERENT admin (cross-admin check)
         if (!$request->input('confirmar_cruzado')) {
@@ -228,9 +238,8 @@ class PrestamoController extends Controller
         $frecuencia         = $data['frecuencia'];
         $fecha_inicio       = $data['fecha_inicio'];
         $fecha_primer_cobro = $data['fecha_primer_cobro'];
-
-        $dias_map = ['Diario' => 1, 'Semanal' => 7, 'Quincenal' => 14, 'Mensual' => 30];
-        $dias = $dias_map[$frecuencia];
+        $descansoDomingos   = $request->boolean('descanso_domingos');
+        $fechasPago         = PaymentSchedule::buildDates($fecha_primer_cobro, $num_pagos, $frecuencia, $descansoDomingos);
 
         // Cuota redondeada al múltiplo de $5 más cercano; el último pago absorbe el residuo
         $cuota_base  = $num_pagos > 1 ? (float)((int) round($monto_retornar / $num_pagos / 5) * 5) : $monto_retornar;
@@ -277,12 +286,13 @@ class PrestamoController extends Controller
             'interes_diario'      => 0,
             'interes_mora_activo' => false,
             'fecha_inicio'        => $fecha_inicio,
-            'fecha_fin'           => Carbon::parse($fecha_primer_cobro)->addDays($dias * ($num_pagos - 1))->toDateString(),
+            'fecha_fin'           => $fechasPago[array_key_last($fechasPago)] ?? $fecha_primer_cobro,
             'estatus'             => $desembolsar ? 'Activo' : 'Pendiente',
             'monto_entregado'     => $monto_entregado,
             'forma_entrega'       => $forma_entrega,
             'fecha_entrega'       => $fecha_entrega,
             'nota_entrega'        => $nota_entrega,
+            'descanso_domingos'   => $descansoDomingos,
         ]);
 
         // ── Save uploaded documents now that we have the real prestamo ID ─────
@@ -311,7 +321,7 @@ class PrestamoController extends Controller
         $saldo            = $monto_entregado;
 
         for ($i = 1; $i <= $num_pagos; $i++) {
-            $fecha_prog = Carbon::parse($fecha_primer_cobro)->addDays($dias * ($i - 1))->toDateString();
+            $fecha_prog = $fechasPago[$i - 1];
             $cuota      = ($i === $num_pagos) ? $ultimo_pago : $cuota_base;
             $interes    = min($cuota, round($interes_restante, 2));
             $capital    = round($cuota - $interes, 2);
@@ -338,7 +348,7 @@ class PrestamoController extends Controller
         PrestamoActividad::log($prestamo->id, 'creado',
             'Préstamo creado por ' . Auth::user()->usuario .
             ' — $' . number_format($monto_entregado, 2) . ' entregados, $' . number_format($monto_retornar, 2) . ' a retornar en ' . $num_pagos . ' pagos ' . strtolower($frecuencia) . 's.',
-            ['monto_entregado' => $monto_entregado, 'monto_retornar' => $monto_retornar, 'num_pagos' => $num_pagos, 'frecuencia' => $frecuencia]
+            ['monto_entregado' => $monto_entregado, 'monto_retornar' => $monto_retornar, 'num_pagos' => $num_pagos, 'frecuencia' => $frecuencia, 'descanso_domingos' => $descansoDomingos]
         );
 
         if ($desembolsar) {
@@ -545,6 +555,7 @@ class PrestamoController extends Controller
                 'fecha_primer_cobro' => 'required|date',
                 'frecuencia'         => 'required|in:Diario,Semanal,Quincenal,Mensual',
                 'num_pagos'          => 'required|integer|min:1',
+                'descanso_domingos'  => 'nullable|boolean',
             ]);
         } else {
             // Activo / Atrasado — saldos pendientes por componente
@@ -575,20 +586,33 @@ class PrestamoController extends Controller
             $oldFreq    = $prestamo->frecuencia;
             $oldPrimer  = $prestamo->fecha_primer_cobro ?? null;
             $oldNumPagos= $prestamo->num_pagos;
+            $oldDescanso= (bool)$prestamo->descanso_domingos;
+            $descansoDomingos = $request->has('descanso_domingos')
+                ? $request->boolean('descanso_domingos')
+                : $oldDescanso;
 
             $prestamo->fecha_inicio       = $data['fecha_inicio'];
             $prestamo->frecuencia         = $data['frecuencia'];
             $prestamo->num_pagos          = (int)$data['num_pagos'];
+            $prestamo->descanso_domingos  = $descansoDomingos;
 
             if ($oldFreq !== $data['frecuencia'])
                 $cambios[] = 'Frecuencia: ' . $oldFreq . ' → ' . $data['frecuencia'];
             if ((string)$oldNumPagos !== (string)$data['num_pagos'])
                 $cambios[] = 'Núm. pagos: ' . $oldNumPagos . ' → ' . $data['num_pagos'];
 
+            if ($oldDescanso !== $descansoDomingos)
+                $cambios[] = 'Descanso domingos: ' . ($descansoDomingos ? 'activado' : 'desactivado');
+
             // Recalculate pagos dates
-            $diasMap = ['Diario' => 1, 'Semanal' => 7, 'Quincenal' => 14, 'Mensual' => 30];
-            $dias    = $diasMap[$data['frecuencia']] ?? 30;
             $pagos   = Pago::where('prestamo_id', $id)->orderBy('numero_pago')->get();
+            $fechasPago = PaymentSchedule::buildDates(
+                $data['fecha_primer_cobro'],
+                $pagos->count(),
+                $data['frecuencia'],
+                $descansoDomingos,
+                true
+            );
 
             $monto        = round((float)$data['monto'], 2);
             $numPagos     = (int)$data['num_pagos'];
@@ -601,9 +625,7 @@ class PrestamoController extends Controller
 
             foreach ($pagos as $i => $pago) {
                 $idx   = $i; // 0-based
-                $fecha = $data['frecuencia'] === 'Mensual'
-                    ? Carbon::parse($data['fecha_primer_cobro'])->addMonths($idx)->toDateString()
-                    : Carbon::parse($data['fecha_primer_cobro'])->addDays($dias * $idx)->toDateString();
+                $fecha = $fechasPago[$idx] ?? $data['fecha_primer_cobro'];
 
                 $cuota   = ($idx === $numPagos - 1) ? $ultimoPago : $cuotaBase;
                 $interes = min($cuota, max(0, $interesRest));
@@ -763,6 +785,7 @@ class PrestamoController extends Controller
             'frecuencia'         => 'required|in:Diario,Semanal,Quincenal,Mensual',
             'fecha_inicio'       => 'required|date',
             'fecha_primer_cobro' => 'required|date',
+            'descanso_domingos'  => 'nullable|boolean',
             'doc_pagare'         => 'required|file|mimes:jpg,jpeg,png,pdf|max:10240',
         ]);
 
@@ -809,9 +832,11 @@ class PrestamoController extends Controller
         $frecuencia     = $data['frecuencia'];
         $fechaInicio    = $data['fecha_inicio'];
         $fechaPrimer    = $data['fecha_primer_cobro'];
+        $descansoDomingos = $request->has('descanso_domingos')
+            ? $request->boolean('descanso_domingos')
+            : (bool)$prestamo->descanso_domingos;
 
-        $diasMap    = ['Diario' => 1, 'Semanal' => 7, 'Quincenal' => 14, 'Mensual' => 30];
-        $dias       = $diasMap[$frecuencia];
+        $fechasPago = PaymentSchedule::buildDates($fechaPrimer, $numPagos, $frecuencia, $descansoDomingos, true);
         $cuotaBase  = $numPagos > 1 ? (float)((int) round($montoRetornar / $numPagos / 5) * 5) : $montoRetornar;
         $ultimoPago = $numPagos > 1 ? round($montoRetornar - $cuotaBase * ($numPagos - 1), 2) : $montoRetornar;
 
@@ -863,9 +888,7 @@ class PrestamoController extends Controller
             'interes_diario'      => 0,
             'interes_mora_activo' => false,
             'fecha_inicio'        => $fechaInicio,
-            'fecha_fin'           => $frecuencia === 'Mensual'
-                ? Carbon::parse($fechaPrimer)->addMonths($numPagos - 1)->toDateString()
-                : Carbon::parse($fechaPrimer)->addDays($dias * ($numPagos - 1))->toDateString(),
+            'fecha_fin'           => $fechasPago[array_key_last($fechasPago)] ?? $fechaPrimer,
             'estatus'             => 'Activo',
             'monto_entregado'     => $montoEntregado,
             'forma_entrega'       => 'refinanciamiento',
@@ -874,6 +897,7 @@ class PrestamoController extends Controller
                 '. Deuda anterior: $' . number_format($deudaTotal, 2) .
                 ($nuevoEfectivo > 0 ? '. Nuevo efectivo: $' . number_format($nuevoEfectivo, 2) : '') . '.',
             'refinanciado_por'    => $id,
+            'descanso_domingos'   => $descansoDomingos,
         ]);
 
         // ── 3. Generar plan de pagos (interés-primero) ───────────────────
@@ -881,9 +905,7 @@ class PrestamoController extends Controller
         $saldo           = $montoEntregado;
 
         for ($i = 1; $i <= $numPagos; $i++) {
-            $fecha = $frecuencia === 'Mensual'
-                ? Carbon::parse($fechaPrimer)->addMonths($i - 1)->toDateString()
-                : Carbon::parse($fechaPrimer)->addDays($dias * ($i - 1))->toDateString();
+            $fecha = $fechasPago[$i - 1];
 
             $cuota   = ($i === $numPagos) ? $ultimoPago : $cuotaBase;
             $interes = min($cuota, max(0.0, $interesRestante));
@@ -1033,21 +1055,22 @@ class PrestamoController extends Controller
             return redirect()->back()->with('error', 'No hay pagos del plan pendientes para reprogramar.');
         }
 
-        $diasMap = ['Diario' => 1, 'Semanal' => 7, 'Quincenal' => 14, 'Mensual' => 30];
-        $dias    = $diasMap[$request->frecuencia] ?? 7;
-        $fecha   = Carbon::parse($request->fecha_nuevo_inicio);
+        $fechasPago = PaymentSchedule::buildDates(
+            $request->fecha_nuevo_inicio,
+            $pagosPendientes->count(),
+            $request->frecuencia,
+            (bool)$prestamo->descanso_domingos,
+            true
+        );
 
         foreach ($pagosPendientes as $i => $pago) {
-            if ($request->frecuencia === 'Mensual') {
-                $pago->fecha_programada = Carbon::parse($request->fecha_nuevo_inicio)->addMonths($i)->toDateString();
-            } else {
-                $pago->fecha_programada = Carbon::parse($request->fecha_nuevo_inicio)->addDays($dias * $i)->toDateString();
-            }
+            $pago->fecha_programada = $fechasPago[$i] ?? $request->fecha_nuevo_inicio;
             $pago->save();
         }
 
         $frecAnterior     = $prestamo->frecuencia;
         $prestamo->frecuencia = $request->frecuencia;
+        $prestamo->fecha_fin = $fechasPago[array_key_last($fechasPago)] ?? $prestamo->fecha_fin;
         $prestamo->save();
 
         PrestamoActividad::log($id, 'configuracion',
@@ -1127,15 +1150,21 @@ class PrestamoController extends Controller
         $num_pagos = (int)$request->input('num_pagos', 0);
         $frecuencia= $request->input('frecuencia', 'Mensual');
         $fecha_ini = $request->input('fecha_inicio', now()->toDateString());
+        $descansoDomingos = $request->boolean('descanso_domingos');
 
         if ($monto <= 0 || $num_pagos <= 0 || $tasa <= 0) {
             return response()->json(['error' => 'Datos inválidos'], 400);
         }
 
-        $dias_map = ['Diario' => 1, 'Semanal' => 7, 'Quincenal' => 14, 'Mensual' => 30];
-        $dias = $dias_map[$frecuencia] ?? 30;
+        $dias = PaymentSchedule::intervalDays($frecuencia);
         $r    = $tasa * $dias;
         $n    = $num_pagos;
+        $fechasPago = PaymentSchedule::buildDates(
+            Carbon::parse($fecha_ini)->addDays($dias)->toDateString(),
+            $n,
+            $frecuencia,
+            $descansoDomingos
+        );
 
         $cuota = $r > 0
             ? $monto * ($r * pow(1 + $r, $n)) / (pow(1 + $r, $n) - 1)
@@ -1144,7 +1173,7 @@ class PrestamoController extends Controller
         $schedule = [];
         $saldo = $monto;
         for ($i = 1; $i <= $n; $i++) {
-            $fecha   = Carbon::parse($fecha_ini)->addDays($dias * $i)->toDateString();
+            $fecha   = $fechasPago[$i - 1];
             $interes = round($saldo * $r, 2);
             $capital = round($cuota - $interes, 2);
             $saldo   = max(0, round($saldo - $capital, 2));
@@ -1164,13 +1193,13 @@ class PrestamoController extends Controller
         $num_pagos          = (int)$request->input('num_pagos', 0);
         $frecuencia         = $request->input('frecuencia', 'Mensual');
         $fecha_ini          = $request->input('fecha_inicio', now()->toDateString());
+        $descansoDomingos   = $request->boolean('descanso_domingos');
 
         if ($monto_entregado <= 0 || $monto_retornar < $monto_entregado || $num_pagos <= 0) {
             return response()->json(['error' => 'Datos inválidos'], 400);
         }
 
-        $dias_map = ['Diario' => 1, 'Semanal' => 7, 'Quincenal' => 14, 'Mensual' => 30];
-        $dias = $dias_map[$frecuencia] ?? 30;
+        $dias = PaymentSchedule::intervalDays($frecuencia);
 
         // Primer cobro: se puede enviar explícitamente, si no se calcula como inicio + días
         $fecha_primer_cobro = $request->input('fecha_primer_cobro')
@@ -1182,10 +1211,11 @@ class PrestamoController extends Controller
 
         $ratio = $monto_retornar > 0 ? $monto_entregado / $monto_retornar : 1;
         $saldo = $monto_entregado;
+        $fechasPago = PaymentSchedule::buildDates($fecha_primer_cobro, $num_pagos, $frecuencia, $descansoDomingos);
 
         $schedule = [];
         for ($i = 1; $i <= $num_pagos; $i++) {
-            $fecha   = Carbon::parse($fecha_primer_cobro)->addDays($dias * ($i - 1))->toDateString();
+            $fecha   = $fechasPago[$i - 1];
             $cuota   = ($i === $num_pagos) ? $ultimo_pago : $cuota_base;
             $capital = ($i === $num_pagos) ? $saldo : round($cuota * $ratio * 100) / 100;
             $interes = round(($cuota - $capital) * 100) / 100;

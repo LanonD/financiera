@@ -133,6 +133,20 @@ $docsMap   = $clientesConDocs ?? [];
 </div>
 @endif
 
+@if(session('warning_mismo_admin'))
+<div style="background:#fffbeb;border:1px solid #f59e0b;border-radius:10px;padding:12px 16px;margin-bottom:20px">
+    <div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:4px">⚠ Este administrador ya tiene un préstamo activo con este cliente</div>
+    <div style="font-size:13px;color:#78350f;margin-bottom:8px">
+        El cliente ya tiene un préstamo activo asignado al promotor <strong>"{{ session('warning_mismo_admin') }}"</strong>.
+        Se recomienda otorgar un <strong>refinanciamiento</strong> en lugar de un préstamo nuevo.
+    </div>
+    <a href="{{ route('prestamos.show', session('warning_mismo_admin_id')) }}?refinanciar=1"
+       style="display:inline-block;padding:6px 16px;background:#d97706;color:#fff;border-radius:5px;font-size:13px;font-weight:600;text-decoration:none">
+        Ir al préstamo activo para refinanciar
+    </a>
+</div>
+@endif
+
 @if(session('warning_cruzado'))
 <div id="warningCruzadoServer" style="background:#fffbeb;border:1px solid #fbbf24;border-radius:10px;padding:12px 16px;margin-bottom:20px">
     <div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:4px">⚠ Deuda activa con otro administrador</div>
@@ -181,16 +195,17 @@ function aceptarCruzadoServer() {
                         @else
                          @foreach($clientes as $c)
                         @php
-                            $bloqueado = array_key_exists($c->id, $activoMap);
-                            $cruzado   = !$bloqueado && array_key_exists($c->id, $clientesConPrestamoCruzado ?? []);
-                            $cDocs     = $docsMap[$c->id] ?? ['ine'=>false,'comprobante'=>false];
+                            $mismoAdmin = array_key_exists($c->id, $activoMap);
+                            $cruzado    = !$mismoAdmin && array_key_exists($c->id, $clientesConPrestamoCruzado ?? []);
+                            $cDocs      = $docsMap[$c->id] ?? ['ine'=>false,'comprobante'=>false];
                         @endphp
-                        <div class="cs-item {{ ($bloqueado || $cruzado) ? 'cs-item-bloqueado' : '' }}"
+                        <div class="cs-item {{ ($mismoAdmin || $cruzado) ? 'cs-item-bloqueado' : '' }}"
                              data-id="{{ $c->id }}"
                              data-nombre="{{ $c->nombre }}"
                              data-celular="{{ $c->celular ?? '' }}"
-                             data-bloqueado="{{ $bloqueado ? '1' : '0' }}"
-                             data-promotor="{{ $bloqueado ? $activoMap[$c->id] : '' }}"
+                             data-mismo-admin="{{ $mismoAdmin ? '1' : '0' }}"
+                             data-promotor="{{ $mismoAdmin ? $activoMap[$c->id]['promotor'] : '' }}"
+                             data-prestamo-activo-url="{{ $mismoAdmin ? route('prestamos.show', $activoMap[$c->id]['id']) : '' }}"
                              data-cruzado="{{ $cruzado ? '1' : '0' }}"
                              data-admin-cruzado="{{ $cruzado ? ($clientesConPrestamoCruzado[$c->id] ?? '') : '' }}"
                              data-tiene-ine="{{ $cDocs['ine'] ? '1' : '0' }}"
@@ -198,8 +213,8 @@ function aceptarCruzadoServer() {
                              onclick="csSelect(this)">
                             <div style="display:flex;align-items:center;justify-content:space-between">
                                 <div class="cs-item-name">{{ $c->nombre }}</div>
-                                @if($bloqueado)
-                                <span style="font-size:10px;background:#fee2e2;color:#991b1b;border-radius:4px;padding:1px 6px;font-weight:700">Activo</span>
+                                @if($mismoAdmin)
+                                <span style="font-size:10px;background:#fef3c7;color:#92400e;border-radius:4px;padding:1px 6px;font-weight:700">Refinanciar</span>
                                 @elseif($cruzado)
                                 <span style="font-size:10px;background:#fff3cd;color:#856404;border-radius:4px;padding:1px 6px;font-weight:700">Deuda activa</span>
                                 @endif
@@ -219,14 +234,19 @@ function aceptarCruzadoServer() {
                     <input type="hidden" name="cliente_id" id="csClienteId" required>
                 </div>
                 <!-- Active loan warning -->
-                <div id="activeLoanWarning" style="display:none;margin-top:10px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:10px 14px">
-                    <div style="font-size:12px;font-weight:700;color:#991b1b;margin-bottom:2px">⚠ Cliente con préstamo activo</div>
-                    <div id="activeLoanMsg" style="font-size:12px;color:#7f1d1d"></div>
+                <div id="activeLoanWarning" style="display:none;margin-top:10px;background:#fffbeb;border:1px solid #fbbf24;border-radius:8px;padding:10px 14px">
+                    <div id="activeLoanTitle" style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:2px">⚠ Préstamo activo detectado</div>
+                    <div id="activeLoanMsg" style="font-size:12px;color:#78350f"></div>
+                    <button type="button" id="btnAceptarMismoAdmin" onclick="aceptarMismoAdmin()"
+                        style="display:none;margin-top:8px;padding:5px 14px;background:#d97706;color:#fff;border:none;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer">
+                        Ir al préstamo activo para refinanciar
+                    </button>
                     <button type="button" id="btnAceptarCruzado" onclick="aceptarPrestamoCruzado()"
                         style="display:none;margin-top:8px;padding:5px 14px;background:#d97706;color:#fff;border:none;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer">
                         Aceptar y continuar de todas formas
                     </button>
                 </div>
+                <input type="hidden" name="confirmar_mismo_admin" id="confirmarMismoAdmin" value="0">
                 <input type="hidden" name="confirmar_cruzado" id="confirmarCruzado" value="0">
                 <div class="np-hint">Solo clientes activos asignados a tu cartera</div>
             </div>
@@ -276,6 +296,18 @@ function aceptarCruzadoServer() {
                     </select>
                 </div>
             </div>
+
+            {{-- Descanso domingos --}}
+            <label style="display:flex;align-items:flex-start;gap:10px;padding:11px 12px;background:#f8fafc;border:1px solid var(--border);border-radius:6px;cursor:pointer">
+                <input type="checkbox" name="descanso_domingos" id="inDescansoDomingos" value="1"
+                       {{ old('descanso_domingos') ? 'checked' : '' }}
+                       onchange="autoFechaPrimerCobro();calcPreview()"
+                       style="margin-top:2px;width:16px;height:16px">
+                <span>
+                    <span style="display:block;font-size:12px;font-weight:600;color:var(--text)">Descansar domingos</span>
+                    <span style="display:block;font-size:11px;color:var(--text3);margin-top:2px">El plan de pago saltara los domingos y continuara el siguiente dia disponible</span>
+                </span>
+            </label>
 
             {{-- Fecha inicio --}}
             <div>
@@ -477,7 +509,7 @@ function autoFechaPrimerCobro() {
     const frecuencia  = document.getElementById('inFrecuencia').value;
     if (!fechaInicio) return;
     const dias   = DIAS[frecuencia] || 30;
-    const nueva  = addDays(fechaInicio, dias);
+    const nueva  = ajustarDomingo(addDays(fechaInicio, dias));
     document.getElementById('inFechaPrimerCobro').value = nueva;
     document.getElementById('hintPrimerCobro').textContent =
         `Calculado como inicio + ${dias} días (${frecuencia.toLowerCase()}) — puedes ajustarlo`;
@@ -511,33 +543,40 @@ function csSelect(el) {
     document.getElementById('csList').classList.remove('open');
 
     // Show/hide active loan warning
-    const bloqueado = el.dataset.bloqueado === '1';
-    const cruzado   = el.dataset.cruzado   === '1';
-    const warn = document.getElementById('activeLoanWarning');
-    const msg  = document.getElementById('activeLoanMsg');
-    if (bloqueado) {
-        warn.style.background = '#fef2f2';
-        warn.style.borderColor = '#fca5a5';
-        warn.querySelector('div').style.color = '#991b1b';
-        warn.querySelector('div').textContent = '⚠ Cliente con préstamo activo';
-        msg.style.color = '#7f1d1d';
-        msg.textContent = `Este cliente ya tiene un préstamo activo con el promotor "${el.dataset.promotor}". No se puede crear otro mientras haya uno en curso.`;
+    const mismoAdmin = el.dataset.mismoAdmin === '1';
+    const cruzado    = el.dataset.cruzado    === '1';
+    const warn  = document.getElementById('activeLoanWarning');
+    const msg   = document.getElementById('activeLoanMsg');
+    const title = document.getElementById('activeLoanTitle');
+    if (mismoAdmin) {
+        warn.style.background = '#fffbeb';
+        warn.style.borderColor = '#f59e0b';
+        title.style.color = '#92400e';
+        title.textContent = '⚠ Este administrador ya tiene un préstamo activo con este cliente';
+        msg.style.color = '#78350f';
+        msg.textContent = `El cliente ya tiene un préstamo activo con el promotor "${el.dataset.promotor}". Se recomienda dar un refinanciamiento en lugar de un préstamo nuevo.`;
+        window._prestamoActivoUrl = el.dataset.prestamoActivoUrl;
+        document.getElementById('btnAceptarMismoAdmin').style.display = '';
+        document.getElementById('btnAceptarCruzado').style.display = 'none';
         warn.style.display = '';
     } else if (cruzado) {
         warn.style.background = '#fffbeb';
         warn.style.borderColor = '#fbbf24';
-        warn.querySelector('div').style.color = '#92400e';
-        warn.querySelector('div').textContent = '⚠ Deuda activa con otro administrador';
+        title.style.color = '#92400e';
+        title.textContent = '⚠ Deuda activa con otro administrador';
         msg.style.color = '#78350f';
         msg.textContent = `Este cliente ya tiene un préstamo activo con el administrador "${el.dataset.adminCruzado}". ¿Desea otorgar el préstamo de todas formas?`;
         document.getElementById('btnAceptarCruzado').style.display = '';
+        document.getElementById('btnAceptarMismoAdmin').style.display = 'none';
         warn.style.display = '';
     } else {
         warn.style.display = 'none';
         document.getElementById('btnAceptarCruzado').style.display = 'none';
+        document.getElementById('btnAceptarMismoAdmin').style.display = 'none';
         document.getElementById('confirmarCruzado').value = '0';
+        document.getElementById('confirmarMismoAdmin').value = '0';
     }
-    window._clienteBloqueado = bloqueado;
+    window._clienteBloqueado = false;
 
     // Marcar INE y comprobante como opcionales si el cliente ya los tiene registrados
     const tieneIne         = el.dataset.tieneIne === '1';
@@ -581,14 +620,23 @@ function _actualizarDocReq(key, yaTiene, label) {
 function csClear() {
     clienteSeleccionado = null;
     window._clienteBloqueado = false;
+    window._prestamoActivoUrl = null;
     document.getElementById('csClienteId').value = '';
     document.getElementById('csSearch').style.display = '';
     document.getElementById('csSearch').value = '';
     document.getElementById('csSelected').classList.remove('show');
     document.getElementById('activeLoanWarning').style.display = 'none';
     document.getElementById('btnAceptarCruzado').style.display = 'none';
+    document.getElementById('btnAceptarMismoAdmin').style.display = 'none';
     document.getElementById('confirmarCruzado').value = '0';
+    document.getElementById('confirmarMismoAdmin').value = '0';
     csFilter(); checkCanSubmit();
+}
+
+function aceptarMismoAdmin() {
+    if (window._prestamoActivoUrl) {
+        window.location.href = window._prestamoActivoUrl + '?refinanciar=1';
+    }
 }
 
 function aceptarPrestamoCruzado() {
@@ -597,8 +645,8 @@ function aceptarPrestamoCruzado() {
     const warn = document.getElementById('activeLoanWarning');
     warn.style.background = '#f0fdf4';
     warn.style.borderColor = '#86efac';
-    warn.querySelector('div').style.color = '#166534';
-    warn.querySelector('div').textContent = '✓ Confirmado — se procederá con el préstamo';
+    document.getElementById('activeLoanTitle').style.color = '#166534';
+    document.getElementById('activeLoanTitle').textContent = '✓ Confirmado — se procederá con el préstamo';
     document.getElementById('activeLoanMsg').textContent = '';
     checkCanSubmit();
 }
@@ -610,6 +658,33 @@ function addDays(dateStr, days) {
     d.setDate(d.getDate() + days);
     return d.toISOString().slice(0, 10);
 }
+function descansoDomingosActivo() {
+    return !!document.getElementById('inDescansoDomingos')?.checked;
+}
+function esDomingo(dateStr) {
+    return new Date(dateStr + 'T12:00:00').getDay() === 0;
+}
+function ajustarDomingo(dateStr) {
+    return descansoDomingosActivo() && esDomingo(dateStr) ? addDays(dateStr, 1) : dateStr;
+}
+function buildScheduleDates(firstDate, count, frecuencia) {
+    const dias = DIAS[frecuencia] || 30;
+    const dates = [];
+    if (descansoDomingosActivo() && frecuencia === 'Diario') {
+        let current = ajustarDomingo(firstDate);
+        while (dates.length < count) {
+            dates.push(current);
+            do {
+                current = addDays(current, 1);
+            } while (esDomingo(current));
+        }
+        return dates;
+    }
+    for (let i = 0; i < count; i++) {
+        dates.push(ajustarDomingo(addDays(firstDate, dias * i)));
+    }
+    return dates;
+}
 function fmtDate(dateStr) { const [y, m, d] = dateStr.split('-'); return `${d}/${m}/${y}`; }
 
 function calcPreview() {
@@ -620,6 +695,7 @@ function calcPreview() {
     const fechaInicio     = document.getElementById('inFechaInicio').value;
     const fechaPrimerCobro= document.getElementById('inFechaPrimerCobro').value;
     const dias            = DIAS[frecuencia] || 30;
+    const fechasPago      = fechaPrimerCobro ? buildScheduleDates(fechaPrimerCobro, numPagos, frecuencia) : [];
 
     // Compute retornar from entregado + % rentabilidad
     const retornar = entregado > 0 && rentPctInput > 0
@@ -661,14 +737,14 @@ function calcPreview() {
     document.getElementById('pvCuota').textContent    = fmtMXN(ultimoPago);
     document.getElementById('pvTotal').textContent    = fmtMXN(retornar);
     document.getElementById('pvRestRow').style.display = numPagos > 1 ? '' : 'none';
-    document.getElementById('pvFrecInfo').textContent = `Primer cobro: ${fmtDate(fechaPrimerCobro)} · cada ${dias} días`;
+    document.getElementById('pvFrecInfo').textContent = `Primer cobro: ${fmtDate(fechasPago[0] || fechaPrimerCobro)} · cada ${dias} días${descansoDomingosActivo() ? ' · sin domingos' : ''}`;
     document.getElementById('pvTablaCount').textContent = `${numPagos} pagos · ${frecuencia}`;
 
     // Build schedule — interest-first: all interest collected before any principal
     let interesPendiente = Math.round((retornar - entregado) * 100) / 100;
     let saldo = entregado; let rows = '';
     for (let i = 1; i <= numPagos; i++) {
-        const fecha   = addDays(fechaPrimerCobro, dias * (i - 1));
+        const fecha   = fechasPago[i - 1];
         const cuota   = i === numPagos ? ultimoPago : cuotaBase;
         const interes = Math.min(cuota, Math.round(interesPendiente * 100) / 100);
         const capital = Math.round((cuota - interes) * 100) / 100;
@@ -774,8 +850,7 @@ function checkCanSubmit() {
     const numPagos        = parseInt(document.getElementById('inNumPagos').value)       || 0;
     const clienteOk       = !!document.getElementById('csClienteId').value;
     const fechaPrimerCobro= document.getElementById('inFechaPrimerCobro').value;
-    const bloqueado       = !!window._clienteBloqueado;
-    const ok = clienteOk && !bloqueado && entregado > 0 && rentPctInput > 0 && retornar >= entregado && numPagos > 0 && !!fechaPrimerCobro;
+    const ok = clienteOk && entregado > 0 && rentPctInput > 0 && retornar >= entregado && numPagos > 0 && !!fechaPrimerCobro;
     const btn = document.getElementById('btnCrear');
     btn.disabled = !ok;
     btn.style.opacity = ok ? '1' : '.5';
@@ -823,6 +898,7 @@ function manejarSubmit(e) {
             monto_retornar:     document.getElementById('inRetornar').value,
             num_pagos:          document.getElementById('inNumPagos').value,
             frecuencia:         document.getElementById('inFrecuencia').value,
+            descanso_domingos:  document.getElementById('inDescansoDomingos').checked ? '1' : '0',
             fecha_inicio:       document.getElementById('inFechaInicio').value,
             fecha_primer_cobro: document.getElementById('inFechaPrimerCobro').value,
             _clienteNombre:     clienteSeleccionado?.nombre || '(sin nombre)',
