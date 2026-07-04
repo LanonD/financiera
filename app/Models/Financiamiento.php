@@ -49,6 +49,12 @@ class Financiamiento extends Model
         return round((float) $this->inversoresActivos()->sum('pct_retorno'), 2);
     }
 
+    /** Retornos mensuales fijos ($) comprometidos con los inversores activos. */
+    public function getFijosMensualesAttribute(): float
+    {
+        return round((float) $this->inversoresActivos()->sum('retorno_mensual'), 2);
+    }
+
     /** % que se reinvierte: lo que sobra de la tasa total tras pagar retornos. */
     public function getPctReinversionAttribute(): float
     {

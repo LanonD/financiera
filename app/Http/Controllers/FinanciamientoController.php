@@ -72,6 +72,24 @@ class FinanciamientoController extends Controller
     }
 
     /**
+     * Normaliza el retorno de un inversor: el acuerdo puede capturarse como
+     * monto fijo mensual ($) o como % mensual del aporte. El monto es el dato
+     * canónico; el % se guarda como equivalencia informativa.
+     *
+     * @return array{0: float, 1: float} [retorno_mensual, pct_equivalente]
+     */
+    private function normalizarRetorno(float $aporte, $pct, $monto): array
+    {
+        $retorno = ($monto !== null && $monto !== '')
+            ? round((float) $monto, 2)
+            : round($aporte * (float) ($pct ?? 0) / 100, 2);
+
+        $pctEq = $aporte > 0 ? round($retorno / $aporte * 100, 2) : 0.0;
+
+        return [$retorno, $pctEq];
+    }
+
+    /**
      * Crear la cuenta de inversión: acuerdo con el admin + inversores iniciales.
      */
     public function store(Request $request)
@@ -87,28 +105,30 @@ class FinanciamientoController extends Controller
             'owner_nombre'    => 'required|string|max:120',
             'owner_aporte'    => 'required|numeric|min:0',
             'owner_pct'       => 'nullable|numeric|min:0|max:100',
+            'owner_retorno'   => 'nullable|numeric|min:0',
             // Primer inversor externo (opcional)
             'inv_nombre'      => 'nullable|string|max:120|required_with:inv_aporte',
             'inv_aporte'      => 'nullable|numeric|min:0.01',
             'inv_pct'         => 'nullable|numeric|min:0|max:100',
+            'inv_retorno'     => 'nullable|numeric|min:0',
         ]);
 
         User::where('id', $data['admin_id'])->where('puesto', 'admin')->firstOrFail();
 
         $ownerAporte = round((float) $data['owner_aporte'], 2);
-        $ownerPct    = round((float) ($data['owner_pct'] ?? 0), 2);
         $invAporte   = round((float) ($data['inv_aporte'] ?? 0), 2);
-        $invPct      = round((float) ($data['inv_pct'] ?? 0), 2);
+        [$ownerRet, $ownerPct] = $this->normalizarRetorno($ownerAporte, $data['owner_pct'] ?? null, $data['owner_retorno'] ?? null);
+        [$invRet, $invPct]     = $this->normalizarRetorno($invAporte, $data['inv_pct'] ?? null, $data['inv_retorno'] ?? null);
         $capital     = round($ownerAporte + $invAporte, 2);
 
         if ($capital <= 0) {
             return back()->withErrors(['owner_aporte' => 'La inversión inicial debe ser mayor a $0.'])->withInput();
         }
-        // Validación en dinero: los retornos fijos mensuales (cada % es sobre el
-        // aporte propio) no pueden exceder el rendimiento mensual de la cuenta.
+        // Validación en dinero: los retornos fijos mensuales no pueden exceder
+        // el rendimiento mensual de la cuenta.
         // Tasa mensual equivalente de una cuenta semanal = tasa × 4.
         $tasaMensual  = (float) $data['rendimiento_pct'] * ($data['frecuencia'] === 'semanal' ? 4 : 1);
-        $fijosMes     = round($ownerAporte * $ownerPct / 100 + $invAporte * $invPct / 100, 2);
+        $fijosMes     = round($ownerRet + $invRet, 2);
         $rendimientoMes = round($capital * $tasaMensual / 100, 2);
         if ($fijosMes > $rendimientoMes) {
             return back()->withErrors([
@@ -134,6 +154,7 @@ class FinanciamientoController extends Controller
                 'es_owner'          => true,
                 'aporte'            => $ownerAporte,
                 'pct_retorno'       => $ownerPct,
+                'retorno_mensual'   => $ownerRet,
                 'fecha_ingreso'     => $data['fecha_inicio'],
                 'fecha_limite'      => null, // el owner no tiene convenio de salida
             ]);
@@ -154,6 +175,7 @@ class FinanciamientoController extends Controller
                 'es_owner'          => false,
                 'aporte'            => $invAporte,
                 'pct_retorno'       => $invPct,
+                'retorno_mensual'   => $invRet,
                 'fecha_ingreso'     => $data['fecha_inicio'],
                 'fecha_limite'      => \Carbon\Carbon::parse($data['fecha_inicio'])->addMonths((int) $data['plazo_meses'])->toDateString(),
             ]);
@@ -189,7 +211,7 @@ class FinanciamientoController extends Controller
         // Con la nueva tasa/frecuencia, el rendimiento mensual debe alcanzar
         // para los retornos fijos mensuales de los inversores activos.
         $tasaMensual    = (float) $data['rendimiento_pct'] * ($data['frecuencia'] === 'semanal' ? 4 : 1);
-        $fijosMes       = round((float) $f->inversoresActivos()->sum(fn($i) => $i->aporte * $i->pct_retorno / 100), 2);
+        $fijosMes       = $f->fijos_mensuales;
         $rendimientoMes = round($f->capital_actual * $tasaMensual / 100, 2);
         if ($fijosMes > $rendimientoMes) {
             return back()->withErrors([
@@ -212,20 +234,21 @@ class FinanciamientoController extends Controller
         $f = Financiamiento::with('inversores')->findOrFail($id);
 
         $data = $request->validate([
-            'nombre'        => 'required|string|max:120',
-            'aporte'        => 'required|numeric|min:0.01',
-            'pct_retorno'   => 'required|numeric|min:0|max:100',
-            'fecha_ingreso' => 'required|date',
-            'es_owner'      => 'nullable|boolean',
+            'nombre'          => 'required|string|max:120',
+            'aporte'          => 'required|numeric|min:0.01',
+            'pct_retorno'     => 'nullable|numeric|min:0|max:100|required_without:retorno_mensual',
+            'retorno_mensual' => 'nullable|numeric|min:0',
+            'fecha_ingreso'   => 'required|date',
+            'es_owner'        => 'nullable|boolean',
         ]);
 
-        // Misma lógica que al crear la cuenta: cada % es mensual sobre el aporte
-        // propio. Se valida en dinero, considerando que el nuevo aporte también
-        // suma capital (y por tanto rendimiento).
+        // El retorno fijo se captura como monto $/mes o como % mensual del
+        // aporte propio. Se valida en dinero, considerando que el nuevo aporte
+        // también suma capital (y por tanto rendimiento).
         $tasaMensual    = $f->rendimiento_pct * $f->periodos_por_mes;
         $nuevoAporte    = round((float) $data['aporte'], 2);
-        $fijosMes       = round((float) $f->inversoresActivos()->sum(fn($i) => $i->aporte * $i->pct_retorno / 100)
-                        + $nuevoAporte * (float) $data['pct_retorno'] / 100, 2);
+        [$nuevoRet, $nuevoPct] = $this->normalizarRetorno($nuevoAporte, $data['pct_retorno'] ?? null, $data['retorno_mensual'] ?? null);
+        $fijosMes       = round($f->fijos_mensuales + $nuevoRet, 2);
         $rendimientoMes = round(($f->capital_actual + $nuevoAporte) * $tasaMensual / 100, 2);
         if ($fijosMes > $rendimientoMes) {
             return back()->withErrors([
@@ -239,8 +262,9 @@ class FinanciamientoController extends Controller
             'financiamiento_id' => $f->id,
             'nombre'            => $data['nombre'],
             'es_owner'          => $esOwner,
-            'aporte'            => round((float) $data['aporte'], 2),
-            'pct_retorno'       => $data['pct_retorno'],
+            'aporte'            => $nuevoAporte,
+            'pct_retorno'       => $nuevoPct,
+            'retorno_mensual'   => $nuevoRet,
             'fecha_ingreso'     => $data['fecha_ingreso'],
             'fecha_limite'      => $esOwner ? null
                 : \Carbon\Carbon::parse($data['fecha_ingreso'])->addMonths((int) $f->plazo_meses)->toDateString(),
@@ -272,14 +296,16 @@ class FinanciamientoController extends Controller
         $f = $inversor->financiamiento;
 
         $data = $request->validate([
-            'nombre'      => 'required|string|max:120',
-            'pct_retorno' => 'required|numeric|min:0|max:100',
+            'nombre'          => 'required|string|max:120',
+            'pct_retorno'     => 'nullable|numeric|min:0|max:100|required_without:retorno_mensual',
+            'retorno_mensual' => 'nullable|numeric|min:0',
         ]);
+
+        [$nuevoRet, $nuevoPct] = $this->normalizarRetorno((float) $inversor->aporte, $data['pct_retorno'] ?? null, $data['retorno_mensual'] ?? null);
 
         if ($inversor->estatus === 'Activo') {
             $tasaMensual    = $f->rendimiento_pct * $f->periodos_por_mes;
-            $fijosMes       = round((float) $f->inversoresActivos()->where('id', '!=', $inversor->id)->sum(fn($i) => $i->aporte * $i->pct_retorno / 100)
-                            + $inversor->aporte * (float) $data['pct_retorno'] / 100, 2);
+            $fijosMes       = round((float) $f->inversoresActivos()->where('id', '!=', $inversor->id)->sum('retorno_mensual') + $nuevoRet, 2);
             $rendimientoMes = round($f->capital_actual * $tasaMensual / 100, 2);
             if ($fijosMes > $rendimientoMes) {
                 return back()->withErrors([
@@ -288,7 +314,11 @@ class FinanciamientoController extends Controller
             }
         }
 
-        $inversor->update($data);
+        $inversor->update([
+            'nombre'          => $data['nombre'],
+            'pct_retorno'     => $nuevoPct,
+            'retorno_mensual' => $nuevoRet,
+        ]);
 
         return redirect()->route('owner.financiamientos.index')
             ->with('success', "Inversor \"{$inversor->nombre}\" actualizado.")
@@ -344,7 +374,7 @@ class FinanciamientoController extends Controller
                 'nota'              => "Convenio vencido: capital de {$inversor->nombre} transferido al owner",
             ]);
 
-            $inversor->update(['estatus' => 'Transferido', 'fecha_salida' => $hoy->toDateString(), 'pct_retorno' => 0]);
+            $inversor->update(['estatus' => 'Transferido', 'fecha_salida' => $hoy->toDateString(), 'pct_retorno' => 0, 'retorno_mensual' => 0]);
 
             $msg = "Convenio vencido: el capital de \"{$inversor->nombre}\" se transfirió al owner (el total invertido no cambia).";
         } else {
@@ -367,7 +397,7 @@ class FinanciamientoController extends Controller
                 'nota'              => "Devolución de capital a {$inversor->nombre}",
             ]);
 
-            $inversor->update(['estatus' => 'Retirado', 'fecha_salida' => $hoy->toDateString(), 'pct_retorno' => 0]);
+            $inversor->update(['estatus' => 'Retirado', 'fecha_salida' => $hoy->toDateString(), 'pct_retorno' => 0, 'retorno_mensual' => 0]);
 
             $msg = "Se devolvió el aporte a \"{$inversor->nombre}\"; su % de retorno pasa a reinversión.";
         }
@@ -399,18 +429,17 @@ class FinanciamientoController extends Controller
         $detalle          = null;
 
         if ($data['tipo'] === 'rendimiento') {
-            // Retorno FIJO por inversor: su propio aporte × su % (no depende del
-            // capital total ni crece con la reinversión). Lo que sobra del monto
-            // cobrado se reinvierte. Si el cobro no alcanza para los retornos
-            // fijos (cobro parcial), se reparten proporcionalmente.
+            // Retorno FIJO por inversor: su retorno_mensual pactado (no depende
+            // del capital total ni crece con la reinversión). Lo que sobra del
+            // monto cobrado se reinvierte. Si el cobro no alcanza para los
+            // retornos fijos (cobro parcial), se reparten proporcionalmente.
             $detalle = [];
             $fijos   = [];
             $totalFijo = 0.0;
 
             foreach ($f->inversoresActivos() as $inv) {
-                if ($inv->pct_retorno <= 0) continue;
-                // pct_retorno es mensual: en cuentas semanales se prorratea entre 4 semanas
-                $fijo = round($inv->aporte * $inv->pct_retorno / 100 / $f->periodos_por_mes, 2);
+                // retorno_mensual es mensual: en cuentas semanales se prorratea entre 4 semanas
+                $fijo = round($inv->retorno_mensual / $f->periodos_por_mes, 2);
                 if ($fijo <= 0) continue;
                 $fijos[] = ['inv' => $inv, 'fijo' => $fijo];
                 $totalFijo += $fijo;

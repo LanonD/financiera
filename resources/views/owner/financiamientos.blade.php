@@ -69,7 +69,7 @@
 .fin-inv-table tr:hover td{background:#f9fafb}
 .fin-inv-table tr.inactivo td{opacity:.55}
 .fin-inv-add{padding:14px 18px;border-top:1px dashed var(--border);background:#fcfcfb}
-.fin-inv-add-grid{display:grid;grid-template-columns:1.4fr 1fr .8fr 1fr auto auto;gap:10px;align-items:end}
+.fin-inv-add-grid{display:grid;grid-template-columns:1.3fr .9fr 1fr .7fr .9fr auto auto;gap:10px;align-items:end}
 
 /* Forms de movimiento */
 .fin-forms-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
@@ -119,7 +119,7 @@
 .fin-part-dot{width:9px;height:9px;border-radius:99px;flex-shrink:0}
 .fin-part-name{font-size:12px;font-weight:800;color:var(--text)}
 .fin-part-hint{font-size:11px;color:var(--text3);margin-left:auto;font-weight:500}
-.fin-part-grid{display:grid;grid-template-columns:1.5fr 1.2fr .9fr;gap:12px;align-items:end}
+.fin-part-grid{display:grid;grid-template-columns:1.3fr 1.1fr 1fr .8fr;gap:12px;align-items:end}
 .fin-modal-section{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);padding-top:6px;border-top:1px dashed var(--border)}
 .fin-error{background:#fef2f2;border:1px solid rgba(220,38,38,.2);color:#b91c1c;font-size:12px;border-radius:8px;padding:10px 14px}
 .fin-empty{background:var(--card);border:1px dashed var(--border);border-radius:var(--radius);padding:54px 24px;text-align:center;color:var(--text3);font-size:13px}
@@ -387,10 +387,10 @@
 
         {{-- Barra de reparto del rendimiento (retornos fijos sobre el aporte de cada inversor) --}}
         @php
-            // pct_retorno es mensual; en cuentas semanales se prorratea entre 4 semanas
+            // retorno_mensual es mensual; en cuentas semanales se prorratea entre 4 semanas
             $ppm = $f->periodos_por_mes;
-            $retFijos = $activosI->where('pct_retorno', '>', 0)->values();
-            $totalRetFijo = (float) $retFijos->sum(fn($i) => $i->aporte * $i->pct_retorno / 100 / $ppm);
+            $retFijos = $activosI->where('retorno_mensual', '>', 0)->values();
+            $totalRetFijo = (float) $retFijos->sum(fn($i) => $i->retorno_mensual / $ppm);
             $reinvPer = max(0, $rendPer - $totalRetFijo);
         @endphp
         <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:13px 16px;margin-bottom:16px">
@@ -404,7 +404,7 @@
                 </div>
                 @endif
                 @foreach($retFijos as $ix => $inv)
-                @php $fijo = $inv->aporte * $inv->pct_retorno / 100 / $ppm; @endphp
+                @php $fijo = $inv->retorno_mensual / $ppm; @endphp
                 <div class="fin-split-seg" style="background:{{ $invColors[$ix % count($invColors)] }};flex:{{ $fijo }}" title="{{ $inv->nombre }} {{ $money($fijo) }}">
                     @if($rendPer > 0 && $fijo / $rendPer >= 0.22) {{ \Illuminate\Support\Str::limit($inv->nombre, 10) }} {{ $money($fijo) }} @endif
                 </div>
@@ -414,7 +414,7 @@
                 Cada {{ $f->periodo_label }}:
                 <b style="color:#7c3aed">{{ $money($reinvPer) }}</b> se reinvierte
                 @foreach($retFijos as $ix => $inv)
-                    · <b style="color:{{ $invColors[$ix % count($invColors)] }}">{{ $money($inv->aporte * $inv->pct_retorno / 100 / $ppm) }}</b> a {{ $inv->nombre }} ({{ $fmtPct($inv->pct_retorno) }}% mensual de su aporte{{ $ppm > 1 ? ' ÷ 4 semanas' : '' }})
+                    · <b style="color:{{ $invColors[$ix % count($invColors)] }}">{{ $money($inv->retorno_mensual / $ppm) }}</b> a {{ $inv->nombre }} ({{ $money($inv->retorno_mensual) }} fijos/mes ≈ {{ $fmtPct($inv->pct_retorno) }}% de su aporte{{ $ppm > 1 ? ' ÷ 4 semanas' : '' }})
                 @endforeach
             </div>
         </div>
@@ -436,7 +436,7 @@
                     <tr>
                         <th>Inversor</th>
                         <th>Aporte</th>
-                        <th>% retorno mensual</th>
+                        <th>Retorno mensual fijo</th>
                         <th>Retorno / {{ $f->periodo_label }}</th>
                         <th>Ingreso</th>
                         <th>Límite convenio</th>
@@ -452,12 +452,17 @@
                             @if($inv->es_owner)<span class="fin-pill fin-pill-purple" style="margin-left:5px">owner</span>@endif
                         </td>
                         <td style="font-weight:700">{{ $money($inv->aporte) }}</td>
-                        <td>{{ $fmtPct($inv->pct_retorno) }}%</td>
                         <td>
-                            @if($inv->estatus === 'Activo' && $inv->pct_retorno > 0)
-                                {{ $money($inv->aporte * $inv->pct_retorno / 100 / $f->periodos_por_mes) }} fijo
+                            @if($inv->estatus === 'Activo' && $inv->retorno_mensual > 0)
+                                <b>{{ $money($inv->retorno_mensual) }}</b>
+                                <div style="font-size:10px;color:var(--text3)">≈ {{ $fmtPct($inv->pct_retorno) }}% de su aporte</div>
+                            @else — @endif
+                        </td>
+                        <td>
+                            @if($inv->estatus === 'Activo' && $inv->retorno_mensual > 0)
+                                {{ $money($inv->retorno_mensual / $f->periodos_por_mes) }} fijo
                                 @if($f->periodos_por_mes > 1)
-                                    <div style="font-size:10px;color:var(--text3)">= {{ $money($inv->aporte * $inv->pct_retorno / 100) }} /mes</div>
+                                    <div style="font-size:10px;color:var(--text3)">= {{ $money($inv->retorno_mensual) }} /mes ÷ 4 semanas</div>
                                 @endif
                             @else — @endif
                         </td>
@@ -479,7 +484,7 @@
                             @if($f->estatus === 'Activo' && $inv->estatus === 'Activo')
                             <div style="display:flex;gap:5px;justify-content:flex-end">
                                 @php
-                                    $invEdit = ['fid' => $f->id, 'iid' => $inv->id, 'nombre' => $inv->nombre, 'pct_retorno' => $inv->pct_retorno];
+                                    $invEdit = ['fid' => $f->id, 'iid' => $inv->id, 'nombre' => $inv->nombre, 'pct_retorno' => $inv->pct_retorno, 'retorno_mensual' => $inv->retorno_mensual, 'aporte' => $inv->aporte];
                                 @endphp
                                 <button class="btn btn-sm" style="background:#eff6ff;color:#1d4ed8;font-size:11px;padding:4px 9px"
                                     onclick='finOpenEditInversor(@json($invEdit))'>Editar</button>
@@ -487,7 +492,7 @@
                                 <form method="POST" action="{{ route('owner.financiamientos.inversores.salida', [$f->id, $inv->id]) }}"
                                       onsubmit="return confirm('{{ $inv->convenio_vencido
                                         ? 'El convenio venció el ' . $inv->fecha_limite->format('d/m/Y') . '. El capital de ' . $money($inv->aporte) . ' se transferirá al OWNER (el inversor pierde el derecho a reclamarlo). ¿Continuar?'
-                                        : 'Se devolverá el aporte de ' . $money($inv->aporte) . ' a ' . $inv->nombre . ' y saldrá de la inversión. Su % de retorno pasará a reinversión. ¿Continuar?' }}')">
+                                        : 'Se devolverá el aporte de ' . $money($inv->aporte) . ' a ' . $inv->nombre . ' y saldrá de la inversión. Su retorno fijo pasará a reinversión. ¿Continuar?' }}')">
                                     @csrf
                                     <button type="submit" class="btn btn-sm" style="background:{{ $inv->convenio_vencido ? '#f5f3ff' : '#fff7ed' }};color:{{ $inv->convenio_vencido ? '#7c3aed' : '#ea580c' }};font-size:11px;padding:4px 9px">
                                         {{ $inv->convenio_vencido ? 'Transferir al owner' : 'Retirar' }}
@@ -513,16 +518,22 @@
                         </div>
                         <div class="fin-field">
                             <label>Aporte</label>
-                            <input type="number" name="aporte" step="0.01" min="0.01" required placeholder="0.00">
+                            <input type="number" name="aporte" id="finAddAporte{{ $f->id }}" step="0.01" min="0.01" required placeholder="0.00"
+                                   oninput="finSyncRet('finAddAporte{{ $f->id }}', 'finAddPct{{ $f->id }}', 'finAddRet{{ $f->id }}', 'aporte')">
                         </div>
                         @php
                             // Margen mensual disponible: rendimiento mensual − retornos fijos ya comprometidos
-                            $fijosMesF = (float) $activosI->sum(fn($i) => $i->aporte * $i->pct_retorno / 100);
-                            $dispMes   = max(0, $f->capital_actual * $f->rendimiento_pct * $f->periodos_por_mes / 100 - $fijosMesF);
+                            $dispMes = max(0, $f->capital_actual * $f->rendimiento_pct * $f->periodos_por_mes / 100 - $f->fijos_mensuales);
                         @endphp
                         <div class="fin-field">
-                            <label>% retorno mensual <span style="text-transform:none;font-weight:600">(disponible ≈ {{ $money($dispMes) }}/mes)</span></label>
-                            <input type="number" name="pct_retorno" step="0.01" min="0" max="100" required placeholder="10">
+                            <label>Retorno fijo $/mes <span style="text-transform:none;font-weight:600">(disponible ≈ {{ $money($dispMes) }}/mes)</span></label>
+                            <input type="number" name="retorno_mensual" id="finAddRet{{ $f->id }}" step="0.01" min="0" placeholder="5000"
+                                   oninput="finSyncRet('finAddAporte{{ $f->id }}', 'finAddPct{{ $f->id }}', 'finAddRet{{ $f->id }}', 'ret')">
+                        </div>
+                        <div class="fin-field">
+                            <label>≈ % mensual</label>
+                            <input type="number" name="pct_retorno" id="finAddPct{{ $f->id }}" step="0.01" min="0" max="100" placeholder="10"
+                                   oninput="finSyncRet('finAddAporte{{ $f->id }}', 'finAddPct{{ $f->id }}', 'finAddRet{{ $f->id }}', 'pct')">
                         </div>
                         <div class="fin-field">
                             <label>Fecha de ingreso</label>
@@ -690,7 +701,7 @@
                     'fecha_inicio'    => $f->fecha_inicio->toDateString(),
                     'notas'           => $f->notas,
                     'nombre'          => $nombre,
-                    'fijos_mensuales' => round((float) $activosI->sum(fn($i) => $i->aporte * $i->pct_retorno / 100), 2),
+                    'fijos_mensuales' => $f->fijos_mensuales,
                 ];
             @endphp
             <button class="btn btn-sm" style="background:#eff6ff;color:#1d4ed8"
@@ -768,7 +779,7 @@
                     <div class="fin-part-head">
                         <span class="fin-part-dot" style="background:#7c3aed"></span>
                         <span class="fin-part-name">Participación del owner</span>
-                        <span class="fin-part-hint">% mensual · 0 = todo se reinvierte</span>
+                        <span class="fin-part-hint">retorno fijo en $0 = todo se reinvierte</span>
                     </div>
                     <div class="fin-part-grid">
                         <div class="fin-field">
@@ -777,11 +788,18 @@
                         </div>
                         <div class="fin-field">
                             <label>Aporte</label>
-                            <input type="number" name="owner_aporte" id="finCrearOwnerAporte" step="0.01" min="0" required placeholder="500000" value="{{ old('owner_aporte') }}" oninput="finCrearPreview()">
+                            <input type="number" name="owner_aporte" id="finCrearOwnerAporte" step="0.01" min="0" required placeholder="500000" value="{{ old('owner_aporte') }}"
+                                   oninput="finSyncRet('finCrearOwnerAporte', 'finCrearOwnerPct', 'finCrearOwnerRet', 'aporte'); finCrearPreview()">
                         </div>
                         <div class="fin-field">
-                            <label>% retorno mensual</label>
-                            <input type="number" name="owner_pct" id="finCrearOwnerPct" step="0.01" min="0" max="100" placeholder="0" value="{{ old('owner_pct', 0) }}" oninput="finCrearPreview()">
+                            <label>Retorno fijo $/mes</label>
+                            <input type="number" name="owner_retorno" id="finCrearOwnerRet" step="0.01" min="0" placeholder="0" value="{{ old('owner_retorno') }}"
+                                   oninput="finSyncRet('finCrearOwnerAporte', 'finCrearOwnerPct', 'finCrearOwnerRet', 'ret'); finCrearPreview()">
+                        </div>
+                        <div class="fin-field">
+                            <label>≈ % mensual</label>
+                            <input type="number" name="owner_pct" id="finCrearOwnerPct" step="0.01" min="0" max="100" placeholder="0" value="{{ old('owner_pct', 0) }}"
+                                   oninput="finSyncRet('finCrearOwnerAporte', 'finCrearOwnerPct', 'finCrearOwnerRet', 'pct'); finCrearPreview()">
                         </div>
                     </div>
                 </div>
@@ -799,11 +817,18 @@
                         </div>
                         <div class="fin-field">
                             <label>Aporte</label>
-                            <input type="number" name="inv_aporte" id="finCrearInvAporte" step="0.01" min="0" placeholder="500000" value="{{ old('inv_aporte') }}" oninput="finCrearPreview()">
+                            <input type="number" name="inv_aporte" id="finCrearInvAporte" step="0.01" min="0" placeholder="500000" value="{{ old('inv_aporte') }}"
+                                   oninput="finSyncRet('finCrearInvAporte', 'finCrearInvPct', 'finCrearInvRet', 'aporte'); finCrearPreview()">
                         </div>
                         <div class="fin-field">
-                            <label>% retorno mensual</label>
-                            <input type="number" name="inv_pct" id="finCrearInvPct" step="0.01" min="0" max="100" placeholder="10" value="{{ old('inv_pct') }}" oninput="finCrearPreview()">
+                            <label>Retorno fijo $/mes</label>
+                            <input type="number" name="inv_retorno" id="finCrearInvRet" step="0.01" min="0" placeholder="5000" value="{{ old('inv_retorno') }}"
+                                   oninput="finSyncRet('finCrearInvAporte', 'finCrearInvPct', 'finCrearInvRet', 'ret'); finCrearPreview()">
+                        </div>
+                        <div class="fin-field">
+                            <label>≈ % mensual</label>
+                            <input type="number" name="inv_pct" id="finCrearInvPct" step="0.01" min="0" max="100" placeholder="10" value="{{ old('inv_pct') }}"
+                                   oninput="finSyncRet('finCrearInvAporte', 'finCrearInvPct', 'finCrearInvRet', 'pct'); finCrearPreview()">
                         </div>
                     </div>
                 </div>
@@ -935,10 +960,17 @@
                     <input type="text" name="nombre" id="finInvNombre" required maxlength="120">
                 </div>
                 <div class="fin-field">
-                    <label>% de retorno mensual</label>
-                    <input type="number" name="pct_retorno" id="finInvPct" step="0.01" min="0" max="100" required>
+                    <label>Retorno fijo $/mes</label>
+                    <input type="number" name="retorno_mensual" id="finInvRet" step="0.01" min="0" required
+                           oninput="finSyncRet('finInvAporte', 'finInvPct', 'finInvRet', 'ret')">
                 </div>
-                <div style="font-size:11px;color:var(--text3)">El % es mensual sobre su propio aporte (en cuentas semanales se prorratea entre 4 semanas) y se puede ajustar en cualquier momento; lo que no se retorna se reinvierte.</div>
+                <div class="fin-field">
+                    <label>≈ % mensual de su aporte (<span id="finInvAporteLbl"></span>)</label>
+                    <input type="number" name="pct_retorno" id="finInvPct" step="0.01" min="0" max="100"
+                           oninput="finSyncRet('finInvAporte', 'finInvPct', 'finInvRet', 'pct')">
+                </div>
+                <input type="hidden" id="finInvAporte" value="0">
+                <div style="font-size:11px;color:var(--text3)">El retorno es un monto fijo mensual (en cuentas semanales se prorratea entre 4 semanas) y se puede ajustar en cualquier momento; lo que no se retorna se reinvierte. Puedes capturarlo en $ o como % de su aporte.</div>
             </div>
             <div class="fin-modal-footer">
                 <button type="button" class="btn" style="background:#f3f4f6;color:var(--text2)" onclick="document.getElementById('finModalInversor').classList.remove('open')">Cancelar</button>
@@ -955,8 +987,8 @@
             'tasa'       => (float) $f->rendimiento_pct,
             'ppm'        => $f->periodos_por_mes,
             'inversores' => $f->inversoresActivos()
-                ->filter(fn($i) => $i->pct_retorno > 0)
-                ->map(fn($i) => ['nombre' => $i->nombre, 'pct' => (float) $i->pct_retorno, 'aporte' => (float) $i->aporte])
+                ->filter(fn($i) => $i->retorno_mensual > 0)
+                ->map(fn($i) => ['nombre' => $i->nombre, 'ret' => (float) $i->retorno_mensual, 'aporte' => (float) $i->aporte])
                 ->values()->all(),
         ]];
     });
@@ -977,11 +1009,11 @@ function finRendPreview(id) {
     const datos = finDatos[id];
     if (!datos) return;
     const monto = parseFloat(document.getElementById('finRendMonto' + id).value) || 0;
-    // Retorno fijo por inversor: su aporte × su % MENSUAL, prorrateado al periodo
+    // Retorno fijo por inversor: su monto MENSUAL pactado, prorrateado al periodo
     // de la cuenta (÷4 en cuentas semanales). Si el cobro no alcanza, se escala.
     let totalFijo = 0;
     const fijos = datos.inversores.map(inv => {
-        const f = Math.round(inv.aporte * inv.pct / (datos.ppm || 1)) / 100;
+        const f = Math.round(inv.ret / (datos.ppm || 1) * 100) / 100;
         totalFijo += f;
         return { nombre: inv.nombre, fijo: f };
     });
@@ -1002,18 +1034,41 @@ function finUsarEsperado(id, esperado) {
     input.dispatchEvent(new Event('input'));
 }
 
+/*
+ * Mantiene sincronizados el retorno fijo en $/mes (dato del acuerdo) y su %
+ * mensual equivalente sobre el aporte. `source` indica qué campo editó el
+ * usuario: 'ret' actualiza el %, 'pct' actualiza el $, y 'aporte' recalcula
+ * dando prioridad al $ si ya está capturado.
+ */
+function finSyncRet(aporteId, pctId, retId, source) {
+    const aporteEl = document.getElementById(aporteId);
+    const pctEl    = document.getElementById(pctId);
+    const retEl    = document.getElementById(retId);
+    const aporte   = parseFloat(aporteEl.value) || 0;
+    if (source === 'pct' || (source === 'aporte' && retEl.value === '' && pctEl.value !== '')) {
+        const pct = parseFloat(pctEl.value) || 0;
+        retEl.value = aporte > 0 ? (Math.round(aporte * pct) / 100).toFixed(2) : retEl.value;
+    } else if (source === 'ret' || source === 'aporte') {
+        const ret = parseFloat(retEl.value) || 0;
+        if (aporte > 0) pctEl.value = (Math.round(ret / aporte * 10000) / 100).toFixed(2);
+    }
+}
+
+// Retorno mensual fijo en $ de una participación del modal crear (campo $ directo)
+function finCrearRetMes(retInputId) {
+    return parseFloat(document.getElementById(retInputId).value) || 0;
+}
+
 function finCrearPreview() {
     const capO = parseFloat(document.getElementById('finCrearOwnerAporte').value) || 0;
     const capI = parseFloat(document.getElementById('finCrearInvAporte').value) || 0;
     const tasa = parseFloat(document.getElementById('finCrearPct').value) || 0;
-    const pctO = parseFloat(document.getElementById('finCrearOwnerPct').value) || 0;
-    const pctI = parseFloat(document.getElementById('finCrearInvPct').value) || 0;
     const frec = document.querySelector('#finModalCrear select[name="frecuencia"]').value;
     const ppm  = frec === 'semanal' ? 4 : 1;
     const cap  = capO + capI;
     const rend = cap * tasa / 100;
-    // Retornos fijos: % MENSUAL sobre el aporte propio, prorrateado al periodo
-    const ret  = (capO * pctO / 100 + capI * pctI / 100) / ppm;
+    // Retornos fijos: monto MENSUAL pactado, prorrateado al periodo
+    const ret  = (finCrearRetMes('finCrearOwnerRet') + finCrearRetMes('finCrearInvRet')) / ppm;
     document.getElementById('finCrearPrevCap').textContent   = finFmt.format(cap);
     document.getElementById('finCrearPrevRend').textContent  = finFmt.format(rend);
     document.getElementById('finCrearPrevReinv').textContent = finFmt.format(Math.max(0, rend - ret));
@@ -1042,8 +1097,8 @@ function finPreviewRender() {
     const capO   = parseFloat(document.getElementById('finCrearOwnerAporte').value) || 0;
     const capI   = parseFloat(document.getElementById('finCrearInvAporte').value) || 0;
     const tasa   = parseFloat(document.getElementById('finCrearPct').value) || 0;
-    const pctO   = parseFloat(document.getElementById('finCrearOwnerPct').value) || 0;
-    const pctI   = parseFloat(document.getElementById('finCrearInvPct').value) || 0;
+    const retOm  = finCrearRetMes('finCrearOwnerRet');
+    const retIm  = finCrearRetMes('finCrearInvRet');
     const frec   = document.querySelector('#finModalCrear select[name="frecuencia"]').value;
     const nomO   = document.querySelector('#finModalCrear input[name="owner_nombre"]').value.trim() || 'Owner';
     const nomI   = document.querySelector('#finModalCrear input[name="inv_nombre"]').value.trim() || 'Inversor externo';
@@ -1057,12 +1112,12 @@ function finPreviewRender() {
     document.getElementById('finPrevContenido').style.display = vacio ? 'none' : 'grid';
     if (vacio) return;
 
-    // Retornos FIJOS: % MENSUAL sobre el aporte propio (constante), prorrateado
-    // al periodo de la cuenta (÷4 si es semanal). El resto se reinvierte compuesto.
+    // Retornos FIJOS: monto MENSUAL pactado (constante), prorrateado al
+    // periodo de la cuenta (÷4 si es semanal). El resto se reinvierte compuesto.
     const ppm   = frec === 'semanal' ? 4 : 1;
     const rend  = cap * tasa / 100;
-    const retO  = capO * pctO / 100 / ppm;
-    const retI  = capI * pctI / 100 / ppm;
+    const retO  = retOm / ppm;
+    const retI  = retIm / ppm;
     const retFijo = retO + retI;
     const reinv0  = Math.max(0, rend - retFijo);
 
@@ -1091,8 +1146,8 @@ function finPreviewRender() {
     // 2) Donut: reparto del rendimiento en pesos (retornos fijos + reinversión)
     const tLabels = [], tData = [], tColors = [];
     if (reinv0 > 0) { tLabels.push('Reinversión');                                  tData.push(reinv0); tColors.push('#7c3aed'); }
-    if (retO > 0)   { tLabels.push(nomO + ' (' + pctO + '% mensual de su aporte)'); tData.push(retO);   tColors.push('#10b981'); }
-    if (retI > 0)   { tLabels.push(nomI + ' (' + pctI + '% mensual de su aporte)'); tData.push(retI);   tColors.push('#f59e0b'); }
+    if (retO > 0)   { tLabels.push(nomO + ' (' + finFmt.format(retOm) + ' fijos/mes)'); tData.push(retO); tColors.push('#10b981'); }
+    if (retI > 0)   { tLabels.push(nomI + ' (' + finFmt.format(retIm) + ' fijos/mes)'); tData.push(retI); tColors.push('#f59e0b'); }
     finChartMake('tasa', 'finChartTasa', {
         type: 'doughnut',
         data: { labels: tLabels, datasets: [{ data: tData, backgroundColor: tColors, borderWidth: 2, borderColor: '#fbfbfa' }] },
@@ -1133,7 +1188,7 @@ function finPreviewRender() {
     if (retO > 0) partesRet.push(nomO + ' habría recibido <b>' + finFmt.format(serieRetO[12]) + '</b>');
     if (retI > 0) partesRet.push(nomI + ' habría recibido <b>' + finFmt.format(serieRetI[12]) + '</b>');
     document.getElementById('finPrevNota').innerHTML =
-        'Cada participante recibe un retorno <b>fijo</b>: su % <b>mensual</b> sobre su propio aporte' +
+        'Cada participante recibe un retorno <b>fijo</b>: un monto <b>mensual</b> pactado sobre su inversión' +
         (ppm > 1 ? ', prorrateado entre 4 semanas (' + finFmt.format(retFijo) + ' por semana)' : '') +
         '; el resto del rendimiento se reinvierte. En 12 ' + perPl + ' el capital llegaría a <b>' + finFmt.format(capFinal) + '</b>' +
         (partesRet.length ? ' y ' + partesRet.join(', ') : '') +
@@ -1155,7 +1210,10 @@ function finOpenEditar(data) {
 function finOpenEditInversor(data) {
     document.getElementById('finInvForm').action  = '{{ url('owner/financiamientos') }}/' + data.fid + '/inversores/' + data.iid;
     document.getElementById('finInvNombre').value = data.nombre;
+    document.getElementById('finInvRet').value    = (data.retorno_mensual || 0).toFixed(2);
     document.getElementById('finInvPct').value    = data.pct_retorno;
+    document.getElementById('finInvAporte').value = data.aporte || 0;
+    document.getElementById('finInvAporteLbl').textContent = finFmt.format(data.aporte || 0);
     document.getElementById('finModalInversor').classList.add('open');
 }
 
@@ -1197,7 +1255,7 @@ const finTourPasos = [
     {
         el: '__lista__',
         title: '3. Tus cuentas de inversión',
-        text: 'Cada cuenta es una tarjeta. Haz clic sobre ella para abrirla: verás los inversores con su % de retorno, el reparto de la tasa y el botón para registrar el rendimiento de cada periodo.',
+        text: 'Cada cuenta es una tarjeta. Haz clic sobre ella para abrirla: verás los inversores con su retorno mensual fijo, el reparto de la tasa y el botón para registrar el rendimiento de cada periodo.',
     },
     {
         el: 'a.nav-item[href*="financiamientos"]',

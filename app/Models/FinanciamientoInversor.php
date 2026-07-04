@@ -10,13 +10,14 @@ class FinanciamientoInversor extends Model
 
     protected $fillable = [
         'financiamiento_id', 'nombre', 'es_owner', 'aporte', 'pct_retorno',
-        'fecha_ingreso', 'fecha_limite', 'estatus', 'fecha_salida',
+        'retorno_mensual', 'fecha_ingreso', 'fecha_limite', 'estatus', 'fecha_salida',
     ];
 
     protected $casts = [
-        'es_owner'      => 'boolean',
-        'aporte'        => 'float',
-        'pct_retorno'   => 'float',
+        'es_owner'        => 'boolean',
+        'aporte'          => 'float',
+        'pct_retorno'     => 'float',
+        'retorno_mensual' => 'float',
         'fecha_ingreso' => 'date',
         'fecha_limite'  => 'date',
         'fecha_salida'  => 'date',
