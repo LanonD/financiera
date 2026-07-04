@@ -511,6 +511,7 @@ $esMiPrestamo   = $empDetalle && $prestamo->promotor_id == $empDetalle->id;
 
             @foreach([
                 ['Frecuencia',        $prestamo->frecuencia],
+                ['Descanso domingos', $prestamo->descanso_domingos ? 'Si' : 'No'],
                 ['Num. pagos',        $prestamo->num_pagos],
                 ['Tasa diaria',       $prestamo->tasa_diaria > 0 ? $prestamo->tasa_diaria.'%' : '— (pago fijo)'],
                 ['Fecha inicio',      $prestamo->fecha_inicio ? $prestamo->fecha_inicio->format('d/m/Y') : '—'],
@@ -1031,6 +1032,17 @@ $esMiPrestamo   = $empDetalle && $prestamo->promotor_id == $empDetalle->id;
                 </div>
             </div>
 
+            <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;cursor:pointer">
+                <input type="checkbox" name="descanso_domingos" id="refi-descanso-domingos" value="1"
+                       {{ $prestamo->descanso_domingos ? 'checked' : '' }}
+                       onchange="autoFechaRefi();recalcRefi()"
+                       style="margin-top:2px;width:16px;height:16px">
+                <span>
+                    <span style="display:block;font-size:12px;font-weight:600;color:var(--text)">Descansar domingos</span>
+                    <span style="display:block;font-size:11px;color:var(--text3);margin-top:2px">El nuevo plan no programara cobros en domingo.</span>
+                </span>
+            </label>
+
             {{-- 5. Cuota --}}
             <div style="display:flex;align-items:center;justify-content:space-between;background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:10px 16px">
                 <span style="font-size:12px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.06em">Cuota por pago</span>
@@ -1127,8 +1139,48 @@ function autoFechaRefi() {
     const d    = new Date('{{ now()->toDateString() }}T12:00:00');
     if (freq === 'Mensual') d.setMonth(d.getMonth() + 1);
     else d.setDate(d.getDate() + dias);
+    if (document.getElementById('refi-descanso-domingos')?.checked && d.getDay() === 0) {
+        d.setDate(d.getDate() + 1);
+    }
     const inp = document.getElementById('refi-fecha-primer');
     if (inp) { inp.value = d.toISOString().split('T')[0]; recalcRefi(); }
+}
+
+function refiDescansoDomingosActivo() {
+    return document.getElementById('refi-descanso-domingos')?.checked || false;
+}
+
+function refiAddDays(dateStr, days) {
+    const d = new Date(dateStr + 'T12:00:00');
+    d.setDate(d.getDate() + days);
+    return d.toISOString().split('T')[0];
+}
+
+function refiEsDomingo(dateStr) {
+    return new Date(dateStr + 'T12:00:00').getDay() === 0;
+}
+
+function refiAjustarDomingo(dateStr) {
+    return refiDescansoDomingosActivo() && refiEsDomingo(dateStr) ? refiAddDays(dateStr, 1) : dateStr;
+}
+
+function refiBuildPaymentDate(firstDate, index, freq) {
+    if (!refiDescansoDomingosActivo()) return refiAddDays(firstDate, (REFI_DIAS[freq] || 1) * index);
+    if (freq === 'Diario') {
+        let fecha = refiAjustarDomingo(firstDate);
+        let count = 0;
+        while (count < index) {
+            fecha = refiAddDays(fecha, 1);
+            if (!refiEsDomingo(fecha)) count++;
+        }
+        return fecha;
+    }
+    if (freq === 'Mensual') {
+        const d = new Date(firstDate + 'T12:00:00');
+        d.setMonth(d.getMonth() + index);
+        return refiAjustarDomingo(d.toISOString().split('T')[0]);
+    }
+    return refiAjustarDomingo(refiAddDays(firstDate, (REFI_DIAS[freq] || 1) * index));
 }
 
 function refiPagareSeleccionado(input) {
@@ -1186,9 +1238,7 @@ function recalcRefi() {
     let rows        = '';
 
     for (let i = 1; i <= numPagos; i++) {
-        let d = new Date(fechaPrimer + 'T12:00:00');
-        if (freq === 'Mensual') d.setMonth(d.getMonth()+(i-1));
-        else d.setDate(d.getDate()+dias*(i-1));
+        const fecha = refiBuildPaymentDate(fechaPrimer, i - 1, freq);
 
         const cuota  = (i===numPagos) ? Math.round(ultimoPago*100)/100 : cuotaBase;
         const int_   = Math.min(cuota, Math.max(0, interesRest));
@@ -1198,7 +1248,7 @@ function recalcRefi() {
 
         rows += `<tr style="border-bottom:1px solid #f3f4f6">
             <td style="padding:6px 8px;font-family:monospace;color:var(--text3);font-size:11px">${i}</td>
-            <td style="padding:6px 8px;font-size:11px">${fmtD(d.toISOString().split('T')[0])}</td>
+            <td style="padding:6px 8px;font-size:11px">${fmtD(fecha)}</td>
             <td style="padding:6px 8px;text-align:right;font-family:monospace;font-weight:600;font-size:12px">${fmt(cuota)}</td>
             <td class="refi-col-cap" style="padding:6px 8px;text-align:right;font-family:monospace;color:#16a34a;font-size:11px">${fmt(cap_)}</td>
             <td class="refi-col-int" style="padding:6px 8px;text-align:right;font-family:monospace;color:#8b5cf6;font-size:11px">${fmt(int_)}</td>

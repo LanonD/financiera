@@ -275,6 +275,17 @@ $docsMap   = $clientesConDocs ?? [];
                 </div>
             </div>
 
+            <label style="display:flex;align-items:flex-start;gap:10px;padding:11px 12px;background:#f8fafc;border:1px solid var(--border);border-radius:6px;cursor:pointer">
+                <input type="checkbox" name="descanso_domingos" id="inDescansoDomingos" value="1"
+                       {{ old('descanso_domingos') ? 'checked' : '' }}
+                       onchange="autoFechaPrimerCobro();calcPreview()"
+                       style="margin-top:2px;width:16px;height:16px">
+                <span>
+                    <span style="display:block;font-size:12px;font-weight:600;color:var(--text)">Descansar domingos</span>
+                    <span style="display:block;font-size:11px;color:var(--text3);margin-top:2px">El plan de pagos no programara cobros en domingo.</span>
+                </span>
+            </label>
+
             {{-- Fecha inicio --}}
             <div>
                 <label class="np-label">Fecha de inicio del préstamo</label>
@@ -465,6 +476,10 @@ $docsMap   = $clientesConDocs ?? [];
 let clienteSeleccionado = null;
 const DIAS = { Mensual: 30, Quincenal: 14, Semanal: 7, Diario: 1 };
 
+function descansoDomingosActivo() {
+    return document.getElementById('inDescansoDomingos')?.checked || false;
+}
+
 /* Auto-calcula fecha_primer_cobro cuando cambia fecha_inicio o frecuencia */
 function onFechaInicioChange() {
     autoFechaPrimerCobro();
@@ -475,7 +490,7 @@ function autoFechaPrimerCobro() {
     const frecuencia  = document.getElementById('inFrecuencia').value;
     if (!fechaInicio) return;
     const dias   = DIAS[frecuencia] || 30;
-    const nueva  = addDays(fechaInicio, dias);
+    const nueva  = ajustarDomingo(addDays(fechaInicio, dias));
     document.getElementById('inFechaPrimerCobro').value = nueva;
     document.getElementById('hintPrimerCobro').textContent =
         `Calculado como inicio + ${dias} días (${frecuencia.toLowerCase()}) — puedes ajustarlo`;
@@ -624,6 +639,25 @@ function addDays(dateStr, days) {
     d.setDate(d.getDate() + days);
     return d.toISOString().slice(0, 10);
 }
+function esDomingo(dateStr) {
+    return new Date(dateStr + 'T12:00:00').getDay() === 0;
+}
+function ajustarDomingo(dateStr) {
+    return descansoDomingosActivo() && esDomingo(dateStr) ? addDays(dateStr, 1) : dateStr;
+}
+function buildPaymentDate(firstDate, index, frecuencia) {
+    if (!descansoDomingosActivo()) return addDays(firstDate, (DIAS[frecuencia] || 30) * index);
+    if (frecuencia === 'Diario') {
+        let fecha = ajustarDomingo(firstDate);
+        let count = 0;
+        while (count < index) {
+            fecha = addDays(fecha, 1);
+            if (!esDomingo(fecha)) count++;
+        }
+        return fecha;
+    }
+    return ajustarDomingo(addDays(firstDate, (DIAS[frecuencia] || 30) * index));
+}
 function fmtDate(dateStr) { const [y, m, d] = dateStr.split('-'); return `${d}/${m}/${y}`; }
 
 function calcPreview() {
@@ -682,7 +716,7 @@ function calcPreview() {
     let interesPendiente = Math.round((retornar - entregado) * 100) / 100;
     let saldo = entregado; let rows = '';
     for (let i = 1; i <= numPagos; i++) {
-        const fecha   = addDays(fechaPrimerCobro, dias * (i - 1));
+        const fecha   = buildPaymentDate(fechaPrimerCobro, i - 1, frecuencia);
         const cuota   = i === numPagos ? ultimoPago : cuotaBase;
         const interes = Math.min(cuota, Math.round(interesPendiente * 100) / 100);
         const capital = Math.round((cuota - interes) * 100) / 100;
@@ -836,6 +870,7 @@ function manejarSubmit(e) {
             monto_retornar:     document.getElementById('inRetornar').value,
             num_pagos:          document.getElementById('inNumPagos').value,
             frecuencia:         document.getElementById('inFrecuencia').value,
+            descanso_domingos:  descansoDomingosActivo() ? '1' : '0',
             fecha_inicio:       document.getElementById('inFechaInicio').value,
             fecha_primer_cobro: document.getElementById('inFechaPrimerCobro').value,
             _clienteNombre:     clienteSeleccionado?.nombre || '(sin nombre)',

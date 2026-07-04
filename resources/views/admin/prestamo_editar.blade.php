@@ -164,6 +164,16 @@
             </div>
         </div>
 
+        <label style="display:flex;align-items:flex-start;gap:10px;padding:11px 12px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;cursor:pointer;margin-bottom:20px">
+            <input type="checkbox" name="descanso_domingos" value="1"
+                   {{ old('descanso_domingos', $prestamo->descanso_domingos) ? 'checked' : '' }}
+                   style="margin-top:2px;width:16px;height:16px">
+            <span>
+                <span style="display:block;font-size:12px;font-weight:600;color:var(--text)">Descansar domingos</span>
+                <span style="display:block;font-size:11px;color:var(--text3);margin-top:2px">Al guardar, las fechas del plan se recalcularan sin cobros en domingo.</span>
+            </span>
+        </label>
+
         <button type="submit" class="btn btn-primary"
             onclick="return confirm('¿Confirmar los cambios?')">
             Guardar y recalcular fechas

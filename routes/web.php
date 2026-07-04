@@ -21,6 +21,17 @@ Route::post('/logout',[AuthController::class, 'logout'])->name('logout')->middle
 Route::middleware(['auth', 'role:owner'])->prefix('owner')->name('owner.')->group(function () {
     Route::get('/dashboard',                   [\App\Http\Controllers\OwnerController::class, 'index'])          ->name('dashboard');
     Route::get('/rendimientos',                [\App\Http\Controllers\OwnerController::class, 'rendimientos'])   ->name('rendimientos');
+    Route::get('/financiamientos',             [\App\Http\Controllers\FinanciamientoController::class, 'index'])           ->name('financiamientos.index');
+    Route::post('/financiamientos/tour-visto', [\App\Http\Controllers\FinanciamientoController::class, 'tourVisto'])       ->name('financiamientos.tourVisto');
+    Route::post('/financiamientos',            [\App\Http\Controllers\FinanciamientoController::class, 'store'])           ->name('financiamientos.store');
+    Route::put('/financiamientos/{id}',        [\App\Http\Controllers\FinanciamientoController::class, 'update'])          ->name('financiamientos.update');
+    Route::post('/financiamientos/{id}/toggle',[\App\Http\Controllers\FinanciamientoController::class, 'toggle'])          ->name('financiamientos.toggle');
+    Route::delete('/financiamientos/{id}',     [\App\Http\Controllers\FinanciamientoController::class, 'destroy'])         ->name('financiamientos.destroy');
+    Route::post('/financiamientos/{id}/inversores',               [\App\Http\Controllers\FinanciamientoController::class, 'storeInversor'])    ->name('financiamientos.inversores.store');
+    Route::put('/financiamientos/{id}/inversores/{inversor}',     [\App\Http\Controllers\FinanciamientoController::class, 'updateInversor'])   ->name('financiamientos.inversores.update');
+    Route::post('/financiamientos/{id}/inversores/{inversor}/salida',[\App\Http\Controllers\FinanciamientoController::class, 'salidaInversor'])->name('financiamientos.inversores.salida');
+    Route::post('/financiamientos/{id}/movimientos',              [\App\Http\Controllers\FinanciamientoController::class, 'storeMovimiento'])  ->name('financiamientos.movimientos.store');
+    Route::delete('/financiamientos/{id}/movimientos/{movimiento}',[\App\Http\Controllers\FinanciamientoController::class, 'destroyMovimiento'])->name('financiamientos.movimientos.destroy');
     Route::get('/admins/crear',                [\App\Http\Controllers\OwnerController::class, 'create'])         ->name('admins.create');
     Route::get('/admins/{id}',                 [\App\Http\Controllers\OwnerController::class, 'show'])            ->name('admins.show');
     Route::post('/admins',                     [\App\Http\Controllers\OwnerController::class, 'store'])          ->name('admins.store');

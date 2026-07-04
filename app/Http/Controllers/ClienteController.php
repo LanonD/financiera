@@ -8,9 +8,9 @@ use App\Models\Empleado;
 use App\Models\Prestamo;
 use App\Models\Pago;
 use App\Models\PrestamoActividad;
+use App\Support\PaymentSchedule;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
-use Carbon\Carbon;
 
 class ClienteController extends Controller
 {
@@ -251,6 +251,7 @@ class ClienteController extends Controller
                 'monto_retornar'     => 'required|numeric|min:1',
                 'num_pagos'          => 'required|integer|min:1',
                 'frecuencia'         => 'required|in:Diario,Semanal,Quincenal,Mensual',
+                'descanso_domingos'  => 'nullable|boolean',
                 'fecha_inicio'        => 'required|date|after_or_equal:' . now()->subYear()->toDateString(),
                 'fecha_primer_cobro'  => 'required|date|after_or_equal:' . now()->subYear()->toDateString(),
             ];
@@ -333,9 +334,8 @@ class ClienteController extends Controller
         $frecuencia         = $data['frecuencia'];
         $fecha_inicio       = $data['fecha_inicio'];
         $fecha_primer_cobro = $data['fecha_primer_cobro'];
-
-        $dias_map = ['Diario' => 1, 'Semanal' => 7, 'Quincenal' => 14, 'Mensual' => 30];
-        $dias = $dias_map[$frecuencia];
+        $descansoDomingos   = $request->boolean('descanso_domingos');
+        $fechasPago         = PaymentSchedule::buildDates($fecha_primer_cobro, $num_pagos, $frecuencia, $descansoDomingos);
 
         // Cuota redondeada al múltiplo de $5 más cercano; el último pago absorbe el residuo
         $cuota_base  = $num_pagos > 1 ? (float)((int) round($monto_retornar / $num_pagos / 5) * 5) : $monto_retornar;
@@ -368,12 +368,13 @@ class ClienteController extends Controller
             'interes_diario'      => 0,
             'interes_mora_activo' => false,
             'fecha_inicio'        => $fecha_inicio,
-            'fecha_fin'           => Carbon::parse($fecha_primer_cobro)->addDays($dias * ($num_pagos - 1))->toDateString(),
+            'fecha_fin'           => $fechasPago[array_key_last($fechasPago)] ?? $fecha_primer_cobro,
             'estatus'             => $estatus,
             'monto_entregado'     => $monto_entregado,
             'forma_entrega'       => $forma_entrega,
             'fecha_entrega'       => $fecha_entrega,
             'nota_entrega'        => $nota_entrega,
+            'descanso_domingos'   => $descansoDomingos,
         ]);
 
         // ── Save uploaded documents (only when desembolsar = true) ────────────
@@ -411,7 +412,7 @@ class ClienteController extends Controller
         $saldo            = $monto_entregado;
 
         for ($i = 1; $i <= $num_pagos; $i++) {
-            $fecha_prog = Carbon::parse($fecha_primer_cobro)->addDays($dias * ($i - 1))->toDateString();
+            $fecha_prog = $fechasPago[$i - 1];
             $cuota      = ($i === $num_pagos) ? $ultimo_pago : $cuota_base;
             $interes    = min($cuota, round($interes_restante, 2));
             $capital    = round($cuota - $interes, 2);
@@ -443,7 +444,7 @@ class ClienteController extends Controller
             number_format($monto_retornar, 2) . ' a retornar en ' . $num_pagos .
             ' pagos ' . strtolower($frecuencia) . 's.',
             ['monto_entregado' => $monto_entregado, 'monto_retornar' => $monto_retornar,
-             'num_pagos' => $num_pagos, 'frecuencia' => $frecuencia]
+             'num_pagos' => $num_pagos, 'frecuencia' => $frecuencia, 'descanso_domingos' => $descansoDomingos]
         );
 
         if ($desembolsar) {

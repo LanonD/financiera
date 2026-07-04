@@ -317,6 +317,17 @@
                     </div>
                 </div>
 
+                <label style="display:flex;align-items:flex-start;gap:10px;padding:11px 12px;background:#f8fafc;border:1px solid var(--border);border-radius:6px;cursor:pointer">
+                    <input type="checkbox" name="descanso_domingos" id="inDescansoDomingos" value="1"
+                           {{ old('descanso_domingos') ? 'checked' : '' }}
+                           onchange="autoFechaPrimerCobro();calcPreview()"
+                           style="margin-top:2px;width:16px;height:16px">
+                    <span>
+                        <span style="display:block;font-size:12px;font-weight:600;color:var(--text)">Descansar domingos</span>
+                        <span style="display:block;font-size:11px;color:var(--text3);margin-top:2px">El plan de pagos no programara cobros en domingo.</span>
+                    </span>
+                </label>
+
                 {{-- Fecha inicio --}}
                 <div>
                     <label class="np-label">Fecha de inicio del préstamo</label>
@@ -572,6 +583,10 @@
 let currentStep = {{ $errors->any() ? 2 : 1 }};
 const DIAS = { Mensual: 30, Quincenal: 14, Semanal: 7, Diario: 1 };
 
+function descansoDomingosActivo() {
+    return document.getElementById('inDescansoDomingos')?.checked || false;
+}
+
 // ── Step navigation ────────────────────────────────────────────────────────
 function goTo(step) {
     // Validate before leaving step 1
@@ -720,7 +735,7 @@ function autoFechaPrimerCobro() {
     const frec = document.getElementById('inFrecuencia').value;
     if (!fi) return;
     const dias = DIAS[frec] || 30;
-    document.getElementById('inFechaPrimerCobro').value = addDays(fi, dias);
+    document.getElementById('inFechaPrimerCobro').value = ajustarDomingo(addDays(fi, dias));
     document.getElementById('hintPrimerCobro').textContent =
         `Calculado como inicio + ${dias} días (${frec.toLowerCase()}) — puedes ajustarlo`;
 }
@@ -729,6 +744,25 @@ function addDays(dateStr, days) {
     const d = new Date(dateStr + 'T12:00:00');
     d.setDate(d.getDate() + days);
     return d.toISOString().slice(0, 10);
+}
+function esDomingo(dateStr) {
+    return new Date(dateStr + 'T12:00:00').getDay() === 0;
+}
+function ajustarDomingo(dateStr) {
+    return descansoDomingosActivo() && esDomingo(dateStr) ? addDays(dateStr, 1) : dateStr;
+}
+function buildPaymentDate(firstDate, index, frecuencia) {
+    if (!descansoDomingosActivo()) return addDays(firstDate, (DIAS[frecuencia] || 30) * index);
+    if (frecuencia === 'Diario') {
+        let fecha = ajustarDomingo(firstDate);
+        let count = 0;
+        while (count < index) {
+            fecha = addDays(fecha, 1);
+            if (!esDomingo(fecha)) count++;
+        }
+        return fecha;
+    }
+    return ajustarDomingo(addDays(firstDate, (DIAS[frecuencia] || 30) * index));
 }
 function fmtDate(s) { const [y,m,d] = s.split('-'); return `${d}/${m}/${y}`; }
 function fmtMXN(n)  { return '$' + n.toLocaleString('es-MX', { minimumFractionDigits:2, maximumFractionDigits:2 }); }
@@ -784,7 +818,7 @@ function calcPreview() {
     let interesPendiente = Math.round((retornar - entregado) * 100) / 100;
     let saldo = entregado; let rows = '';
     for (let i = 1; i <= numPagos; i++) {
-        const fecha   = addDays(fechaPrimerCobro, dias * (i - 1));
+        const fecha   = buildPaymentDate(fechaPrimerCobro, i - 1, frecuencia);
         const cuota   = i === numPagos ? ultimoPago : cuotaBase;
         const interes = Math.min(cuota, Math.round(interesPendiente * 100) / 100);
         const capital = Math.round((cuota - interes) * 100) / 100;
