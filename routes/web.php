@@ -16,6 +16,8 @@ Route::get('/',       [AuthController::class, 'showLogin'])->name('login');
 Route::get('/login',  [AuthController::class, 'showLogin']);
 Route::post('/login', [AuthController::class, 'login'])->name('login.post');
 Route::post('/logout',[AuthController::class, 'logout'])->name('logout')->middleware('auth');
+// Navegar directo a /logout (URL tecleada o autocompletada) también cierra sesión
+Route::get('/logout', [AuthController::class, 'logout'])->middleware('auth');
 
 // ── Owner ────────────────────────────────────────────────────────────
 Route::middleware(['auth', 'role:owner'])->prefix('owner')->name('owner.')->group(function () {
@@ -52,6 +54,12 @@ Route::middleware(['auth', 'role:supervisor'])->prefix('supervisor')->name('supe
 
 // ── Admin only: dashboard, empleados, reportes ───────────────────────
 Route::middleware(['auth', 'role:admin'])->group(function () {
+    // Admin financiado: selector de cartera, cambio de cartera activa y
+    // detalle del financiamiento (las 2 carteras no comparten información)
+    Route::get('/carteras',                  [\App\Http\Controllers\CarteraController::class, 'seleccion']) ->name('carteras.seleccion');
+    Route::get('/carteras/entrar/{cartera}', [\App\Http\Controllers\CarteraController::class, 'entrar'])    ->name('carteras.entrar')->whereIn('cartera', ['propia', 'financiada']);
+    Route::get('/carteras/financiada',       [\App\Http\Controllers\CarteraController::class, 'financiada'])->name('carteras.financiada');
+
     Route::get('/dashboard',               [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/empleados',               [EmpleadoController::class, 'index'])->name('empleados.index');
     Route::get('/empleados/crear',         [EmpleadoController::class, 'create'])->name('empleados.create');

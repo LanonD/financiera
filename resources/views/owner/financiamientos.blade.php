@@ -1004,29 +1004,43 @@
         $ultima = $rends->isNotEmpty() ? $rends->last()->fecha->copy()->startOfDay() : null;
         $limite = ($ultima && $ultima->gt($hoy)) ? $ultima : $hoy;
 
-        $labels = ['Inicio'];
-        $teo    = [0.0];
-        $real   = [0.0];
-        $acum   = 0.0;
-        $idx    = 0;
+        $labels  = ['Inicio'];
+        $teo     = [0.0];
+        $real    = [0.0];
+        $acum    = 0.0;
+        $teoAcum = 0.0;
+        $idx     = 0;
         for ($n = 1; $n <= 60; $n++) {
-            $corte = $f->frecuencia === 'semanal' ? $inicio->copy()->addWeeks($n) : $inicio->copy()->addMonths($n);
+            $corte = $f->fechaCobro($n);
             while ($idx < $rends->count() && $rends[$idx]->fecha->lte($corte)) {
                 $acum += $rends[$idx]->monto;
                 $idx++;
             }
+            // El teórico de cada periodo usa el capital vigente a SU inicio
+            // (no el capital actual): así los periodos pasados no se recalculan
+            // cuando se capitaliza la reinversión.
+            $teoAcum += $f->esperadoPeriodo($n);
             $labels[] = $corte->format('d/m/y');
-            $teo[]    = round($f->rendimiento_periodo * $n, 2);
+            $teo[]    = round($teoAcum, 2);
             $real[]   = round($acum, 2);
             if ($corte->gte($limite)) break;
         }
+
+        // Fijos pendientes de la ventana de hoy (para el preview del reparto:
+        // en cobros parciales el fijo solo se paga una vez por periodo)
+        $pagadosHoy = $f->retornosPagadosPeriodo($f->periodoDeFecha(now()->startOfDay()));
 
         return [$f->id => [
             'tasa'       => (float) $f->rendimiento_pct,
             'ppm'        => $f->periodos_por_mes,
             'inversores' => $f->inversoresActivos()
                 ->filter(fn($i) => $i->retorno_mensual > 0)
-                ->map(fn($i) => ['nombre' => $i->nombre, 'ret' => (float) $i->retorno_mensual, 'aporte' => (float) $i->aporte])
+                ->map(fn($i) => [
+                    'nombre' => $i->nombre,
+                    'ret'    => (float) $i->retorno_mensual,
+                    'aporte' => (float) $i->aporte,
+                    'pend'   => round(max(0, $i->retorno_mensual / $f->periodos_por_mes - ($pagadosHoy[$i->id] ?? 0)), 2),
+                ])
                 ->values()->all(),
             'grafica'    => ['labels' => $labels, 'teorico' => $teo, 'real' => $real, 'periodo' => $f->periodo_label],
         ]];
@@ -1081,14 +1095,15 @@ function finRendPreview(id) {
     const datos = finDatos[id];
     if (!datos) return;
     const monto = parseFloat(document.getElementById('finRendMonto' + id).value) || 0;
-    // Retorno fijo por inversor: su monto MENSUAL pactado, prorrateado al periodo
-    // de la cuenta (÷4 en cuentas semanales). Si el cobro no alcanza, se escala.
+    // Retorno fijo por inversor: lo que le FALTA de su fijo en la ventana de
+    // hoy (en cobros parciales el fijo se paga una sola vez por periodo).
+    // Si el cobro no alcanza para los fijos pendientes, se escala.
     let totalFijo = 0;
     const fijos = datos.inversores.map(inv => {
-        const f = Math.round(inv.ret / (datos.ppm || 1) * 100) / 100;
+        const f = inv.pend !== undefined ? inv.pend : Math.round(inv.ret / (datos.ppm || 1) * 100) / 100;
         totalFijo += f;
         return { nombre: inv.nombre, fijo: f };
-    });
+    }).filter(x => x.fijo > 0);
     const escala = (totalFijo > 0 && totalFijo > monto) ? monto / totalFijo : 1;
     let retornado = 0;
     const partes = fijos.map(x => {
@@ -1097,7 +1112,7 @@ function finRendPreview(id) {
         return '→ ' + x.nombre + ': <b>' + finFmt.format(r) + '</b>';
     });
     document.getElementById('finPrevReinv' + id).textContent = finFmt.format(Math.max(0, Math.round((monto - retornado) * 100) / 100));
-    document.getElementById('finPrevInvList' + id).innerHTML = partes.join(' · ');
+    document.getElementById('finPrevInvList' + id).innerHTML = partes.length ? partes.join(' · ') : '(fijos del periodo ya pagados: todo se reinvierte)';
 }
 
 function finUsarEsperado(id, esperado) {

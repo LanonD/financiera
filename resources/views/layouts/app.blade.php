@@ -66,6 +66,9 @@
             $isCollector  = in_array('collector',  $roles) || $isAdmin;
             $isDesembolso = in_array('desembolso', $roles) || $isAdmin;
             $uri          = request()->path();
+            // Admin financiado: trabaja con 2 carteras separadas (no comparten datos)
+            $esFinanciado  = $isAdmin && auth()->user()->esAdminFinanciado();
+            $carteraActiva = $esFinanciado ? auth()->user()->carteraActiva() : 'propia';
         @endphp
 
         {{-- ══ OWNER ══════════════════════════════════════════ --}}
@@ -94,9 +97,31 @@
             </a>
         @endif
 
+        {{-- ══ ADMIN FINANCIADO: cambio entre sus 2 carteras ══ --}}
+        @if($esFinanciado)
+            @php $esFin = $carteraActiva === 'financiada'; @endphp
+            <div style="margin:4px 12px 10px;padding:9px 12px;border-radius:9px;font-size:11px;
+                background:{{ $esFin ? 'rgba(16,185,129,.13)' : 'rgba(99,102,241,.13)' }};
+                border:1px solid {{ $esFin ? 'rgba(16,185,129,.3)' : 'rgba(99,102,241,.3)' }};
+                color:{{ $esFin ? '#34d399' : '#a5b4fc' }}">
+                Trabajando en:<br><b style="font-size:12px">{{ $esFin ? 'Cartera financiada' : 'Mi cartera (propia)' }}</b>
+            </div>
+            <span class="nav-section">Carteras</span>
+            <a href="{{ route('carteras.seleccion') }}" class="nav-item {{ $uri === 'carteras' ? 'active' : '' }}">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M5 3L2 6l3 3M2 6h9M11 13l3-3-3-3M14 10H5"/></svg>
+                Cambiar de cartera
+            </a>
+            @if($esFin)
+            <a href="{{ route('carteras.financiada') }}" class="nav-item {{ str_starts_with($uri,'carteras/financiada') ? 'active' : '' }}">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.5"/><path d="M8 4.5v7M10.2 6.2c0-.9-.98-1.7-2.2-1.7s-2.2.76-2.2 1.7c0 .94.98 1.4 2.2 1.8 1.22.4 2.2.86 2.2 1.8 0 .94-.98 1.7-2.2 1.7s-2.2-.76-2.2-1.7"/></svg>
+                Mi financiamiento
+            </a>
+            @endif
+        @endif
+
         {{-- ══ ADMIN: vista general + reportes + empleados ═══ --}}
         @if($isAdmin)
-            <span class="nav-section">General</span>
+            <span class="nav-section">{{ $esFinanciado ? ($carteraActiva === 'financiada' ? 'Cartera financiada' : 'Mi cartera') : 'General' }}</span>
             <a href="{{ route('dashboard') }}" class="nav-item {{ $uri === 'dashboard' ? 'active' : '' }}">
                 <svg viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5"/><rect x="1" y="9" width="6" height="6" rx="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5"/></svg>
                 Vista general

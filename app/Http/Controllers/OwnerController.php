@@ -21,8 +21,10 @@ class OwnerController extends Controller
      */
     public function index()
     {
-        // Admins: usuarios con puesto = 'admin' (excluye al owner)
+        // Admins: usuarios con puesto = 'admin' (excluye al owner y a los
+        // admins sombra que sirven de espacio de datos de carteras financiadas)
         $admins = User::where('puesto', 'admin')
+            ->whereNull('cartera_financiada_de')
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function (User $u) {
@@ -98,7 +100,7 @@ class OwnerController extends Controller
      */
     public function show(int $id)
     {
-        $admin = User::where('id', $id)->where('puesto', 'admin')->firstOrFail();
+        $admin = User::where('id', $id)->where('puesto', 'admin')->whereNull('cartera_financiada_de')->firstOrFail();
 
         $deployedStatuses = ['Activo', 'Atrasado', 'Finalizado'];
         $activeStatuses   = ['Activo', 'Atrasado'];
@@ -339,7 +341,7 @@ class OwnerController extends Controller
      */
     public function update(Request $request, int $id)
     {
-        $user = User::where('id', $id)->where('puesto', 'admin')->firstOrFail();
+        $user = User::where('id', $id)->where('puesto', 'admin')->whereNull('cartera_financiada_de')->firstOrFail();
 
         $request->validate([
             'nombre'      => 'nullable|string|max:120',
@@ -371,7 +373,7 @@ class OwnerController extends Controller
      */
     public function toggle(int $id)
     {
-        $user = User::where('id', $id)->where('puesto', 'admin')->firstOrFail();
+        $user = User::where('id', $id)->where('puesto', 'admin')->whereNull('cartera_financiada_de')->firstOrFail();
 
         $user->activo = !$user->activo;
         $user->save();
@@ -423,7 +425,7 @@ class OwnerController extends Controller
      */
     public function resetPassword(Request $request, int $id)
     {
-        $user = User::where('id', $id)->where('puesto', 'admin')->firstOrFail();
+        $user = User::where('id', $id)->where('puesto', 'admin')->whereNull('cartera_financiada_de')->firstOrFail();
 
         $validator = Validator::make($request->all(), [
             'password' => 'required|string|min:6|confirmed',
@@ -452,7 +454,7 @@ class OwnerController extends Controller
      */
     public function destroy(int $id)
     {
-        $user = User::where('id', $id)->where('puesto', 'admin')->firstOrFail();
+        $user = User::where('id', $id)->where('puesto', 'admin')->whereNull('cartera_financiada_de')->firstOrFail();
 
         $nombre = $user->usuario;
         $user->delete();
@@ -466,7 +468,7 @@ class OwnerController extends Controller
      */
     public function storeNota(Request $request, int $id)
     {
-        User::where('id', $id)->where('puesto', 'admin')->firstOrFail();
+        User::where('id', $id)->where('puesto', 'admin')->whereNull('cartera_financiada_de')->firstOrFail();
 
         $request->validate([
             'contenido' => 'required|string|max:2000',
@@ -510,7 +512,7 @@ class OwnerController extends Controller
             }
         }
 
-        $admins   = User::where('puesto', 'admin')->orderBy('created_at', 'desc')->get();
+        $admins   = User::where('puesto', 'admin')->whereNull('cartera_financiada_de')->orderBy('created_at', 'desc')->get();
         $adminIds = $admins->pluck('id')->all();
 
         // ── Chart: últimos 90 días de desembolsos y cobros por admin ──

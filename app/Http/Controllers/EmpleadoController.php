@@ -110,7 +110,7 @@ class EmpleadoController extends Controller
             'rango'        => 'required|string',
             'capacidad'    => 'nullable|numeric|min:0',
             // Scoped al tenant: el promotor supervisor debe ser del mismo admin
-            'promotor_id'  => ['nullable', Rule::exists('empleados', 'id')->where('admin_id', auth()->user()->id)],
+            'promotor_id'  => ['nullable', Rule::exists('empleados', 'id')->where('admin_id', auth()->user()->adminId())],
         ]);
 
         $roles       = $request->roles;
@@ -127,7 +127,7 @@ class EmpleadoController extends Controller
         ]);
 
         Empleado::create([
-            'admin_id'         => auth()->user()->id,
+            'admin_id'         => auth()->user()->adminId(),
             'promotor_id'      => $promotorId,
             'usuario_id'       => $user->id,
             'nombre'           => $request->nombre,

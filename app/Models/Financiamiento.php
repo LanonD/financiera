@@ -97,31 +97,165 @@ class Financiamiento extends Model
     }
 
     /**
+     * Ventana de cobro (1, 2, …) a la que pertenece una fecha: la ventana n
+     * abarca desde el día siguiente a fechaCobro(n−1) hasta fechaCobro(n).
+     * Fechas en o antes del inicio caen en la ventana 1.
+     */
+    public function periodoDeFecha(\Carbon\Carbon $fecha): int
+    {
+        $n = 1;
+        while ($n < 2000 && $this->fechaCobro($n)->lt($fecha->copy()->startOfDay())) {
+            $n++;
+        }
+        return $n;
+    }
+
+    /**
+     * Capital que genera rendimiento en el periodo n, reconstruido del
+     * historial: los aportes/retiros/salidas cuentan desde el periodo en cuya
+     * ventana caen (capital que alcanzó a estar dentro en ese periodo); las
+     * reinversiones capitalizadas surten efecto hasta el periodo SIGUIENTE,
+     * porque se generan al cobrar, al final de su periodo.
+     */
+    public function capitalInicioPeriodo(int $n): float
+    {
+        $capital = 0.0;
+
+        foreach ($this->movimientos as $m) {
+            $ventana = $this->periodoDeFecha($m->fecha);
+
+            if ($m->tipo === 'rendimiento') {
+                if ($m->capitalizado && $ventana < $n) {
+                    $capital += $m->monto_reinversion;
+                }
+            } elseif ($ventana <= $n) {
+                if ($m->tipo === 'aporte') {
+                    $capital += $m->monto;
+                } elseif (in_array($m->tipo, ['retiro', 'salida_inversor'])) {
+                    $capital -= $m->monto;
+                }
+                // transferencia_owner no cambia el capital total
+            }
+        }
+
+        return round(max(0, $capital), 2);
+    }
+
+    /** Rendimiento esperado del periodo n: tasa sobre el capital a su inicio. */
+    public function esperadoPeriodo(int $n): float
+    {
+        return round($this->capitalInicioPeriodo($n) * $this->rendimiento_pct / 100, 2);
+    }
+
+    /**
+     * Retornos fijos ya pagados a cada inversor dentro de la ventana n
+     * (suma del detalle de los rendimientos ya registrados en esa ventana).
+     *
+     * @return array<int, float> inversor_id => monto pagado
+     */
+    public function retornosPagadosPeriodo(int $n): array
+    {
+        $pagados = [];
+        foreach ($this->movimientos->where('tipo', 'rendimiento') as $m) {
+            if ($this->periodoDeFecha($m->fecha) !== $n) continue;
+            foreach ($m->detalle ?? [] as $d) {
+                $pagados[$d['inversor_id']] = round(($pagados[$d['inversor_id']] ?? 0) + $d['monto'], 2);
+            }
+        }
+        return $pagados;
+    }
+
+    /**
+     * Estado del calendario de cobros al día de hoy: ventanas cubiertas,
+     * atrasos, cobro parcial en curso y el periodo pendiente con su esperado.
+     * Lo comparten el supervisor (quien cobra) y el admin financiado (quien
+     * paga) para que ambos vean exactamente lo mismo.
+     */
+    public function estadoCobros(?\Carbon\Carbon $hoy = null): object
+    {
+        $hoy   = ($hoy ?? now())->copy()->startOfDay();
+        $rends = $this->movimientos->where('tipo', 'rendimiento');
+
+        // Una ventana con al menos un cobro cuenta como cubierta (los cobros
+        // parciales se completan dentro de la misma ventana).
+        $cubiertas = $rends->map(fn($m) => $this->periodoDeFecha($m->fecha))->unique();
+
+        $vencidos = 0;
+        while ($vencidos < 520 && $this->fechaCobro($vencidos + 1)->lte($hoy)) {
+            $vencidos++;
+        }
+
+        $atrasadasN = $vencidos > 0
+            ? collect(range(1, $vencidos))->reject(fn($n) => $cubiertas->contains($n))
+            : collect();
+
+        // Ventana actual con cobros parciales (aún no llega al esperado)
+        $nActual        = $this->periodoDeFecha($hoy);
+        $esperadoActual = $this->esperadoPeriodo($nActual);
+        $cobradoActual  = (float) $rends->filter(fn($m) => $this->periodoDeFecha($m->fecha) === $nActual)->sum('monto');
+        $parcial        = $atrasadasN->isEmpty()
+            && $cubiertas->contains($nActual)
+            && ($esperadoActual - $cobradoActual) > 0.01;
+
+        if ($atrasadasN->isNotEmpty()) {
+            $nPend = $atrasadasN->min();               // la ventana vencida más antigua
+        } elseif ($parcial) {
+            $nPend = $nActual;                          // completar la ventana en curso
+        } else {
+            $nPend = $vencidos + 1;                     // la siguiente ventana sin cubrir
+            while ($cubiertas->contains($nPend)) $nPend++;
+        }
+
+        $esperado = $this->esperadoPeriodo($nPend);
+        $cobrado  = (float) $rends->filter(fn($m) => $this->periodoDeFecha($m->fecha) === $nPend)->sum('monto');
+        $proximo  = $parcial ? $hoy->copy() : $this->fechaCobro($nPend);
+
+        return (object) [
+            'atrasados'      => $atrasadasN->count(),
+            'monto_atrasado' => round($atrasadasN->sum(fn($n) => $this->esperadoPeriodo($n)), 2),
+            'parcial'        => $parcial,
+            'periodo'        => $nPend,
+            'esperado'       => $esperado,
+            'cobrado'        => $cobrado,
+            'restante'       => round(max(0, $esperado - $cobrado), 2),
+            'proximo'        => $proximo,
+            // La fecha del movimiento determina la ventana a la que se abona
+            'fecha_sugerida' => $proximo->copy(),
+        ];
+    }
+
+    /**
      * Registra el rendimiento del periodo (el cobro al admin).
      *
      * Retorno FIJO por inversor: su retorno_mensual pactado, prorrateado al
-     * periodo de la cuenta. Lo que sobra del monto cobrado se reinvierte; si
-     * el cobro no alcanza para los retornos fijos, se escalan proporcionalmente.
+     * periodo de la cuenta. El fijo se paga UNA sola vez por ventana de cobro:
+     * en cobros parciales (varios movimientos en la misma ventana) cada cobro
+     * paga solo lo que falta del fijo y el resto se reinvierte; si el cobro no
+     * alcanza para los fijos pendientes, se escalan proporcionalmente.
      * Lo usan el owner y el supervisor para que el reparto sea idéntico.
      */
     public function registrarRendimiento(float $monto, string $fecha, ?string $nota, bool $capitalizar, ?int $registradoPor = null): FinanciamientoMovimiento
     {
-        $detalle   = [];
-        $fijos     = [];
-        $totalFijo = 0.0;
+        $ventana = $this->periodoDeFecha(\Carbon\Carbon::parse($fecha));
+        $pagados = $this->retornosPagadosPeriodo($ventana);
+
+        $detalle    = [];
+        $pendientes = [];
+        $totalPend  = 0.0;
 
         foreach ($this->inversoresActivos() as $inv) {
             $fijo = round($inv->retorno_mensual / $this->periodos_por_mes, 2);
-            if ($fijo <= 0) continue;
-            $fijos[] = ['inv' => $inv, 'fijo' => $fijo];
-            $totalFijo += $fijo;
+            $pend = round(max(0, $fijo - ($pagados[$inv->id] ?? 0)), 2);
+            if ($pend <= 0) continue;
+            $pendientes[] = ['inv' => $inv, 'pend' => $pend];
+            $totalPend += $pend;
         }
 
-        $escala         = ($totalFijo > 0 && $totalFijo > $monto) ? $monto / $totalFijo : 1.0;
+        $escala         = ($totalPend > 0 && $totalPend > $monto) ? $monto / $totalPend : 1.0;
         $montoRetornado = 0.0;
 
-        foreach ($fijos as $fila) {
-            $retorno = round($fila['fijo'] * $escala, 2);
+        foreach ($pendientes as $fila) {
+            $retorno = round($fila['pend'] * $escala, 2);
             $montoRetornado += $retorno;
             $detalle[] = [
                 'inversor_id' => $fila['inv']->id,

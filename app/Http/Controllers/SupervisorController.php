@@ -25,20 +25,23 @@ class SupervisorController extends Controller
                     ->where('tipo', 'rendimiento')
                     ->get();
 
-                // Calendario anclado al inicio del financiamiento: el primer
-                // cobro toca un periodo (semana/mes) después del arranque y
-                // cada cobro registrado cubre un periodo del calendario.
-                $n        = $cobros->count();
-                $vencidos = 0;
-                while ($vencidos < 520 && $f->fechaCobro($vencidos + 1)->lte($hoy)) {
-                    $vencidos++;
-                }
+                // Calendario anclado al inicio del financiamiento (ver
+                // Financiamiento::estadoCobros): el primer cobro toca un
+                // periodo después del arranque y los parciales se completan
+                // dentro de su misma ventana.
+                $estado = $f->estadoCobros($hoy);
 
-                $f->cobros           = $cobros;
-                $f->ultimo_cobro     = $cobros->first();
-                $f->cobros_atrasados = max(0, $vencidos - $n);
-                // El pendiente más antiguo o, si va al corriente, el siguiente futuro
-                $f->proximo_cobro    = $f->fechaCobro($n + 1);
+                $f->cobros            = $cobros;
+                $f->ultimo_cobro      = $cobros->first();
+                $f->cobros_atrasados  = $estado->atrasados;
+                $f->monto_atrasado    = $estado->monto_atrasado;
+                $f->parcial           = $estado->parcial;
+                $f->periodo_pendiente = $estado->periodo;
+                $f->esperado_periodo  = $estado->esperado;
+                $f->cobrado_periodo   = $estado->cobrado;
+                $f->restante_periodo  = $estado->restante;
+                $f->proximo_cobro     = $estado->proximo;
+                $f->fecha_prefill     = $estado->fecha_sugerida;
 
                 return $f;
             })
@@ -51,7 +54,7 @@ class SupervisorController extends Controller
             'cuentas'        => $financiamientos->count(),
             'siguiente'      => $financiamientos->first(),
             'atrasadas'      => $atrasadas->count(),
-            'monto_atrasado' => (float) $atrasadas->sum(fn($f) => $f->cobros_atrasados * $f->rendimiento_periodo),
+            'monto_atrasado' => (float) $atrasadas->sum('monto_atrasado'),
             'cobrado_mes'    => (float) $financiamientos->sum(
                 fn($f) => $f->cobros->filter(fn($m) => $m->fecha->gte(now()->startOfMonth()))->sum('monto')
             ),

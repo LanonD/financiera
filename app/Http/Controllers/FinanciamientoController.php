@@ -47,7 +47,8 @@ class FinanciamientoController extends Controller
             'activos'            => $activosF->count(),
         ];
 
-        $admins = User::where('puesto', 'admin')->where('activo', true)->orderBy('usuario')->get();
+        // Solo admins reales: los sombra (carteras financiadas) no se financian
+        $admins = User::where('puesto', 'admin')->whereNull('cartera_financiada_de')->where('activo', true)->orderBy('usuario')->get();
 
         // Tutorial de primera vez: solo si este usuario no lo ha visto/saltado
         $mostrarTour = !in_array('financiamientos', auth()->user()->tours_vistos ?? []);
@@ -113,7 +114,7 @@ class FinanciamientoController extends Controller
             'inv_retorno'     => 'nullable|numeric|min:0',
         ]);
 
-        User::where('id', $data['admin_id'])->where('puesto', 'admin')->firstOrFail();
+        User::where('id', $data['admin_id'])->where('puesto', 'admin')->whereNull('cartera_financiada_de')->firstOrFail();
 
         $ownerAporte = round((float) $data['owner_aporte'], 2);
         $invAporte   = round((float) ($data['inv_aporte'] ?? 0), 2);
@@ -219,7 +220,22 @@ class FinanciamientoController extends Controller
             ])->with('open_financiamiento', $f->id);
         }
 
+        // Si cambia la fecha de inicio, mover con ella los aportes iniciales
+        // (los fechados el día del inicio anterior): el calendario de cobros y
+        // la reconstrucción del capital por periodo se anclan a esa fecha.
+        $inicioAnterior = $f->fecha_inicio->toDateString();
         $f->update($data);
+        if ($data['fecha_inicio'] !== $inicioAnterior) {
+            $f->movimientos()->where('tipo', 'aporte')->whereDate('fecha', $inicioAnterior)
+                ->update(['fecha' => $data['fecha_inicio']]);
+            foreach ($f->inversores()->whereDate('fecha_ingreso', $inicioAnterior)->get() as $inv) {
+                $inv->update([
+                    'fecha_ingreso' => $data['fecha_inicio'],
+                    'fecha_limite'  => $inv->es_owner ? null
+                        : \Carbon\Carbon::parse($data['fecha_inicio'])->addMonths((int) $data['plazo_meses'])->toDateString(),
+                ]);
+            }
+        }
 
         return redirect()->route('owner.financiamientos.index')
             ->with('success', 'Acuerdo actualizado.')

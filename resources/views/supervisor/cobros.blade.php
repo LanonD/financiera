@@ -80,8 +80,8 @@
         <div class="sup-kpi-label">Siguiente cobro</div>
         @if($resumen['siguiente'])
             @php $s = $resumen['siguiente']; $sNombre = $s->admin->alias ?: ($s->admin->nombre ?: $s->admin->usuario); @endphp
-            <div class="sup-kpi-value" style="font-size:17px">{{ $fecha($s->proximo_cobro) }}</div>
-            <div class="sup-kpi-sub">a <b>{{ $sNombre }}</b> · {{ $money($s->rendimiento_periodo) }}{{ $s->cobros_atrasados > 0 ? ' · ya venció' : '' }}</div>
+            <div class="sup-kpi-value" style="font-size:17px">{{ $s->parcial ? 'Hoy (completar cobro)' : $fecha($s->proximo_cobro) }}</div>
+            <div class="sup-kpi-sub">a <b>{{ $sNombre }}</b> · {{ $money($s->restante_periodo) }}{{ !$s->parcial && $s->cobros_atrasados > 0 ? ' · ya venció' : '' }}</div>
         @else
             <div class="sup-kpi-value">—</div>
             <div class="sup-kpi-sub">sin cuentas activas</div>
@@ -106,7 +106,6 @@
 @php
     $color   = $avatarColors[$f->admin_id % count($avatarColors)];
     $nombre  = $f->admin->alias ?: ($f->admin->nombre ?: $f->admin->usuario);
-    $rendPer = $f->rendimiento_periodo;
     $perLbl  = $f->periodo_label;
 @endphp
 <div class="sup-card {{ $f->cobros_atrasados === 0 ? 'cobrado' : '' }}" id="supCard{{ $f->id }}">
@@ -120,14 +119,18 @@
                 @if($f->admin->celular) · 📱 {{ $f->admin->celular }} @endif
             </div>
             <div class="sup-prox">
-                @if($f->cobros_atrasados > 0)
+                @if($f->parcial)
+                    Cobro parcial del periodo en curso: llevas <b>{{ $money($f->cobrado_periodo) }}</b> de {{ $money($f->esperado_periodo) }}
+                @elseif($f->cobros_atrasados > 0)
                     Cobro pendiente desde el <b>{{ $fecha($f->proximo_cobro) }}</b>
                 @else
                     Próximo cobro: <b>{{ $fecha($f->proximo_cobro) }}</b>
                 @endif
             </div>
             <div style="margin-top:6px">
-                @if($f->cobros_atrasados > 1)
+                @if($f->parcial)
+                    <span class="sup-pill sup-pill-pend">Cobro parcial · restan {{ $money($f->restante_periodo) }}</span>
+                @elseif($f->cobros_atrasados > 1)
                     <span class="sup-pill sup-pill-late">Atrasado · {{ $f->cobros_atrasados }} cobros vencidos</span>
                 @elseif($f->cobros_atrasados === 1)
                     <span class="sup-pill {{ $f->proximo_cobro->eq($hoy) ? 'sup-pill-pend' : 'sup-pill-late' }}">
@@ -142,8 +145,11 @@
             </div>
         </div>
         <div class="sup-monto-box">
-            <div class="sup-monto-label">Cobrar cada {{ $perLbl }}</div>
-            <div class="sup-monto">{{ $money($rendPer) }}</div>
+            <div class="sup-monto-label">{{ $f->parcial ? 'Resta por cobrar' : 'Cobro del ' . $f->proximo_cobro->format('d/m') }}</div>
+            <div class="sup-monto">{{ $money($f->restante_periodo) }}</div>
+            @if($f->parcial || $f->cobrado_periodo > 0)
+                <div style="font-size:11px;color:var(--text3)">esperado {{ $money($f->esperado_periodo) }} − cobrado {{ $money($f->cobrado_periodo) }}</div>
+            @endif
         </div>
     </div>
 
@@ -152,13 +158,13 @@
         <div class="sup-field">
             <label style="display:flex;align-items:center;justify-content:space-between">
                 <span>Monto cobrado</span>
-                <button type="button" class="sup-usar" onclick="supUsar({{ $f->id }}, {{ $rendPer }})">usar {{ $money($rendPer) }}</button>
+                <button type="button" class="sup-usar" onclick="supUsar({{ $f->id }}, {{ $f->restante_periodo }})">usar {{ $money($f->restante_periodo) }}</button>
             </label>
             <input type="number" name="monto" id="supMonto{{ $f->id }}" step="0.01" min="0.01" required placeholder="0.00">
         </div>
         <div class="sup-field" style="flex:0 1 160px">
             <label>Fecha</label>
-            <input type="date" name="fecha" value="{{ now()->toDateString() }}" required>
+            <input type="date" name="fecha" value="{{ $f->fecha_prefill->toDateString() }}" required>
         </div>
         <div class="sup-field">
             <label>Nota (opcional)</label>
@@ -166,6 +172,7 @@
         </div>
         <button type="submit" class="sup-btn"
             onclick="return confirm('¿Registrar el cobro a {{ $nombre }} por el monto capturado?')">Registrar cobro</button>
+        <div style="flex-basis:100%;font-size:11px;color:var(--text3);margin-top:-4px">La fecha determina a qué {{ $perLbl }} corresponde el cobro; puedes registrar varios cobros parciales dentro del mismo periodo.</div>
     </form>
 
     <button type="button" class="sup-hist-toggle" onclick="document.getElementById('supHist{{ $f->id }}').classList.toggle('open')">
