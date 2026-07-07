@@ -85,6 +85,15 @@
             </a>
         @endif
 
+        {{-- ══ SUPERVISOR DE ADMINS: cobros de financiamientos ══ --}}
+        @if(in_array('supervisor', $roles))
+            <span class="nav-section">Financiamientos</span>
+            <a href="{{ route('supervisor.cobros.index') }}" class="nav-item {{ str_starts_with($uri,'supervisor/cobros') ? 'active' : '' }}">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.5"/><path d="M8 4.5v7M10.2 6.2c0-.9-.98-1.7-2.2-1.7s-2.2.76-2.2 1.7c0 .94.98 1.4 2.2 1.8 1.22.4 2.2.86 2.2 1.8 0 .94-.98 1.7-2.2 1.7s-2.2-.76-2.2-1.7"/></svg>
+                Cobros a admins
+            </a>
+        @endif
+
         {{-- ══ ADMIN: vista general + reportes + empleados ═══ --}}
         @if($isAdmin)
             <span class="nav-section">General</span>

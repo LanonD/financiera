@@ -15,7 +15,7 @@ class FinanciamientoController extends Controller
      */
     public function index()
     {
-        $financiamientos = Financiamiento::with(['admin', 'inversores', 'movimientos.inversor'])
+        $financiamientos = Financiamiento::with(['admin', 'inversores', 'movimientos.inversor', 'movimientos.registradoPor'])
             ->orderByRaw("estatus = 'Activo' desc")
             ->orderBy('created_at', 'desc')
             ->get()
@@ -422,74 +422,32 @@ class FinanciamientoController extends Controller
             'capitalizar' => 'nullable|boolean',
         ]);
 
-        $monto            = round((float) $data['monto'], 2);
-        $montoReinversion = 0.0;
-        $montoRetornado   = 0.0;
-        $capitalizado     = false;
-        $detalle          = null;
+        $monto = round((float) $data['monto'], 2);
 
         if ($data['tipo'] === 'rendimiento') {
-            // Retorno FIJO por inversor: su retorno_mensual pactado (no depende
-            // del capital total ni crece con la reinversión). Lo que sobra del
-            // monto cobrado se reinvierte. Si el cobro no alcanza para los
-            // retornos fijos (cobro parcial), se reparten proporcionalmente.
-            $detalle = [];
-            $fijos   = [];
-            $totalFijo = 0.0;
-
-            foreach ($f->inversoresActivos() as $inv) {
-                // retorno_mensual es mensual: en cuentas semanales se prorratea entre 4 semanas
-                $fijo = round($inv->retorno_mensual / $f->periodos_por_mes, 2);
-                if ($fijo <= 0) continue;
-                $fijos[] = ['inv' => $inv, 'fijo' => $fijo];
-                $totalFijo += $fijo;
+            $f->registrarRendimiento($monto, $data['fecha'], $data['nota'] ?? null, $request->boolean('capitalizar'), auth()->user()->id);
+        } else {
+            if ($data['tipo'] === 'aporte') {
+                $f->capital_actual = round($f->capital_actual + $monto, 2);
+            } else { // retiro (owner / Derian)
+                if ($monto > $f->capital_actual) {
+                    return back()->withErrors([
+                        'monto' => 'El retiro no puede exceder el capital vigente ($' . number_format($f->capital_actual, 2) . ').',
+                    ])->with('open_financiamiento', $f->id);
+                }
+                $f->capital_actual = round($f->capital_actual - $monto, 2);
             }
-
-            $escala = ($totalFijo > 0 && $totalFijo > $monto) ? $monto / $totalFijo : 1.0;
-
-            foreach ($fijos as $fila) {
-                $retorno = round($fila['fijo'] * $escala, 2);
-                $montoRetornado += $retorno;
-                $detalle[] = [
-                    'inversor_id' => $fila['inv']->id,
-                    'nombre'      => $fila['inv']->nombre,
-                    'pct'         => (float) $fila['inv']->pct_retorno,
-                    'monto'       => $retorno,
-                ];
-            }
-
-            $montoRetornado   = round($montoRetornado, 2);
-            $montoReinversion = round(max(0, $monto - $montoRetornado), 2);
-            $capitalizado     = $request->boolean('capitalizar');
-
-            if ($capitalizado && $montoReinversion > 0) {
-                $f->capital_actual = round($f->capital_actual + $montoReinversion, 2);
-                $f->save();
-            }
-        } elseif ($data['tipo'] === 'aporte') {
-            $f->capital_actual = round($f->capital_actual + $monto, 2);
             $f->save();
-        } else { // retiro (owner / Derian)
-            if ($monto > $f->capital_actual) {
-                return back()->withErrors([
-                    'monto' => 'El retiro no puede exceder el capital vigente ($' . number_format($f->capital_actual, 2) . ').',
-                ])->with('open_financiamiento', $f->id);
-            }
-            $f->capital_actual = round($f->capital_actual - $monto, 2);
-            $f->save();
+
+            FinanciamientoMovimiento::create([
+                'financiamiento_id' => $f->id,
+                'tipo'              => $data['tipo'],
+                'monto'             => $monto,
+                'fecha'             => $data['fecha'],
+                'nota'              => $data['nota'] ?? null,
+                'registrado_por'    => auth()->user()->id,
+            ]);
         }
-
-        FinanciamientoMovimiento::create([
-            'financiamiento_id' => $f->id,
-            'tipo'              => $data['tipo'],
-            'monto'             => $monto,
-            'monto_reinversion' => $montoReinversion,
-            'monto_retornado'   => $montoRetornado,
-            'capitalizado'      => $capitalizado,
-            'detalle'           => $detalle,
-            'fecha'             => $data['fecha'],
-            'nota'              => $data['nota'] ?? null,
-        ]);
 
         $labels = [
             'rendimiento' => 'Rendimiento registrado',

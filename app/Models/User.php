@@ -73,6 +73,7 @@ class User extends Authenticatable
     {
         return match($this->puesto) {
             'owner'       => 'owner.dashboard',
+            'supervisor'  => 'supervisor.cobros.index',
             'admin'       => 'dashboard',
             'promo'       => 'prestamos.index',
             'collector'   => 'cobros.index',

@@ -419,6 +419,15 @@
             </div>
         </div>
 
+        {{-- Gráfica: rendimiento teórico vs cobrado (lo que registra el supervisor) --}}
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+            <div class="fin-stat-label" style="margin-bottom:2px">Rendimiento acumulado · teórico vs real</div>
+            <div style="font-size:11px;color:var(--text2);margin-bottom:8px">
+                La línea punteada es lo esperado según la tasa; la línea verde es lo que realmente se ha cobrado al admin (lo registra el supervisor cada {{ $f->periodo_label }}).
+            </div>
+            <div style="position:relative;height:215px;width:100%;min-width:0"><canvas id="finChartReal{{ $f->id }}"></canvas></div>
+        </div>
+
         @if($errors->any() && (int) session('open_financiamiento') === $f->id)
             <div class="fin-error" style="margin-bottom:14px">
                 @foreach($errors->all() as $e) <div>• {{ $e }}</div> @endforeach
@@ -668,8 +677,11 @@
                             @if($m->inversor)
                                 <div class="fin-mov-detalle">{{ $m->inversor->nombre }}</div>
                             @endif
+                            @if($m->registradoPor)
+                                <div class="fin-mov-detalle">registrado por {{ $m->registradoPor->alias ?: $m->registradoPor->usuario }}{{ $m->registradoPor->puesto === 'supervisor' ? ' (supervisor)' : '' }}</div>
+                            @endif
                             @if($m->nota)<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ $m->nota }}</div>@endif
-                            @if(!$m->nota && !$m->detalle && !$m->inversor) — @endif
+                            @if(!$m->nota && !$m->detalle && !$m->inversor && !$m->registradoPor) — @endif
                         </td>
                         <td>
                             @if($m->inversor_id === null && !in_array($m->tipo, ['salida_inversor', 'transferencia_owner']))
@@ -983,6 +995,32 @@
 @php
     // Datos por financiamiento para el preview JS del desglose de rendimiento
     $finDatos = $financiamientos->mapWithKeys(function ($f) {
+        // Serie teórico vs real: rendimiento acumulado esperado por periodo
+        // (línea recta con la tasa y el capital vigentes) contra la suma de
+        // los cobros de rendimiento realmente registrados.
+        $rends  = $f->movimientos->where('tipo', 'rendimiento')->sortBy(fn($m) => $m->fecha)->values();
+        $inicio = $f->fecha_inicio->copy()->startOfDay();
+        $hoy    = now()->startOfDay();
+        $ultima = $rends->isNotEmpty() ? $rends->last()->fecha->copy()->startOfDay() : null;
+        $limite = ($ultima && $ultima->gt($hoy)) ? $ultima : $hoy;
+
+        $labels = ['Inicio'];
+        $teo    = [0.0];
+        $real   = [0.0];
+        $acum   = 0.0;
+        $idx    = 0;
+        for ($n = 1; $n <= 60; $n++) {
+            $corte = $f->frecuencia === 'semanal' ? $inicio->copy()->addWeeks($n) : $inicio->copy()->addMonths($n);
+            while ($idx < $rends->count() && $rends[$idx]->fecha->lte($corte)) {
+                $acum += $rends[$idx]->monto;
+                $idx++;
+            }
+            $labels[] = $corte->format('d/m/y');
+            $teo[]    = round($f->rendimiento_periodo * $n, 2);
+            $real[]   = round($acum, 2);
+            if ($corte->gte($limite)) break;
+        }
+
         return [$f->id => [
             'tasa'       => (float) $f->rendimiento_pct,
             'ppm'        => $f->periodos_por_mes,
@@ -990,6 +1028,7 @@
                 ->filter(fn($i) => $i->retorno_mensual > 0)
                 ->map(fn($i) => ['nombre' => $i->nombre, 'ret' => (float) $i->retorno_mensual, 'aporte' => (float) $i->aporte])
                 ->values()->all(),
+            'grafica'    => ['labels' => $labels, 'teorico' => $teo, 'real' => $real, 'periodo' => $f->periodo_label],
         ]];
     });
 @endphp
@@ -1001,8 +1040,41 @@ const finFmt0  = new Intl.NumberFormat('es-MX', { style: 'currency', currency: '
 const finDatos = @json($finDatos);
 
 function finToggle(id) {
-    document.getElementById('finDetail' + id).classList.toggle('open');
+    const det = document.getElementById('finDetail' + id);
+    det.classList.toggle('open');
     document.getElementById('finChevron' + id).classList.toggle('open');
+    // La gráfica se dibuja hasta que el panel es visible (Chart.js necesita medir)
+    if (det.classList.contains('open')) finRealRender(id);
+}
+
+// Gráfica teórico vs real del detalle de una cuenta (una sola vez por tarjeta)
+function finRealRender(id) {
+    const g = finDatos[id] && finDatos[id].grafica;
+    const canvas = document.getElementById('finChartReal' + id);
+    if (!g || !canvas || finCharts['real' + id]) return;
+    finCharts['real' + id] = new Chart(canvas, {
+        type: 'line',
+        data: {
+            labels: g.labels,
+            datasets: [
+                { label: 'Teórico (según la tasa)', data: g.teorico, borderColor: '#94a3b8', backgroundColor: 'transparent',
+                  borderDash: [6, 4], tension: .25, pointRadius: 0, borderWidth: 2 },
+                { label: 'Real cobrado al admin', data: g.real, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,.10)',
+                  fill: true, tension: .25, pointRadius: 2, borderWidth: 2.5 },
+            ],
+        },
+        options: {
+            maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { position: 'bottom', labels: { boxWidth: 10, boxHeight: 10, font: { size: 10, family: 'Sora' }, padding: 10 } },
+                tooltip: { callbacks: { label: c => ' ' + c.dataset.label + ': ' + finFmt.format(c.parsed.y) } },
+            },
+            scales: {
+                y: { ticks: { font: { size: 9, family: 'Sora' }, callback: v => finFmt0.format(v) }, grid: { color: 'rgba(15,22,35,.05)' } },
+                x: { ticks: { font: { size: 9, family: 'Sora' }, maxTicksLimit: 12 }, grid: { display: false } },
+            },
+        },
+    });
 }
 
 function finRendPreview(id) {

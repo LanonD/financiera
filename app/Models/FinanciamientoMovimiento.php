@@ -11,7 +11,7 @@ class FinanciamientoMovimiento extends Model
     protected $fillable = [
         'financiamiento_id', 'inversor_id', 'tipo', 'monto',
         'monto_reinversion', 'monto_retornado', 'capitalizado',
-        'detalle', 'fecha', 'nota',
+        'detalle', 'fecha', 'nota', 'registrado_por',
     ];
 
     protected $casts = [
@@ -31,5 +31,10 @@ class FinanciamientoMovimiento extends Model
     public function inversor()
     {
         return $this->belongsTo(FinanciamientoInversor::class, 'inversor_id');
+    }
+
+    public function registradoPor()
+    {
+        return $this->belongsTo(User::class, 'registrado_por');
     }
 }

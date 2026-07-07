@@ -44,6 +44,12 @@ Route::middleware(['auth', 'role:owner'])->prefix('owner')->name('owner.')->grou
     Route::post('/perfil/password',            [\App\Http\Controllers\OwnerController::class, 'changeOwnPassword'])->name('perfil.password');
 });
 
+// ── Supervisor de admins: cobro del rendimiento de financiamientos ──
+Route::middleware(['auth', 'role:supervisor'])->prefix('supervisor')->name('supervisor.')->group(function () {
+    Route::get('/cobros',                    [\App\Http\Controllers\SupervisorController::class, 'index'])            ->name('cobros.index');
+    Route::post('/cobros/{id}/rendimiento',  [\App\Http\Controllers\SupervisorController::class, 'storeRendimiento']) ->name('cobros.rendimiento');
+});
+
 // ── Admin only: dashboard, empleados, reportes ───────────────────────
 Route::middleware(['auth', 'role:admin'])->group(function () {
     Route::get('/dashboard',               [DashboardController::class, 'index'])->name('dashboard');
