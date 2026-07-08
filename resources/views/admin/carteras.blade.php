@@ -80,9 +80,12 @@
                 <div>
                     <div class="sel-dato-k">{{ $resumen['atrasados'] > 0 ? 'Pago vencido' : 'Próximo pago' }}</div>
                     <div class="sel-dato-v" style="color:{{ $resumen['atrasados'] > 0 ? '#dc2626' : 'var(--accent)' }}">
-                        {{ $money($resumen['atrasados'] > 0 ? $resumen['monto_atrasado'] : ($prox->restante ?? 0)) }}
-                        <span style="font-weight:600;color:var(--text3);font-size:11px">· {{ $prox->proximo->locale('es')->isoFormat('D MMM') }}</span>
+                        {{ $money($resumen['atrasados'] > 0 ? $resumen['monto_atrasado'] : $prox->monto) }}
+                        <span style="font-weight:600;color:var(--text3);font-size:11px">· {{ $prox->fecha->locale('es')->isoFormat('D MMM') }}</span>
                     </div>
+                    @if($prox->total > 1)
+                        <div style="font-weight:600;color:var(--text3);font-size:10.5px;margin-top:2px">suma de tus {{ $prox->total }} inversiones</div>
+                    @endif
                 </div>
             </div>
             <div class="sel-cta">Entrar a la cartera financiada

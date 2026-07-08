@@ -139,15 +139,12 @@ class PrestamoController extends Controller
         );
 
         // Map: client_id => {ine, comprobante} — to skip re-uploading docs for existing clients
-        $clientesConDocs = Prestamo::where('admin_id', $adminId)
-            ->where(fn($q) => $q->whereNotNull('doc_ine')->orWhereNotNull('doc_comprobante'))
-            ->get(['cliente_id', 'doc_ine', 'doc_comprobante'])
-            ->groupBy('cliente_id')
-            ->map(fn($loans) => [
-                'ine'         => $loans->whereNotNull('doc_ine')->isNotEmpty(),
-                'comprobante' => $loans->whereNotNull('doc_comprobante')->isNotEmpty(),
-            ])
-            ->toArray();
+        $clientesConDocs = $clientes->mapWithKeys(fn($cliente) => [
+            $cliente->id => [
+                'ine'         => !empty($cliente->ine),
+                'comprobante' => !empty($cliente->comprobante),
+            ],
+        ])->toArray();
 
         // Map: client_id => admin_nombre for clients whose CURP has an active loan with another admin
         // Map: client_id => admin_nombre for cross-admin active loans (wrapped in try/catch for safety)
@@ -209,8 +206,11 @@ class PrestamoController extends Controller
         if ($desembolsar) {
             // INE y comprobante son opcionales si el cliente ya los tiene en un préstamo anterior
             $clienteId        = (int)$request->input('cliente_id');
-            $tieneIne         = $clienteId && Prestamo::where('cliente_id', $clienteId)->whereNotNull('doc_ine')->exists();
-            $tieneComprobante = $clienteId && Prestamo::where('cliente_id', $clienteId)->whereNotNull('doc_comprobante')->exists();
+            $clienteDocs      = $clienteId
+                ? Cliente::where('id', $clienteId)->where('admin_id', auth()->user()->adminId())->first()
+                : null;
+            $tieneIne         = !empty($clienteDocs?->ine);
+            $tieneComprobante = !empty($clienteDocs?->comprobante);
 
             $rules += [
                 'doc_ine'           => ($tieneIne         ? 'nullable' : 'required') . '|file|mimes:jpg,jpeg,png,pdf|max:10240',
@@ -299,16 +299,6 @@ class PrestamoController extends Controller
         $forma_entrega   = $desembolsar ? $request->input('forma_entrega') : null;
         $fecha_entrega   = $desembolsar ? $request->input('fecha_entrega') : null;
         $nota_entrega    = $desembolsar ? $request->input('nota_entrega')  : null;
-        $doc_ine         = null;
-        $doc_pagare      = null;
-        $doc_comprobante = null;
-        $doc_foto        = null;
-
-        if ($desembolsar) {
-            $prestamoIdTemp = 'tmp_' . time(); // placeholder; real ID used after create
-            // We store docs after creating the prestamo to have its real ID
-        }
-
         $prestamo = Prestamo::create([
             'admin_id'            => auth()->user()->adminId(),
             'cliente_id'          => $data['cliente_id'],
@@ -335,7 +325,11 @@ class PrestamoController extends Controller
         ]);
 
         // ── Save uploaded documents now that we have the real prestamo ID ─────
-        if ($desembolsar && $request->hasFile('doc_ine')) {
+        if ($desembolsar) {
+            $this->guardarDocumentoCliente($request, $cliente, 'doc_ine', 'ine', 'ine');
+            $this->guardarDocumentoCliente($request, $cliente, 'doc_comprobante', 'comprobante', 'comprobante');
+            $this->guardarDocumentoCliente($request, $cliente, 'doc_foto_domicilio', 'foto_vivienda', 'foto_domicilio');
+
             $carpeta = public_path('documentos/prestamo_' . $prestamo->id);
             if (!file_exists($carpeta)) mkdir($carpeta, 0775, true);
 
@@ -348,10 +342,7 @@ class PrestamoController extends Controller
                 return 'documentos/prestamo_' . $prestamo->id . '/' . $nombre;
             };
 
-            $prestamo->doc_ine            = $guardar('doc_ine', 'ine');
             $prestamo->doc_pagare         = $guardar('doc_pagare', 'pagare');
-            $prestamo->doc_comprobante    = $guardar('doc_comprobante', 'comprobante');
-            $prestamo->doc_foto_domicilio = $guardar('doc_foto_domicilio', 'foto_domicilio');
             $prestamo->save();
         }
 
@@ -1278,5 +1269,29 @@ class PrestamoController extends Controller
         }
 
         return response()->json(['cuota_base' => $cuota_base, 'ultimo_pago' => $ultimo_pago, 'ganancia' => $monto_retornar - $monto_entregado, 'schedule' => $schedule]);
+    }
+
+    private function guardarDocumentoCliente(Request $request, Cliente $cliente, string $campo, string $atributo, string $prefijo): void
+    {
+        if (!$request->hasFile($campo)) {
+            return;
+        }
+
+        $file = $request->file($campo);
+        if (!$file->isValid()) {
+            return;
+        }
+
+        $carpetaRelativa = 'documentos/cliente_' . $cliente->id;
+        $carpetaFisica   = public_path($carpetaRelativa);
+        if (!file_exists($carpetaFisica)) {
+            mkdir($carpetaFisica, 0775, true);
+        }
+
+        $nombre = $prefijo . '_' . time() . '_' . uniqid() . '.' . strtolower($file->getClientOriginalExtension());
+        $file->move($carpetaFisica, $nombre);
+
+        $cliente->{$atributo} = $carpetaRelativa . '/' . $nombre;
+        $cliente->save();
     }
 }

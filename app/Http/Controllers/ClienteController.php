@@ -195,11 +195,18 @@ class ClienteController extends Controller
             'ocupacion'   => 'nullable|in:Empleado,Negocio propio,Independiente,Otro',
             // Scoped al tenant: impide asignar un promotor de OTRO admin (IDOR cross-tenant)
             'promotor_id' => ['nullable', Rule::exists('empleados', 'id')->where('admin_id', $adminId)],
+            'doc_ine' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
+            'doc_comprobante' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
+            'doc_foto_domicilio' => 'nullable|file|mimes:jpg,jpeg,png|max:10240',
         ], [
             'curp.unique' => 'Este CURP ya está registrado para otro cliente tuyo.',
         ]);
 
+        unset($data['doc_ine'], $data['doc_comprobante'], $data['doc_foto_domicilio']);
         $cliente->update($data);
+        $this->guardarDocumentoCliente($request, $cliente, 'doc_ine', 'ine', 'ine');
+        $this->guardarDocumentoCliente($request, $cliente, 'doc_comprobante', 'comprobante', 'comprobante');
+        $this->guardarDocumentoCliente($request, $cliente, 'doc_foto_domicilio', 'foto_vivienda', 'foto_domicilio');
 
         return redirect()->route('clientes.show', $id)->with('success', 'Cliente actualizado correctamente.');
     }
@@ -399,10 +406,10 @@ class ClienteController extends Controller
                     return 'documentos/prestamo_' . $prestamo->id . '/' . $nombre;
                 };
 
-                $prestamo->doc_ine            = $guardar('doc_ine', 'ine');
                 $prestamo->doc_pagare         = $guardar('doc_pagare', 'pagare');
-                $prestamo->doc_comprobante    = $guardar('doc_comprobante', 'comprobante');
-                $prestamo->doc_foto_domicilio = $guardar('doc_foto_domicilio', 'foto_domicilio');
+                $this->guardarDocumentoCliente($request, $cliente, 'doc_ine', 'ine', 'ine');
+                $this->guardarDocumentoCliente($request, $cliente, 'doc_comprobante', 'comprobante', 'comprobante');
+                $this->guardarDocumentoCliente($request, $cliente, 'doc_foto_domicilio', 'foto_vivienda', 'foto_domicilio');
                 $prestamo->save();
             }
         }
@@ -456,5 +463,29 @@ class ClienteController extends Controller
 
         $msg = 'Cliente y préstamo registrados' . ($desembolsar ? ' y desembolsados' : '') . ' correctamente.';
         return redirect()->route('prestamos.show', $prestamo->id)->with('success', $msg);
+    }
+
+    private function guardarDocumentoCliente(Request $request, Cliente $cliente, string $campo, string $atributo, string $prefijo): void
+    {
+        if (!$request->hasFile($campo)) {
+            return;
+        }
+
+        $file = $request->file($campo);
+        if (!$file->isValid()) {
+            return;
+        }
+
+        $carpetaRelativa = 'documentos/cliente_' . $cliente->id;
+        $carpetaFisica   = public_path($carpetaRelativa);
+        if (!file_exists($carpetaFisica)) {
+            mkdir($carpetaFisica, 0775, true);
+        }
+
+        $nombre = $prefijo . '_' . time() . '_' . uniqid() . '.' . strtolower($file->getClientOriginalExtension());
+        $file->move($carpetaFisica, $nombre);
+
+        $cliente->{$atributo} = $carpetaRelativa . '/' . $nombre;
+        $cliente->save();
     }
 }

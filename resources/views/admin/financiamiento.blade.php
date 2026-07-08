@@ -69,10 +69,10 @@
         <div class="cf-kpi-label">{{ $resumen['atrasados'] > 0 ? 'Pagos vencidos' : 'Próximo pago' }}</div>
         @if($resumen['atrasados'] > 0)
             <div class="cf-kpi-value" style="color:#dc2626">{{ $money($resumen['monto_atrasado']) }}</div>
-            <div class="cf-kpi-sub">{{ $resumen['atrasados'] }} pago{{ $resumen['atrasados'] === 1 ? '' : 's' }} pendiente{{ $resumen['atrasados'] === 1 ? '' : 's' }} desde el {{ $prox->estado->proximo->format('d/m/Y') }}</div>
+            <div class="cf-kpi-sub">{{ $resumen['atrasados'] }} pago{{ $resumen['atrasados'] === 1 ? '' : 's' }} pendiente{{ $resumen['atrasados'] === 1 ? '' : 's' }} desde el {{ $prox->fecha->format('d/m/Y') }}</div>
         @else
-            <div class="cf-kpi-value" style="font-size:17px">{{ $prox->estado->parcial ? 'Hoy (completar pago)' : $fecha($prox->estado->proximo) }}</div>
-            <div class="cf-kpi-sub">{{ $money($prox->estado->restante) }} de rendimiento</div>
+            <div class="cf-kpi-value" style="font-size:17px">{{ $prox->parcial ? 'Hoy (completar pago)' : $fecha($prox->fecha) }}</div>
+            <div class="cf-kpi-sub">{{ $money($prox->monto) }} de rendimiento{{ $prox->cuenta > 1 ? ' · suma de ' . $prox->cuenta . ' inversiones' : '' }}</div>
         @endif
     </div>
     <div class="cf-kpi">

@@ -189,6 +189,7 @@ class OwnerController extends Controller
 
         // ── Gráfica mensual (12 meses) ─────────────────────────────
         $chartLabels = $chartDesembolsos = $chartCobros = [];
+        $chartMonths = []; // para el selector de mes del drill-down (valor Y-m + etiqueta)
 
         $cobrosRaw = DB::table('pagos')
             ->join('prestamos', 'pagos.prestamo_id', '=', 'prestamos.id')
@@ -208,6 +209,7 @@ class OwnerController extends Controller
             $chartLabels[]      = $fecha->locale('es')->isoFormat('MMM YY');
             $chartDesembolsos[] = (float) $des;
             $chartCobros[]      = (float) ($cobrosRaw[$mesKey] ?? 0);
+            $chartMonths[]      = ['value' => $mesKey, 'label' => ucfirst($fecha->locale('es')->isoFormat('MMMM YYYY'))];
         }
 
         // ── Distribución por estatus ──────────────────────────────
@@ -292,11 +294,92 @@ class OwnerController extends Controller
             'par30', 'par60', 'par90', 'npl',
             'par30Saldo', 'par60Saldo', 'par90Saldo', 'saldoActivo',
             'nActivos', 'nAtrasados',
-            'chartLabels', 'chartDesembolsos', 'chartCobros',
+            'chartLabels', 'chartDesembolsos', 'chartCobros', 'chartMonths',
             'porEstatus', 'totalPrestamos', 'ticketPromedio', 'montoMax', 'montoMin', 'duracionPromedio',
             'proximosPagos', 'clientesActivos', 'clientesConPrestamo', 'proximoPorPrestamo',
             'notas', 'empleados', 'alertas', 'montoCobradoUlt30'
         ));
+    }
+
+    /**
+     * Drill-down de la gráfica "Flujo de Capital": desglose de UN mes por día o
+     * por semana. Devuelve JSON para que la vista redibuje la misma gráfica sin
+     * recargar. Mismos criterios que la vista mensual de show():
+     *   - Desembolsado = SUM(monto_entregado) de préstamos por fecha_entrega.
+     *   - Cobrado      = SUM(monto_cobrado) de pagos Pagado/Parcial por fecha_pago.
+     */
+    public function flujoMensual(int $id, Request $request)
+    {
+        $admin = User::where('id', $id)->where('puesto', 'admin')
+            ->whereNull('cartera_financiada_de')->firstOrFail();
+
+        try {
+            $ref = $request->query('mes')
+                ? \Carbon\Carbon::createFromFormat('Y-m', $request->query('mes'))->startOfMonth()
+                : now()->startOfMonth();
+        } catch (\Exception $e) {
+            $ref = now()->startOfMonth();
+        }
+        $granularidad = $request->query('granularidad') === 'semanal' ? 'semanal' : 'diario';
+
+        $inicio = $ref->copy()->startOfMonth();
+        $fin    = $ref->copy()->endOfMonth();
+
+        $desRaw = DB::table('prestamos')
+            ->selectRaw('DATE(fecha_entrega) as dia, SUM(monto_entregado) as total')
+            ->where('admin_id', $id)
+            ->whereNotNull('fecha_entrega')
+            ->whereBetween('fecha_entrega', [$inicio->toDateString(), $fin->toDateString()])
+            ->groupBy('dia')->pluck('total', 'dia');
+
+        $cobRaw = DB::table('pagos')
+            ->join('prestamos', 'pagos.prestamo_id', '=', 'prestamos.id')
+            ->selectRaw('DATE(pagos.fecha_pago) as dia, SUM(pagos.monto_cobrado) as total')
+            ->where('prestamos.admin_id', $id)
+            ->whereIn('pagos.estatus', ['Pagado', 'Parcial'])
+            ->whereNotNull('pagos.fecha_pago')
+            ->whereBetween('pagos.fecha_pago', [$inicio->toDateString(), $fin->toDateString()])
+            ->groupBy('dia')->pluck('total', 'dia');
+
+        $labels = $desembolsos = $cobros = [];
+
+        if ($granularidad === 'diario') {
+            for ($d = $inicio->copy(); $d->lte($fin); $d->addDay()) {
+                $key = $d->toDateString();
+                $labels[]      = $d->format('d');
+                $desembolsos[] = (float) ($desRaw[$key] ?? 0);
+                $cobros[]      = (float) ($cobRaw[$key] ?? 0);
+            }
+        } else {
+            // Semanal: buckets por semana del mes (1–7, 8–14, 15–21, 22–28, 29–fin)
+            $buckets  = [];
+            $mesCorto = $ref->locale('es')->isoFormat('MMM');
+            for ($d = $inicio->copy(); $d->lte($fin); $d->addDay()) {
+                $key = $d->toDateString();
+                $wi  = intdiv($d->day - 1, 7);
+                if (!isset($buckets[$wi])) {
+                    $buckets[$wi] = ['ini' => $d->day, 'fin' => $d->day, 'des' => 0.0, 'cob' => 0.0];
+                }
+                $buckets[$wi]['fin']  = $d->day;
+                $buckets[$wi]['des'] += (float) ($desRaw[$key] ?? 0);
+                $buckets[$wi]['cob'] += (float) ($cobRaw[$key] ?? 0);
+            }
+            ksort($buckets);
+            foreach ($buckets as $b) {
+                $labels[]      = $b['ini'] . '–' . $b['fin'] . ' ' . $mesCorto;
+                $desembolsos[] = round($b['des'], 2);
+                $cobros[]      = round($b['cob'], 2);
+            }
+        }
+
+        return response()->json([
+            'mes'          => $ref->format('Y-m'),
+            'mes_label'    => ucfirst($ref->locale('es')->isoFormat('MMMM [de] YYYY')),
+            'granularidad' => $granularidad,
+            'labels'       => $labels,
+            'desembolsos'  => $desembolsos,
+            'cobros'       => $cobros,
+        ]);
     }
 
     /**

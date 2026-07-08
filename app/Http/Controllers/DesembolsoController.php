@@ -108,9 +108,9 @@ class DesembolsoController extends Controller
                 'forma' => 'required|string',
                 'nota' => 'nullable|string',
 
-                'doc_ine' => 'required|file|mimes:jpg,jpeg,png,pdf|max:10240',
+                'doc_ine' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
                 'doc_pagare' => 'required|file|mimes:jpg,jpeg,png,pdf|max:10240',
-                'doc_comprobante' => 'required|file|mimes:jpg,jpeg,png,pdf|max:10240',
+                'doc_comprobante' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
                 'doc_foto_domicilio' => 'nullable|file|mimes:jpg,jpeg,png|max:10240',
             ]);
 
@@ -120,7 +120,7 @@ class DesembolsoController extends Controller
             $nota       = $request->input('nota');
 
             $adminId  = Auth::user()->adminId();
-            $prestamo = Prestamo::where('id', $prestamoId)->where('admin_id', $adminId)->first();
+            $prestamo = Prestamo::with('cliente')->where('id', $prestamoId)->where('admin_id', $adminId)->first();
 
             if (!$prestamo) {
                 return response()->json([
@@ -133,6 +133,28 @@ class DesembolsoController extends Controller
                 return response()->json([
                     'ok' => false,
                     'error' => 'Este préstamo ya fue procesado.'
+                ]);
+            }
+
+            $cliente = $prestamo->cliente;
+            if (!$cliente) {
+                return response()->json([
+                    'ok' => false,
+                    'error' => 'Cliente no encontrado para este prestamo.'
+                ]);
+            }
+
+            if (!$cliente->ine && !$request->hasFile('doc_ine')) {
+                return response()->json([
+                    'ok' => false,
+                    'error' => 'El documento INE es requerido porque el cliente aun no lo tiene registrado.'
+                ]);
+            }
+
+            if (!$cliente->comprobante && !$request->hasFile('doc_comprobante')) {
+                return response()->json([
+                    'ok' => false,
+                    'error' => 'El comprobante de domicilio es requerido porque el cliente aun no lo tiene registrado.'
                 ]);
             }
 
@@ -161,14 +183,6 @@ class DesembolsoController extends Controller
                 ]);
             }
 
-            $pathIne = $this->guardarDocumentoPublic(
-                $request,
-                'doc_ine',
-                $carpetaFisica,
-                $carpetaRelativa,
-                'ine'
-            );
-
             $pathPagare = $this->guardarDocumentoPublic(
                 $request,
                 'doc_pagare',
@@ -177,25 +191,9 @@ class DesembolsoController extends Controller
                 'pagare'
             );
 
-            $pathComprobante = $this->guardarDocumentoPublic(
-                $request,
-                'doc_comprobante',
-                $carpetaFisica,
-                $carpetaRelativa,
-                'comprobante'
-            );
-
-            $pathFoto = null;
-
-            if ($request->hasFile('doc_foto_domicilio')) {
-                $pathFoto = $this->guardarDocumentoPublic(
-                    $request,
-                    'doc_foto_domicilio',
-                    $carpetaFisica,
-                    $carpetaRelativa,
-                    'foto_domicilio'
-                );
-            }
+            $this->guardarDocumentoCliente($request, $cliente, 'doc_ine', 'ine', 'ine');
+            $this->guardarDocumentoCliente($request, $cliente, 'doc_comprobante', 'comprobante', 'comprobante');
+            $this->guardarDocumentoCliente($request, $cliente, 'doc_foto_domicilio', 'foto_vivienda', 'foto_domicilio');
 
             $empleado = Auth::user()->empleado;
 
@@ -207,11 +205,7 @@ class DesembolsoController extends Controller
                 'nota_entrega'       => $nota,
                 'desembolso_id'      => $empleado?->id,
 
-                // Estas rutas quedan listas para usarse con asset()
-                'doc_ine'            => $pathIne,
                 'doc_pagare'         => $pathPagare,
-                'doc_comprobante'    => $pathComprobante,
-                'doc_foto_domicilio' => $pathFoto,
             ]);
 
             $quien = Auth::user()->empleado?->nombre ?? Auth::user()->usuario;
@@ -258,5 +252,30 @@ class DesembolsoController extends Controller
         $archivo->move($carpetaFisica, $nombreArchivo);
 
         return $carpetaRelativa . '/' . $nombreArchivo;
+    }
+
+    private function guardarDocumentoCliente(Request $request, \App\Models\Cliente $cliente, string $campo, string $atributo, string $prefijo): void
+    {
+        if (!$request->hasFile($campo)) {
+            return;
+        }
+
+        $archivo = $request->file($campo);
+        if (!$archivo->isValid()) {
+            return;
+        }
+
+        $carpetaRelativa = 'documentos/cliente_' . $cliente->id;
+        $carpetaFisica   = public_path($carpetaRelativa);
+        if (!file_exists($carpetaFisica)) {
+            mkdir($carpetaFisica, 0775, true);
+        }
+
+        $extension = strtolower($archivo->getClientOriginalExtension());
+        $nombreArchivo = $prefijo . '_' . time() . '_' . uniqid() . '.' . $extension;
+        $archivo->move($carpetaFisica, $nombreArchivo);
+
+        $cliente->{$atributo} = $carpetaRelativa . '/' . $nombreArchivo;
+        $cliente->save();
     }
 }

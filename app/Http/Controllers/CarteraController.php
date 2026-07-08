@@ -61,14 +61,14 @@ class CarteraController extends Controller
             return redirect()->route('dashboard');
         }
 
-        $hoy     = now()->startOfDay();
-        $estados = $financiamientos->map(fn($f) => $f->estadoCobros($hoy));
+        $hoy = now()->startOfDay();
+        $financiamientos->each(fn($f) => $f->estado = $f->estadoCobros($hoy));
 
         $resumen = [
             'capital'        => (float) $financiamientos->sum('capital_actual'),
-            'proximo'        => $estados->sortBy('proximo')->first(),
-            'atrasados'      => $estados->sum('atrasados'),
-            'monto_atrasado' => (float) $estados->sum('monto_atrasado'),
+            'proximo'        => $this->proximoPago($financiamientos),
+            'atrasados'      => (int) $financiamientos->sum(fn($f) => $f->estado->atrasados),
+            'monto_atrasado' => (float) $financiamientos->sum(fn($f) => $f->estado->monto_atrasado),
         ];
 
         return view('admin.carteras', compact('financiamientos', 'resumen'));
@@ -124,11 +124,34 @@ class CarteraController extends Controller
         $resumen = [
             'capital'        => (float) $financiamientos->sum('capital_actual'),
             'pagado'         => (float) $financiamientos->sum(fn($f) => $f->pagos->sum('monto')),
-            'proximo'        => $financiamientos->sortBy(fn($f) => $f->estado->proximo)->first(),
+            'proximo'        => $this->proximoPago($financiamientos),
             'monto_atrasado' => (float) $financiamientos->sum(fn($f) => $f->estado->monto_atrasado),
             'atrasados'      => (int) $financiamientos->sum(fn($f) => $f->estado->atrasados),
         ];
 
         return view('admin.financiamiento', compact('financiamientos', 'resumen'));
+    }
+
+    /**
+     * Próximo pago AGREGADO para el resumen del admin. Cuando tiene más de una
+     * inversión y varias vencen la misma fecha (lo normal), se muestra UN solo
+     * monto —la suma de todo lo que toca pagar ese día— en vez del de una sola,
+     * que confundía (parecía que solo debía una parte). El detalle sigue
+     * mostrando cada inversión por separado. Cada financiamiento debe traer
+     * ->estado (estadoCobros) cargado.
+     */
+    private function proximoPago($financiamientos): object
+    {
+        $primero = $financiamientos->sortBy(fn($f) => $f->estado->proximo)->first();
+        $fecha   = $primero->estado->proximo;
+        $mismos  = $financiamientos->filter(fn($f) => $f->estado->proximo->isSameDay($fecha));
+
+        return (object) [
+            'fecha'   => $fecha,
+            'monto'   => round($mismos->sum(fn($f) => $f->estado->restante), 2),
+            'cuenta'  => $mismos->count(),
+            'total'   => $financiamientos->count(),
+            'parcial' => $mismos->contains(fn($f) => $f->estado->parcial),
+        ];
     }
 }

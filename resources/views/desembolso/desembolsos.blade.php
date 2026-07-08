@@ -120,7 +120,7 @@
             <td style="text-align:center">
                 <button
                     class="btn btn-primary btn-sm"
-                    onclick="abrirDesembolso({{ $p->id }}, '{{ addslashes($p->cliente?->nombre ?? '') }}', {{ $p->monto }}, {{ $p->monto_entregado ?? $p->monto }})"
+                    onclick="abrirDesembolso({{ $p->id }}, '{{ addslashes($p->cliente?->nombre ?? '') }}', {{ $p->monto }}, {{ $p->monto_entregado ?? $p->monto }}, {{ $p->cliente?->ine ? 'true' : 'false' }}, {{ $p->cliente?->comprobante ? 'true' : 'false' }})"
                     style="font-size:12px">
                     ✓ Confirmar entrega
                 </button>
@@ -330,10 +330,14 @@ async function asignarDesembolsador(id) {
 // ── Desembolso confirmation ──────────────────────────────────────────────────
 let dsbPrestamoId = null;
 let dsbMontoAcordado = 0;
+let dsbTieneIne = false;
+let dsbTieneComprobante = false;
 
-function abrirDesembolso(id, nombre, montoAcordado, montoEntregado) {
+function abrirDesembolso(id, nombre, montoAcordado, montoEntregado, tieneIne, tieneComprobante) {
     dsbPrestamoId = id;
     dsbMontoAcordado = montoAcordado;
+    dsbTieneIne = !!tieneIne;
+    dsbTieneComprobante = !!tieneComprobante;
     document.getElementById('dsbClienteNombre').textContent = nombre;
     document.getElementById('dsbMonto').value = montoEntregado || montoAcordado;
     document.getElementById('dsbNota').value = '';
@@ -342,6 +346,8 @@ function abrirDesembolso(id, nombre, montoAcordado, montoEntregado) {
 
     // Resetear labels de archivos
     ['ine','pagare','comprobante','foto'].forEach(k => resetLabel(k));
+    marcarDocumentoExistente('ine', dsbTieneIne);
+    marcarDocumentoExistente('comprobante', dsbTieneComprobante);
 
     actualizarGanancia();
     document.getElementById('modalDesembolso').style.display = 'flex';
@@ -378,6 +384,14 @@ function resetLabel(key) {
     const txt = document.getElementById('txt_' + key);
     txt.textContent = '';
     txt.style.display = 'none';
+}
+
+function marcarDocumentoExistente(key, existe) {
+    if (!existe) return;
+    const txt = document.getElementById('txt_' + key);
+    if (!txt) return;
+    txt.textContent = 'Ya registrado en el perfil del cliente';
+    txt.style.display = '';
 }
 
 function actualizarGanancia() {
@@ -430,9 +444,9 @@ async function confirmarDesembolso() {
     document.getElementById('dsbError').style.display = 'none';
 
     if (!dsbPrestamoId || monto <= 0) { mostrarError('Ingresa un monto válido.'); return; }
-    if (!docActivo.ine        || !docActivo.ine.files[0])        { mostrarError('El documento INE es requerido.'); return; }
+    if (!dsbTieneIne && (!docActivo.ine || !docActivo.ine.files[0])) { mostrarError('El documento INE es requerido.'); return; }
     if (!docActivo.pagare     || !docActivo.pagare.files[0])     { mostrarError('El pagaré firmado es requerido.'); return; }
-    if (!docActivo.comprobante|| !docActivo.comprobante.files[0]){ mostrarError('El comprobante de domicilio es requerido.'); return; }
+    if (!dsbTieneComprobante && (!docActivo.comprobante || !docActivo.comprobante.files[0])) { mostrarError('El comprobante de domicilio es requerido.'); return; }
 
     const btn = document.getElementById('btnConfirmar');
     btn.textContent = 'Preparando archivos…';
@@ -440,9 +454,9 @@ async function confirmarDesembolso() {
 
     try {
         // Compress images before uploading (camera photos can be 5–10 MB)
-        const fileIne         = await comprimirImagen(docActivo.ine.files[0]);
+        const fileIne         = docActivo.ine?.files[0] ? await comprimirImagen(docActivo.ine.files[0]) : null;
         const filePagare      = await comprimirImagen(docActivo.pagare.files[0]);
-        const fileComprobante = await comprimirImagen(docActivo.comprobante.files[0]);
+        const fileComprobante = docActivo.comprobante?.files[0] ? await comprimirImagen(docActivo.comprobante.files[0]) : null;
         const fileFoto        = docActivo.foto?.files[0]
             ? await comprimirImagen(docActivo.foto.files[0])
             : null;
@@ -454,9 +468,9 @@ async function confirmarDesembolso() {
         fd.append('monto',          monto);
         fd.append('forma',          document.getElementById('dsbForma').value);
         fd.append('nota',           document.getElementById('dsbNota').value || '');
-        fd.append('doc_ine',         fileIne);
         fd.append('doc_pagare',      filePagare);
-        fd.append('doc_comprobante', fileComprobante);
+        if (fileIne) fd.append('doc_ine', fileIne);
+        if (fileComprobante) fd.append('doc_comprobante', fileComprobante);
         if (fileFoto) fd.append('doc_foto_domicilio', fileFoto);
 
         const resp = await fetch('{{ route("desembolsos.confirmar") }}', {

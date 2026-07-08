@@ -26,7 +26,7 @@
 </div>
 
 <div class="card" style="max-width:700px;padding:0;overflow:hidden">
-<form method="POST" action="{{ route('clientes.update', $cliente->id) }}" onsubmit="this.querySelector('[type=submit]').disabled=true">
+<form method="POST" action="{{ route('clientes.update', $cliente->id) }}" enctype="multipart/form-data" onsubmit="this.querySelector('[type=submit]').disabled=true">
     @csrf
     @method('PUT')
 
@@ -102,6 +102,34 @@
                 </option>
                 @endforeach
             </select>
+        </div>
+
+        <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:16px">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:12px">
+                Documentos personales del cliente
+            </div>
+            <div class="frm-grid-2col" style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                @foreach([
+                    ['doc_ine', 'INE / Identificacion', $cliente->ine, '.jpg,.jpeg,.png,.pdf'],
+                    ['doc_comprobante', 'Comprobante de domicilio', $cliente->comprobante, '.jpg,.jpeg,.png,.pdf'],
+                    ['doc_foto_domicilio', 'Foto de domicilio', $cliente->foto_vivienda, '.jpg,.jpeg,.png'],
+                ] as [$name, $label, $actual, $accept])
+                <div>
+                    <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);display:block;margin-bottom:5px">
+                        {{ $label }}
+                    </label>
+                    @if($actual)
+                    <div style="margin-bottom:6px;font-size:12px">
+                        <a href="{{ asset($actual) }}" target="_blank" style="color:var(--accent);text-decoration:none">Ver archivo actual</a>
+                    </div>
+                    @else
+                    <div style="margin-bottom:6px;font-size:12px;color:var(--text3)">Sin archivo registrado</div>
+                    @endif
+                    <input type="file" name="{{ $name }}" accept="{{ $accept }}"
+                           style="width:100%;padding:8px 10px;background:#f9fafb;border:1.5px dashed var(--border);border-radius:6px;font-family:var(--font);font-size:12px;outline:none">
+                </div>
+                @endforeach
+            </div>
         </div>
 
     </div>

@@ -36,6 +36,7 @@ Route::middleware(['auth', 'role:owner'])->prefix('owner')->name('owner.')->grou
     Route::delete('/financiamientos/{id}/movimientos/{movimiento}',[\App\Http\Controllers\FinanciamientoController::class, 'destroyMovimiento'])->name('financiamientos.movimientos.destroy');
     Route::get('/admins/crear',                [\App\Http\Controllers\OwnerController::class, 'create'])         ->name('admins.create');
     Route::get('/admins/{id}',                 [\App\Http\Controllers\OwnerController::class, 'show'])            ->name('admins.show');
+    Route::get('/admins/{id}/flujo',           [\App\Http\Controllers\OwnerController::class, 'flujoMensual'])   ->name('admins.flujo');
     Route::post('/admins',                     [\App\Http\Controllers\OwnerController::class, 'store'])          ->name('admins.store');
     Route::post('/admins/{id}/toggle',         [\App\Http\Controllers\OwnerController::class, 'toggle'])         ->name('admins.toggle');
     Route::post('/admins/{id}/reset-password', [\App\Http\Controllers\OwnerController::class, 'resetPassword'])  ->name('admins.resetPassword');

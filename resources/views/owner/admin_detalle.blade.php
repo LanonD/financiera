@@ -56,6 +56,15 @@
 .ad-card-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
 .ad-card-title{font-size:13px;font-weight:700;color:var(--text)}
 .ad-card-sub{font-size:11px;color:var(--text3);margin-top:2px}
+/* Controles drill-down del flujo */
+.flujo-select{font-family:inherit;font-size:12px;font-weight:600;color:var(--text);background:var(--card);
+    border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer;outline:none}
+.flujo-select:focus{border-color:#3b82f6}
+.flujo-seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.flujo-seg-btn{font-family:inherit;font-size:12px;font-weight:600;color:var(--text3);background:var(--card);
+    border:none;padding:6px 12px;cursor:pointer}
+.flujo-seg-btn:not(:last-child){border-right:1px solid var(--border)}
+.flujo-seg-btn.is-active{background:#3b82f6;color:#fff}
 
 /* ── Risk panel ─────────────────────────────────────────── */
 .ad-risk-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
@@ -353,13 +362,27 @@ $parBarColor = fn($v) => $v < 5 ? '#16a34a' : ($v < 15 ? '#d97706' : '#dc2626');
     <div class="ad-card">
         <div class="ad-card-hd">
             <div>
-                <div class="ad-card-title">Flujo de Capital — Últimos 12 Meses</div>
-                <div class="ad-card-sub">Capital colocado vs cobrado por mes</div>
+                <div class="ad-card-title" id="flujoTitulo">Flujo de Capital — Últimos 12 Meses</div>
+                <div class="ad-card-sub" id="flujoSub">Capital colocado vs cobrado por mes</div>
             </div>
             <div style="display:flex;gap:10px;font-size:11px;align-items:center">
                 <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:3px;background:#3b82f6;border-radius:2px;display:inline-block"></span>Desembolsado</span>
                 <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:3px;background:#10b981;border-radius:2px;display:inline-block"></span>Cobrado</span>
             </div>
+        </div>
+        {{-- Controles drill-down: elegir mes y ver el desglose por semana o por día --}}
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+            <select id="flujoMes" class="flujo-select" onchange="flujoActualizar()">
+                <option value="">Últimos 12 meses</option>
+                @foreach(array_reverse($chartMonths) as $m)
+                    <option value="{{ $m['value'] }}">{{ $m['label'] }}</option>
+                @endforeach
+            </select>
+            <div id="flujoGran" class="flujo-seg" style="display:none">
+                <button type="button" class="flujo-seg-btn is-active" data-gran="semanal" onclick="flujoSetGran('semanal')">Semanal</button>
+                <button type="button" class="flujo-seg-btn" data-gran="diario" onclick="flujoSetGran('diario')">Diario</button>
+            </div>
+            <span id="flujoLoading" style="display:none;font-size:11px;color:var(--text3)">Cargando…</span>
         </div>
         <div style="position:relative;height:260px"><canvas id="chartFlujo"></canvas></div>
     </div>
@@ -879,40 +902,34 @@ $parBarColor = fn($v) => $v < 5 ? '#16a34a' : ($v < 15 ? '#d97706' : '#dc2626');
 @push('scripts')
 <script src="{{ asset('js/chart.umd.min.js') }}"></script>
 <script>
-// ── Chart: Flujo mensual ─────────────────────────────────────
-(function(){
-    const labels = @json($chartLabels);
-    const des    = @json($chartDesembolsos);
-    const cob    = @json($chartCobros);
+// ── Chart: Flujo de Capital (con drill-down por mes) ─────────
+let flujoChart = null;
+let flujoGran  = 'semanal';
+const flujoInicial = {
+    labels: @json($chartLabels),
+    des:    @json($chartDesembolsos),
+    cob:    @json($chartCobros),
+};
+const flujoUrlBase = @json(route('owner.admins.flujo', ['id' => $admin->id]));
 
-    new Chart(document.getElementById('chartFlujo'), {
+function flujoRender(labels, des, cob) {
+    if (flujoChart) {
+        flujoChart.data.labels = labels;
+        flujoChart.data.datasets[0].data = des;
+        flujoChart.data.datasets[1].data = cob;
+        flujoChart.update();
+        return;
+    }
+    flujoChart = new Chart(document.getElementById('chartFlujo'), {
         type: 'bar',
         data: {
             labels,
             datasets: [
-                {
-                    label: 'Desembolsado',
-                    data: des,
-                    backgroundColor: 'rgba(59,130,246,.18)',
-                    borderColor: '#3b82f6',
-                    borderWidth: 2,
-                    borderRadius: 5,
-                    type: 'bar',
-                    order: 2,
-                },
-                {
-                    label: 'Cobrado',
-                    data: cob,
-                    borderColor: '#10b981',
-                    backgroundColor: 'rgba(16,185,129,.12)',
-                    borderWidth: 2.5,
-                    tension: .4,
-                    fill: true,
-                    type: 'line',
-                    order: 1,
-                    pointRadius: 3,
-                    pointBackgroundColor: '#10b981',
-                }
+                { label: 'Desembolsado', data: des, backgroundColor: 'rgba(59,130,246,.18)',
+                  borderColor: '#3b82f6', borderWidth: 2, borderRadius: 5, type: 'bar', order: 2 },
+                { label: 'Cobrado', data: cob, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,.12)',
+                  borderWidth: 2.5, tension: .4, fill: true, type: 'line', order: 1,
+                  pointRadius: 3, pointBackgroundColor: '#10b981' }
             ]
         },
         options: {
@@ -920,26 +937,59 @@ $parBarColor = fn($v) => $v < 5 ? '#16a34a' : ($v < 15 ? '#d97706' : '#dc2626');
             maintainAspectRatio: false,
             plugins: {
                 legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: ctx => ' $' + Number(ctx.raw).toLocaleString('es-MX',{maximumFractionDigits:0})
-                    }
-                }
+                tooltip: { callbacks: {
+                    label: ctx => ' ' + ctx.dataset.label + ': $' + Number(ctx.raw).toLocaleString('es-MX',{maximumFractionDigits:0})
+                } }
             },
             scales: {
                 x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#9ca3af' } },
                 y: {
                     grid: { color: 'rgba(0,0,0,.04)' },
-                    ticks: {
-                        font: { size: 10 },
-                        color: '#9ca3af',
-                        callback: v => '$' + (v >= 1000 ? (v/1000).toFixed(0)+'k' : v)
-                    }
+                    ticks: { font: { size: 10 }, color: '#9ca3af',
+                        callback: v => '$' + (v >= 1000 ? (v/1000).toFixed(0)+'k' : v) }
                 }
             }
         }
     });
-})();
+}
+
+function flujoSetGran(g) {
+    flujoGran = g;
+    document.querySelectorAll('#flujoGran .flujo-seg-btn').forEach(b =>
+        b.classList.toggle('is-active', b.dataset.gran === g));
+    flujoActualizar();
+}
+
+function flujoActualizar() {
+    const mes     = document.getElementById('flujoMes').value;
+    const seg     = document.getElementById('flujoGran');
+    const titulo  = document.getElementById('flujoTitulo');
+    const sub     = document.getElementById('flujoSub');
+    const loading = document.getElementById('flujoLoading');
+
+    if (!mes) {
+        seg.style.display = 'none';
+        titulo.textContent = 'Flujo de Capital — Últimos 12 Meses';
+        sub.textContent    = 'Capital colocado vs cobrado por mes';
+        flujoRender(flujoInicial.labels, flujoInicial.des, flujoInicial.cob);
+        return;
+    }
+    seg.style.display = '';
+    loading.style.display = '';
+    fetch(flujoUrlBase + '?mes=' + encodeURIComponent(mes) + '&granularidad=' + flujoGran,
+          { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(r => r.json())
+        .then(d => {
+            titulo.textContent = 'Flujo de Capital — ' + d.mes_label;
+            sub.textContent = (flujoGran === 'diario' ? 'Desglose diario' : 'Desglose semanal')
+                + ' · capital colocado vs cobrado';
+            flujoRender(d.labels, d.desembolsos, d.cobros);
+        })
+        .catch(() => { sub.textContent = 'No se pudo cargar el desglose de ese mes.'; })
+        .finally(() => { loading.style.display = 'none'; });
+}
+
+flujoRender(flujoInicial.labels, flujoInicial.des, flujoInicial.cob);
 
 // ── Chart: Donut distribución ────────────────────────────────
 (function(){
