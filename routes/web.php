@@ -89,6 +89,7 @@ Route::middleware(['auth', 'role:admin,promo'])->group(function () {
     Route::get('/prestamos/nuevo',                               [PrestamoController::class, 'create'])->name('prestamos.create');
     Route::post('/prestamos',                                    [PrestamoController::class, 'store'])->name('prestamos.store');
     Route::get('/prestamos/{id}',                                [PrestamoController::class, 'show'])->name('prestamos.show');
+    Route::get('/prestamos/{id}/estado-cuenta',                  [PrestamoController::class, 'estadoCuenta'])->name('prestamos.estadoCuenta');
     Route::get('/prestamos/{id}/editar',                         [PrestamoController::class, 'edit'])->name('prestamos.edit');
     Route::put('/prestamos/{id}',                                [PrestamoController::class, 'update'])->name('prestamos.update');
     Route::post('/prestamos/{id}/toggle-interes',                [PrestamoController::class, 'toggleInteres'])->name('prestamos.toggleInteres');

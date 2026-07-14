@@ -453,6 +453,100 @@ class PrestamoController extends Controller
         return view('admin.prestamo_detalle', compact('prestamo', 'pagos', 'interesInfo', 'actividad', 'archivos'));
     }
 
+    /**
+     * Genera el Estado de Cuenta profesional en PDF descargable.
+     * Reutiliza la misma distribución interés-primero que la vista de detalle.
+     */
+    public function estadoCuenta($id)
+    {
+        $adminId  = auth()->user()->adminId();
+        $prestamo = Prestamo::with(['cliente', 'promotor', 'cobrador'])
+            ->where('id', $id)
+            ->where('admin_id', $adminId)
+            ->firstOrFail();
+
+        // Mantener saldos y estatus coherentes antes de imprimir
+        $prestamo->finalizarSiLiquidado();
+        $prestamo->recalcularAtraso();
+
+        $pagos = Pago::where('prestamo_id', $id)
+            ->orderBy('fecha_programada')
+            ->orderBy('numero_pago')
+            ->get();
+
+        // Nombre del prestamista (admin) para el encabezado
+        $adminUser  = \App\Models\User::find($adminId);
+        $prestamista = $adminUser?->nombre ?? config('app.name');
+
+        // ── Orden cronológico real (cobrados por fecha, pendientes al final) ──
+        $pagosOrdenados = $pagos->sortBy(function ($p) {
+            if ($p->fecha_pago) return $p->fecha_pago->toDateString() . sprintf('%05d', $p->numero_pago);
+            return '9999-99-99' . sprintf('%05d', $p->numero_pago);
+        });
+
+        // Saldo corriente (deuda total → se descuenta cada cobro)
+        $saldoCorr    = (float) $prestamo->monto;
+        $saldoDisplay = [];
+        foreach ($pagosOrdenados as $pag) {
+            $cobrado = (float) ($pag->monto_cobrado ?? 0);
+            $tipoPag = $pag->tipo_pago ?? 'plan';
+            if ($cobrado > 0 && $tipoPag !== 'congelado') {
+                $saldoCorr = max(0, $saldoCorr - $cobrado);
+            }
+            $saldoDisplay[$pag->id] = $saldoCorr;
+        }
+
+        // Distribución real interés-primero por cobro
+        $interesAcordadoTotal = max(0, (float) $prestamo->monto - (float) $prestamo->monto_entregado);
+        $interesPoolRestante  = $interesAcordadoTotal;
+        $capitalDisplay = [];
+        $interesDisplay = [];
+        foreach ($pagosOrdenados as $pag) {
+            $cobrado = (float) ($pag->monto_cobrado ?? 0);
+            $tipoPag = $pag->tipo_pago ?? 'plan';
+            if ($cobrado > 0 && !in_array($tipoPag, ['congelado', 'liquidado'])) {
+                $intPago = min($cobrado, max(0.0, $interesPoolRestante));
+                $capPago = round($cobrado - $intPago, 2);
+                $interesPoolRestante = max(0.0, round($interesPoolRestante - $intPago, 2));
+            } else {
+                $intPago = 0.0;
+                $capPago = 0.0;
+            }
+            $capitalDisplay[$pag->id] = round($capPago, 2);
+            $interesDisplay[$pag->id] = round($intPago, 2);
+        }
+
+        // KPIs
+        $cobrosEfectivos = $pagos->whereIn('estatus', ['Pagado', 'Parcial'])
+            ->filter(fn($p) => !in_array($p->tipo_pago ?? 'plan', ['congelado', 'liquidado']));
+        $totalCobrado    = round($cobrosEfectivos->sum('monto_cobrado'), 2);
+        $capitalCobrado  = round(array_sum($capitalDisplay), 2);
+        $interesCobrado  = round(array_sum($interesDisplay), 2);
+        $interesRestante = max(0, round($interesAcordadoTotal - $interesCobrado, 2));
+        $interesPendiente = (float) ($prestamo->interes_acumulado ?? 0);
+        $principalRestante = max(0, round((float) $prestamo->monto_entregado - $capitalCobrado, 2));
+        $balanceRestante   = round($principalRestante + $interesRestante + $interesPendiente, 2);
+
+        $ultimaFechaPago = $pagos
+            ->filter(fn($pg) => !empty($pg->fecha_pago) && !in_array($pg->tipo_pago ?? 'plan', ['congelado', 'liquidado']))
+            ->sortByDesc(fn($pg) => $pg->fecha_pago instanceof \Carbon\Carbon ? $pg->fecha_pago->toDateString() : (string) $pg->fecha_pago)
+            ->first()?->fecha_pago?->toDateString();
+
+        $data = compact(
+            'prestamo', 'pagos', 'prestamista', 'saldoDisplay', 'capitalDisplay', 'interesDisplay',
+            'totalCobrado', 'capitalCobrado', 'interesCobrado', 'interesRestante', 'interesPendiente',
+            'principalRestante', 'balanceRestante', 'interesAcordadoTotal', 'ultimaFechaPago'
+        );
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('admin.estado_cuenta_pdf', $data)
+            ->setPaper('letter', 'portrait');
+
+        $nombreCliente = preg_replace('/[^A-Za-z0-9]+/', '-', $prestamo->cliente?->nombre ?? 'cliente');
+        $fileName = "estado-cuenta-prestamo-{$prestamo->id}-{$nombreCliente}.pdf";
+
+        return $pdf->download($fileName);
+    }
+
     public function edit($id)
     {
         $adminId    = auth()->user()->adminId();

@@ -402,10 +402,16 @@ class PagoController extends Controller
             }
 
             // ── 4. Apply remainder to cuota ─────────────────────────────────────
+            $excedenteInfo = null;
             if ($montoRecibido > 0) {
-                $tipo = $montoRecibido >= $pago->monto_cuota ? 'Pagado' : 'Parcial';
+                $dueCuota = (float)$pago->monto_cuota;
+                $tipo     = $montoRecibido >= $dueCuota ? 'Pagado' : 'Parcial';
 
-                $pago->monto_cobrado = $montoRecibido;
+                // Topar el cobro de ESTA cuota a su monto; el excedente se reparte adelante
+                $cobroCuota = $tipo === 'Pagado' ? $dueCuota : $montoRecibido;
+                $excedente  = $tipo === 'Pagado' ? round($montoRecibido - $dueCuota, 2) : 0.0;
+
+                $pago->monto_cobrado = round($cobroCuota, 2);
                 $pago->tipo_cobro    = $tipo === 'Pagado' ? 'completo' : 'parcial';
                 $pago->nota_cobro    = $nota;
                 $pago->fecha_pago    = now()->toDateString();
@@ -413,8 +419,13 @@ class PagoController extends Controller
                 $pago->cobrador_id   = $empleado?->id;
                 $pago->save();
 
-                // Saldo = deuda total pendiente → baja por TODO lo cobrado en la cuota
+                // Saldo = deuda total pendiente → baja por TODO lo cobrado (incluye excedente)
                 $prestamo->saldo_actual = max(0, round((float)$prestamo->saldo_actual - $montoRecibido, 2));
+
+                // ── Excedente (pagó de más) → repartir a las cuotas siguientes ──
+                if ($excedente > 0.01) {
+                    $excedenteInfo = $this->aplicarExcedenteACuotas($pago, $excedente, $empleado?->id, now()->toDateString());
+                }
 
                 if ($tipo === 'Pagado') {
                     $remaining = Pago::where('prestamo_id', $prestamoId)
@@ -466,6 +477,7 @@ class PagoController extends Controller
             if (isset($tipo) && $tipo === 'Parcial' && isset($diferencia) && $diferencia > 0 && isset($nextPago) && $nextPago) {
                 $desc .= " Diferencia de \$$diferencia pasó a cuota #{$nextPago->numero_pago}.";
             }
+            $desc .= $this->describirExcedente($excedenteInfo);
             if ($prestamo->estatus === 'Finalizado') {
                 $desc .= ' ✓ Préstamo finalizado.';
             }
@@ -533,103 +545,48 @@ class PagoController extends Controller
             $nota .= ' | Mora: $' . number_format($pagoMora, 2);
         }
 
-        // ── 2. Pay remaining agreed interest BEFORE touching capital ────────
-        // Never modify plan cuotas — track via total agreed interest vs already paid
-        $interesAcordado  = max(0, (float)$prestamo->monto - (float)$prestamo->monto_entregado);
-        $interesYaPagado  = Pago::where('prestamo_id', $prestamo->id)
-            ->whereIn('estatus', ['Pagado', 'Parcial'])
-            ->sum('interes');
-        $interesRestanteDP = max(0, round($interesAcordado - $interesYaPagado, 2));
+        // ── 2. El resto salda las cuotas del plan: primero lo VENCIDO, luego
+        //       adelanta futuras. Así un cobro reduce el atraso peso por peso
+        //       (antes solo bajaba el saldo sin tocar las cuotas, y el atraso
+        //        mostrado no cambiaba). ─────────────────────────────────────
+        $fecha    = now()->toDateString();
+        $notaPlan = 'Cobro inmediato' . ($request->nota ? ' — ' . $request->nota : '');
 
-        $pagoInteres = 0;
-        if ($monto > 0 && $interesRestanteDP > 0) {
-            $pagoInteres  = min($monto, $interesRestanteDP);
-            $monto       -= $pagoInteres;
-            $nota        .= ' | Interés: $' . number_format($pagoInteres, 2);
+        $plan = ['aplicado' => 0.0, 'pagadas' => [], 'parcial' => null, 'sobrante' => 0.0];
+        if ($monto > 0) {
+            $plan = $this->aplicarPagoAPlan($prestamo->id, $monto, $empleado?->id, $fecha, $notaPlan);
+            if ($plan['aplicado'] > 0) {
+                // Saldo = deuda total pendiente → baja por lo aplicado a cuotas (la mora va aparte)
+                $prestamo->saldo_actual = max(0, round((float)$prestamo->saldo_actual - $plan['aplicado'], 2));
+            }
         }
-
-        // ── 3. Remainder va a capital ────────────────────────────────────────
-        $capitalPagado = round($monto, 2); // lo que queda tras mora e interés acordado
-
-        // Saldo = deuda total pendiente → baja por interés + capital (todo excepto mora)
-        $reduccionPlan = round($pagoInteres + $capitalPagado, 2);
-        if ($reduccionPlan > 0) {
-            $prestamo->saldo_actual = max(0, round((float)$prestamo->saldo_actual - $reduccionPlan, 2));
-        }
-
-        // Auto-finalize: if both capital and mora reach 0, the loan is fully paid
-        $mensajeFin = '';
-        if ((float)$prestamo->saldo_actual <= 0 && (float)$prestamo->interes_acumulado <= 0) {
-            $prestamo->estatus             = 'Finalizado';
-            $prestamo->payment_hold        = false;
-            $prestamo->interes_mora_activo = false;
-            $prestamo->interes_diario      = 0;
-
-            // Mark remaining pending plan pagos as liquidated (paid early, $0)
-            Pago::where('prestamo_id', $prestamo->id)
-                ->whereIn('estatus', ['Pendiente', 'Atrasado'])
-                ->where('tipo_pago', 'plan')
-                ->update([
-                    'estatus'       => 'Pagado',
-                    'monto_cobrado' => 0,
-                    'tipo_cobro'    => 'completo',
-                    'tipo_pago'     => 'liquidado',
-                    'fecha_pago'    => now()->toDateString(),
-                    'nota_cobro'    => 'Liquidación anticipada',
-                ]);
-
-            // Also cancel scheduled (agendado) pending pagos
-            Pago::where('prestamo_id', $prestamo->id)
-                ->whereIn('estatus', ['Pendiente'])
-                ->where('tipo_pago', 'agendado')
-                ->update([
-                    'estatus'    => 'Pagado',
-                    'monto_cobrado' => 0,
-                    'tipo_cobro' => 'completo',
-                    'tipo_pago'  => 'liquidado',
-                    'fecha_pago' => now()->toDateString(),
-                    'nota_cobro' => 'Cancelado - préstamo liquidado',
-                ]);
-
-            $mensajeFin = ' ✓ Préstamo finalizado por liquidación anticipada.';
-        }
-
-        $maxNumero = Pago::where('prestamo_id', $prestamo->id)->max('numero_pago') ?? 0;
-
-        Pago::create([
-            'prestamo_id'      => $prestamo->id,
-            'cobrador_id'      => $empleado?->id,
-            'numero_pago'      => $maxNumero + 1,
-            'monto_cuota'      => $montoTotal,
-            'interes'          => round($pagoMora + $pagoInteres, 2),
-            'capital'          => round($capitalPagado, 2),
-            'saldo_restante'   => $prestamo->saldo_actual,
-            'monto_cobrado'    => $montoTotal,
-            'tipo_cobro'       => 'completo',
-            'tipo_pago'        => 'extra',
-            'nota_cobro'       => $nota,
-            'fecha_programada' => now()->toDateString(),
-            'fecha_pago'       => now()->toDateString(),
-            'estatus'          => 'Pagado',
-        ]);
 
         $prestamo->save();
 
-        $quien = Auth::user()->empleado?->nombre ?? Auth::user()->usuario;
-        $descExtra = 'Cobro extra de $' . number_format($montoTotal, 2) . ' registrado por ' . $quien . '.';
-        if ($pagoMora > 0)      $descExtra .= ' Mora: $' . number_format($pagoMora, 2) . '.';
-        if ($pagoInteres > 0)   $descExtra .= ' Interés: $' . number_format($pagoInteres, 2) . '.';
-        if ($capitalPagado > 0) $descExtra .= ' Capital: $' . number_format($capitalPagado, 2) . '.';
-        if ($mensajeFin)        $descExtra .= $mensajeFin;
+        // ── 3. Actualizar estado: al corriente / finalizado ─────────────────
+        $prestamo->recalcularAtraso();
+        $prestamo->finalizarSiLiquidado();
+        $mensajeFin = $prestamo->estatus === 'Finalizado' ? ' ✓ Préstamo finalizado.' : '';
+
+        // ── 4. Registrar actividad y responder ──────────────────────────────
+        $quien   = Auth::user()->empleado?->nombre ?? Auth::user()->usuario;
+        $resumen = '';
+        if ($pagoMora > 0)            $resumen .= ' Mora: $' . number_format($pagoMora, 2) . '.';
+        if (!empty($plan['pagadas'])) $resumen .= ' Cuotas saldadas: #' . implode(', #', $plan['pagadas']) . '.';
+        if (!empty($plan['parcial'])) $resumen .= ' Abono $' . number_format($plan['parcial']['monto'], 2) . ' a cuota #' . $plan['parcial']['num'] . '.';
+        if ($plan['sobrante'] > 0.01) $resumen .= ' Sobrante $' . number_format($plan['sobrante'], 2) . ' a favor del cliente.';
+
+        $descExtra = 'Cobro inmediato de $' . number_format($montoTotal, 2) . ' registrado por ' . $quien . '.' . $resumen . $mensajeFin;
         PrestamoActividad::log($prestamo->id, 'cobro_extra', $descExtra, [
             'total'    => $montoTotal,
             'mora'     => $pagoMora,
-            'interes'  => $pagoInteres,
-            'capital'  => $capitalPagado,
+            'aplicado' => $plan['aplicado'],
+            'sobrante' => $plan['sobrante'],
             'saldo'    => $prestamo->saldo_actual,
         ]);
 
-        return redirect()->back()->with('success', 'Cobro inmediato de $' . number_format($montoTotal, 2) . ' registrado.' . $mensajeFin);
+        return redirect()->back()->with('success',
+            'Cobro inmediato de $' . number_format($montoTotal, 2) . ' registrado.' . $resumen . $mensajeFin);
     }
 
     /**
@@ -826,6 +783,172 @@ class PagoController extends Controller
         return redirect()->back()->with('success', 'Te has asignado como cobrador de este préstamo.');
     }
 
+    /** Concatena una nota nueva a la existente con separador. */
+    private function concatNota(?string $existente, string $nueva): string
+    {
+        return $existente ? $existente . ' | ' . $nueva : $nueva;
+    }
+
+    /**
+     * Aplica un pago a las cuotas del plan pendientes, de la más antigua a la
+     * más reciente (primero salda lo VENCIDO, luego adelanta cuotas futuras).
+     *
+     * Abono parcial sin diferir: la cuota que queda a medias conserva su
+     * remanente adeudado (sigue contando como atraso hasta cubrirse), de modo
+     * que un cobro reduce el atraso peso por peso.
+     *
+     * @return array{aplicado: float, pagadas: int[], parcial: ?array{num:int,monto:float}, sobrante: float}
+     */
+    private function aplicarPagoAPlan(int $prestamoId, float $monto, ?int $cobradorId, string $fecha, string $nota): array
+    {
+        $restante = round($monto, 2);
+        $pagadas  = [];
+        $parcial  = null;
+
+        $cuotas = Pago::where('prestamo_id', $prestamoId)
+            ->whereIn('estatus', ['Pendiente', 'Atrasado', 'Parcial'])
+            ->where('tipo_pago', 'plan')
+            ->orderBy('fecha_programada')
+            ->orderBy('numero_pago')
+            ->get();
+
+        foreach ($cuotas as $c) {
+            if ($restante <= 0.005) break;
+            $ya  = (float) ($c->monto_cobrado ?? 0);
+            $due = round((float) $c->monto_cuota - $ya, 2);
+            if ($due <= 0) continue;
+
+            if ($restante >= $due - 0.005) {
+                // Cuota saldada por completo
+                $c->monto_cobrado = round((float) $c->monto_cuota, 2);
+                $c->tipo_cobro    = 'completo';
+                $c->estatus       = 'Pagado';
+                $c->fecha_pago    = $fecha;
+                $c->cobrador_id   = $cobradorId;
+                $c->nota_cobro    = $this->concatNota($c->nota_cobro, $nota);
+                $c->save();
+                $pagadas[] = $c->numero_pago;
+                $restante  = round($restante - $due, 2);
+            } else {
+                // Abono parcial sobre la cuota (conserva el remanente adeudado)
+                $c->monto_cobrado = round($ya + $restante, 2);
+                $c->tipo_cobro    = 'parcial';
+                $c->estatus       = 'Parcial';
+                $c->fecha_pago    = $fecha;
+                $c->cobrador_id   = $cobradorId;
+                $c->nota_cobro    = $this->concatNota($c->nota_cobro, $nota . ' (abono)');
+                $c->save();
+                $parcial  = ['num' => $c->numero_pago, 'monto' => round($restante, 2)];
+                $restante = 0.0;
+                break;
+            }
+        }
+
+        return [
+            'aplicado' => round($monto - $restante, 2),
+            'pagadas'  => $pagadas,
+            'parcial'  => $parcial,
+            'sobrante' => round($restante, 2),
+        ];
+    }
+
+    /** Arma un fragmento de mensaje legible describiendo cómo se repartió el excedente. */
+    private function describirExcedente(?array $info): string
+    {
+        if (!$info) return '';
+        $partes = [];
+        if (!empty($info['cubiertas'])) {
+            $nums = implode(', #', $info['cubiertas']);
+            $partes[] = count($info['cubiertas']) === 1
+                ? "adelantó la cuota #{$nums}"
+                : "adelantó las cuotas #{$nums}";
+        }
+        if (!empty($info['parcial'])) {
+            $partes[] = 'abonó $' . number_format($info['parcial']['monto'], 2) . ' a la cuota #' . $info['parcial']['num'];
+        }
+        if (($info['sobrante'] ?? 0) > 0.01) {
+            $partes[] = 'sobró $' . number_format($info['sobrante'], 2) . ' a favor del cliente';
+        }
+        return $partes ? ' Excedente: ' . implode(', ', $partes) . '.' : '';
+    }
+
+    /**
+     * Reparte un EXCEDENTE (dinero sobrante tras cubrir la cuota actual) a las
+     * cuotas pendientes POSTERIORES en orden cronológico — "pago adelantado".
+     *
+     * Cada cuota que el excedente cubre por completo se marca Pagada; si la
+     * última cuota alcanzada queda a medias se marca Parcial y su remanente se
+     * difiere a la cuota siguiente (mismo carry-forward que un pago parcial
+     * normal). Así el excedente nunca infla el monto_cobrado de una sola cuota
+     * ni se pierde del plan de pagos.
+     *
+     * @return array{cubiertas: int[], parcial: ?array{num:int, monto:float}, sobrante: float}
+     *         sobrante = dinero que quedó tras cubrir TODAS las cuotas (préstamo pagado de más)
+     */
+    private function aplicarExcedenteACuotas(Pago $cuotaActual, float $excedente, ?int $cobradorId, string $fechaPago): array
+    {
+        $restante  = round($excedente, 2);
+        $cubiertas = [];
+        $parcial   = null;
+
+        // Cuotas pendientes POSTERIORES a la cuota actual, en orden cronológico
+        $siguientes = Pago::where('prestamo_id', $cuotaActual->prestamo_id)
+            ->whereIn('estatus', ['Pendiente', 'Atrasado'])
+            ->where('id', '!=', $cuotaActual->id)
+            ->orderBy('fecha_programada')
+            ->orderBy('numero_pago')
+            ->get()
+            ->filter(function ($c) use ($cuotaActual) {
+                $fa = (string) $cuotaActual->fecha_programada;
+                $fc = (string) $c->fecha_programada;
+                return $fc > $fa || ($fc === $fa && $c->numero_pago > $cuotaActual->numero_pago);
+            })
+            ->values();
+
+        foreach ($siguientes as $i => $c) {
+            if ($restante < 0.01) break;
+            $due = (float) $c->monto_cuota;
+
+            if ($restante >= $due - 0.001) {
+                // El excedente cubre la cuota completa → Pagada
+                $c->monto_cobrado = round($due, 2);
+                $c->tipo_cobro    = 'completo';
+                $c->estatus       = 'Pagado';
+                $c->fecha_pago    = $fechaPago;
+                $c->cobrador_id   = $cobradorId;
+                $c->nota_cobro    = $this->concatNota($c->nota_cobro,
+                    'Cubierta con excedente de cuota #' . $cuotaActual->numero_pago);
+                $c->save();
+                $cubiertas[] = $c->numero_pago;
+                $restante = round($restante - $due, 2);
+            } else {
+                // El excedente cubre solo una parte → Parcial + diferir remanente
+                $c->monto_cobrado = round($restante, 2);
+                $c->tipo_cobro    = 'parcial';
+                $c->estatus       = 'Parcial';
+                $c->fecha_pago    = $fechaPago;
+                $c->cobrador_id   = $cobradorId;
+                $c->nota_cobro    = $this->concatNota($c->nota_cobro,
+                    'Abono $' . number_format($restante, 2) . ' con excedente de cuota #' . $cuotaActual->numero_pago);
+
+                $remanente = round($due - $restante, 2);
+                $next = $siguientes[$i + 1] ?? null;
+                if ($next && $remanente > 0) {
+                    $next->monto_cuota = round((float) $next->monto_cuota + $remanente, 2);
+                    $next->nota_cobro  = $this->concatNota($next->nota_cobro,
+                        'Incluye $' . number_format($remanente, 2) . ' diferido de cuota #' . $c->numero_pago);
+                    $next->save();
+                }
+                $c->save();
+                $parcial  = ['num' => $c->numero_pago, 'monto' => round($restante, 2)];
+                $restante = 0.0;
+                break;
+            }
+        }
+
+        return ['cubiertas' => $cubiertas, 'parcial' => $parcial, 'sobrante' => round($restante, 2)];
+    }
+
     /**
      * Admin / Promo: register a payment for a specific cuota (pago) selected by the user.
      * Applies mora first, then the remainder to the chosen cuota.
@@ -883,10 +1006,16 @@ class PagoController extends Controller
         }
 
         // ── Apply remainder to the chosen cuota ─────────────────────────────
+        $excedenteInfo = null;
         if ($montoRecibido > 0) {
-            $tipo = $montoRecibido >= (float)$pago->monto_cuota ? 'Pagado' : 'Parcial';
+            $dueCuota = (float)$pago->monto_cuota;
+            $tipo     = $montoRecibido >= $dueCuota ? 'Pagado' : 'Parcial';
 
-            $pago->monto_cobrado = $montoRecibido;
+            // Topar el cobro de ESTA cuota a su monto; el excedente se reparte adelante
+            $cobroCuota = $tipo === 'Pagado' ? $dueCuota : $montoRecibido;
+            $excedente  = $tipo === 'Pagado' ? round($montoRecibido - $dueCuota, 2) : 0.0;
+
+            $pago->monto_cobrado = round($cobroCuota, 2);
             $pago->tipo_cobro    = $tipo === 'Pagado' ? 'completo' : 'parcial';
             $pago->nota_cobro    = $nota ?: null;
             $pago->fecha_pago    = now()->toDateString();
@@ -894,8 +1023,13 @@ class PagoController extends Controller
             $pago->cobrador_id   = $empleado?->id;
             $pago->save();
 
-            // Saldo = deuda total pendiente → baja por TODO lo cobrado en la cuota
+            // Saldo = deuda total pendiente → baja por TODO lo cobrado (incluye excedente)
             $prestamo->saldo_actual = max(0, round((float)$prestamo->saldo_actual - $montoRecibido, 2));
+
+            // ── Excedente (pagó de más) → repartir a las cuotas siguientes ──
+            if ($excedente > 0.01) {
+                $excedenteInfo = $this->aplicarExcedenteACuotas($pago, $excedente, $empleado?->id, now()->toDateString());
+            }
 
             // Check if all payments are now done
             if ($tipo === 'Pagado') {
@@ -949,7 +1083,10 @@ class PagoController extends Controller
             }
         }
 
-        $msg = 'Cuota #' . $pago->numero_pago . ' — $' . number_format($totalPagado, 2) . ' registrada.' . $carryMsg;
+        // ── Mensaje del excedente adelantado a cuotas siguientes ────────────
+        $adelantoMsg = $this->describirExcedente($excedenteInfo);
+
+        $msg = 'Cuota #' . $pago->numero_pago . ' — $' . number_format($totalPagado, 2) . ' registrada.' . $carryMsg . $adelantoMsg;
         if ($prestamo->estatus === 'Finalizado') {
             $msg .= ' ✓ Préstamo finalizado.';
         }
@@ -961,6 +1098,7 @@ class PagoController extends Controller
                     ' (' . strtolower($tipoPago) . ').';
         if ($pagoMora > 0)   $descLog .= ' Mora cobrada: $' . number_format($pagoMora, 2) . '.';
         if ($carryMsg)       $descLog .= $carryMsg;
+        if ($adelantoMsg)    $descLog .= $adelantoMsg;
         if ($prestamo->estatus === 'Finalizado') $descLog .= ' ✓ Préstamo finalizado.';
         PrestamoActividad::log($prestamo->id, 'pago', $descLog, [
             'pago_id'       => $pago->id,

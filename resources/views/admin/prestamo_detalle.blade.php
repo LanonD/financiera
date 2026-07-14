@@ -319,7 +319,7 @@ $esMiPrestamo   = $empDetalle && $prestamo->promotor_id == $empDetalle->id;
                 style="padding:8px 16px;border-radius:8px;border:1.5px solid #2563eb;background:rgba(37,99,235,.07);color:#2563eb;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap">
                 + Cobro inmediato
             </button>
-            <span style="font-size:11px;color:var(--text3);padding:0 2px">Registra un abono extra fuera del plan de pagos. Se aplica primero a mora, luego a capital.</span>
+            <span style="font-size:11px;color:var(--text3);padding:0 2px">Registra un cobro de cualquier monto. Se aplica primero a mora, luego salda las cuotas atrasadas (y adelanta las siguientes).</span>
         </div>
 
         {{-- Agendar Cobro --}}
@@ -591,7 +591,14 @@ $esMiPrestamo   = $empDetalle && $prestamo->promotor_id == $empDetalle->id;
 
 {{-- Payment table --}}
 <div class="card" style="padding:0;overflow:hidden">
-    <div style="padding:12px 18px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600">Tabla de pagos</div>
+    <div style="padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <span style="font-size:13px;font-weight:600">Tabla de pagos</span>
+        <a href="{{ route('prestamos.estadoCuenta', $prestamo->id) }}" target="_blank" rel="noopener"
+           class="btn btn-sm" style="background:#111827;color:#fff;display:inline-flex;align-items:center;gap:6px">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1v9m0 0L5 7m3 3l3-3M2.5 11v2.5A1 1 0 0 0 3.5 14.5h9a1 1 0 0 0 1-1V11"/></svg>
+            Estado de cuenta (PDF)
+        </a>
+    </div>
     <div class="table-wrap">
     <table>
         <thead>
@@ -718,6 +725,23 @@ $esMiPrestamo   = $empDetalle && $prestamo->promotor_id == $empDetalle->id;
         </tr>
         @endforeach
         </tbody>
+        @php
+            $totCuotaTabla = $pagos->sum('monto_cuota');
+            $mostrarAcciones = in_array($puesto, ['admin','promo']) && in_array($prestamo->estatus, ['Activo','Atrasado']);
+        @endphp
+        <tfoot>
+            <tr style="background:#f8fafc;border-top:2px solid var(--border);font-weight:700">
+                <td colspan="4" style="text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text2);padding:10px 8px">Totales</td>
+                <td style="text-align:right;font-family:monospace;font-size:12px;padding:10px 8px">${{ number_format($totCuotaTabla,2,'.',',') }}</td>
+                <td style="text-align:right;font-family:monospace;font-size:12px;padding:10px 8px;color:#16a34a">${{ number_format($totalCobrado,2,'.',',') }}</td>
+                <td class="pd-col-capital" style="text-align:right;font-family:monospace;font-size:12px;padding:10px 8px">${{ number_format($capitalCobrado,2,'.',',') }}</td>
+                <td class="pd-col-interes" style="text-align:right;font-family:monospace;font-size:12px;padding:10px 8px">${{ number_format($interesCobrado,2,'.',',') }}</td>
+                <td class="pd-col-saldo" style="text-align:right;font-family:monospace;font-size:12px;padding:10px 8px;color:#dc2626">${{ number_format($balanceRestante,2,'.',',') }}</td>
+                <td></td>
+                <td class="pd-col-nota"></td>
+                @if($mostrarAcciones)<td></td>@endif
+            </tr>
+        </tfoot>
     </table>
     </div>
 </div>
@@ -733,7 +757,7 @@ $esMiPrestamo   = $empDetalle && $prestamo->promotor_id == $empDetalle->id;
     <div style="padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
         <div>
             <div style="font-size:15px;font-weight:700">Cobro Inmediato</div>
-            <div style="font-size:12px;color:var(--text2);margin-top:2px">Registra un abono extra fuera del plan de pagos</div>
+            <div style="font-size:12px;color:var(--text2);margin-top:2px">Salda mora y cuotas atrasadas; el excedente adelanta las siguientes</div>
         </div>
         <button onclick="document.getElementById('modal-cobro-extra').close()"
             style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text3);line-height:1">&times;</button>
@@ -1350,6 +1374,16 @@ function confirmarRefinanciar() {
                 <div style="font-size:11px;color:#9a3412;margin-top:5px">Se sumará automáticamente al próximo pago pendiente.</div>
             </div>
 
+            {{-- Excedente (pagó de más → adelanta cuotas) --}}
+            <div id="mcq-adelanto-box" style="display:none;padding:12px 14px;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px">
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#1d4ed8;margin-bottom:6px">Excedente — pago adelantado</div>
+                <div style="display:flex;align-items:center;justify-content:space-between">
+                    <div style="font-size:20px;font-weight:800;font-family:monospace;color:#2563eb" id="mcq-adelanto-val">$0.00</div>
+                    <div style="font-size:11px;color:#1e40af;text-align:right" id="mcq-adelanto-desc">—</div>
+                </div>
+                <div style="font-size:11px;color:#1e40af;margin-top:5px">El sobrante cubrirá las siguientes cuotas del plan automáticamente.</div>
+            </div>
+
             {{-- Nota --}}
             <div>
                 <label style="font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:5px">Nota (opcional)</label>
@@ -1521,6 +1555,32 @@ function calcDiferencia() {
     const diffBox  = document.getElementById('mcq-diferencia-box');
     const diffVal  = document.getElementById('mcq-diferencia-val');
     const diffDesc = document.getElementById('mcq-diferencia-desc');
+    const advBox   = document.getElementById('mcq-adelanto-box');
+
+    // ── Excedente: si paga MÁS que la cuota, previsualizar cuántas cuotas adelanta ──
+    const excedente = Math.max(0, Math.round((monto - _mcqCuota) * 100) / 100);
+    if (excedente > 0) {
+        diffBox.style.display = 'none'; // no hay diferencia pendiente si pagó de más
+        advBox.style.display = '';
+        document.getElementById('mcq-adelanto-val').textContent =
+            '$' + excedente.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+        // Simular cascada sobre las cuotas siguientes
+        const idx = PAGOS_PENDIENTES.findIndex(p => p.id === _mcqPagoId);
+        let restante = excedente, cubiertas = [], parcialNum = null;
+        for (let j = idx + 1; j < PAGOS_PENDIENTES.length && restante > 0.009; j++) {
+            const c = PAGOS_PENDIENTES[j];
+            if (restante >= c.cuota - 0.009) { cubiertas.push(c.num); restante = Math.round((restante - c.cuota) * 100) / 100; }
+            else { parcialNum = c.num; restante = 0; }
+        }
+        let desc = [];
+        if (cubiertas.length) desc.push('cubre cuota' + (cubiertas.length > 1 ? 's #' : ' #') + cubiertas.join(', #'));
+        if (parcialNum)       desc.push('abono a #' + parcialNum);
+        if (!cubiertas.length && !parcialNum) desc.push('a favor del cliente');
+        document.getElementById('mcq-adelanto-desc').textContent = desc.join(' · ');
+        return;
+    }
+    advBox.style.display = 'none';
 
     if (!_mcqParcial) { diffBox.style.display = 'none'; return; }
 
