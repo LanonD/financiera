@@ -174,7 +174,7 @@ class Prestamo extends Model
         }
 
         $pendientes = Pago::where('prestamo_id', $this->id)
-            ->whereIn('estatus', ['Pendiente', 'Atrasado'])
+            ->whereIn('estatus', ['Pendiente', 'Atrasado', 'Parcial'])
             ->count();
         $deudaLiquidada = (float)$this->saldo_actual <= 0
             && (float)$this->interes_acumulado <= 0;
@@ -186,7 +186,7 @@ class Prestamo extends Model
         if ($pendientes > 0) {
             // Deuda en $0 con cuotas aún pendientes → marcarlas como liquidadas
             Pago::where('prestamo_id', $this->id)
-                ->whereIn('estatus', ['Pendiente', 'Atrasado'])
+                ->whereIn('estatus', ['Pendiente', 'Atrasado', 'Parcial'])
                 ->update([
                     'estatus'       => 'Pagado',
                     'monto_cobrado' => 0,
@@ -229,7 +229,7 @@ class Prestamo extends Model
         }
 
         $hayVencidos = Pago::where('prestamo_id', $this->id)
-            ->whereIn('estatus', ['Pendiente', 'Atrasado'])
+            ->whereIn('estatus', ['Pendiente', 'Atrasado', 'Parcial'])
             ->where('fecha_programada', '<', now()->toDateString())
             ->exists();
 
