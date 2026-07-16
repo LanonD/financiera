@@ -929,6 +929,211 @@ class OwnerController extends Controller
     }
 
     /**
+     * Documento semanal para owner: lectura financiera por administrador.
+     */
+    public function reporteSemanal(Request $request)
+    {
+        try {
+            $base = $request->query('semana')
+                ? \Carbon\Carbon::parse($request->query('semana'))
+                : now();
+        } catch (\Throwable $e) {
+            $base = now();
+        }
+
+        $inicio = $base->copy()->startOfWeek(\Carbon\Carbon::MONDAY)->startOfDay();
+        $fin    = $base->copy()->endOfWeek(\Carbon\Carbon::SUNDAY)->endOfDay();
+        $hoy    = now()->startOfDay();
+
+        $admins = User::with('carteraFinanciada')
+            ->where('puesto', 'admin')
+            ->whereNull('cartera_financiada_de')
+            ->orderBy('nombre')
+            ->orderBy('usuario')
+            ->get();
+
+        $deployedStatuses = ['Activo', 'Atrasado', 'Finalizado'];
+        $activeStatuses   = ['Activo', 'Atrasado'];
+        $payableStatuses  = ['Pendiente', 'Atrasado', 'Parcial'];
+        $realPayStatuses  = ['Pagado', 'Parcial'];
+
+        $rows = $admins->map(function (User $admin) use (
+            $inicio, $fin, $hoy, $deployedStatuses, $activeStatuses, $payableStatuses, $realPayStatuses
+        ) {
+            $adminIds = collect([$admin->id, $admin->carteraFinanciada?->id])->filter()->values()->all();
+
+            $prestamos = Prestamo::with(['pagos', 'cliente'])
+                ->whereIn('admin_id', $adminIds)
+                ->get();
+
+            $deployed  = $prestamos->whereIn('estatus', $deployedStatuses);
+            $activos   = $prestamos->whereIn('estatus', $activeStatuses);
+            $atrasados = $prestamos->where('estatus', 'Atrasado');
+            $pagos     = $prestamos->flatMap(fn($p) => $p->pagos);
+
+            $pagosReales = $pagos->filter(fn($p) => in_array($p->estatus, $realPayStatuses)
+                && (float)($p->monto_cobrado ?? 0) > 0);
+
+            $pagosSemana = $pagosReales->filter(fn($p) => $p->fecha_pago
+                && $p->fecha_pago->betweenIncluded($inicio, $fin));
+
+            $programadoSemana = $pagos->filter(fn($p) => $p->fecha_programada
+                && $p->fecha_programada->betweenIncluded($inicio, $fin)
+                && !in_array($p->tipo_pago ?? 'plan', ['congelado', 'liquidado']));
+
+            $pendientesVencidos = $pagos->filter(fn($p) => $p->fecha_programada
+                && $p->fecha_programada->lt($hoy)
+                && in_array($p->estatus, $payableStatuses)
+                && !in_array($p->tipo_pago ?? 'plan', ['congelado', 'liquidado']));
+
+            $dueAmount = fn($p) => max(0.0, round((float)$p->monto_cuota - (float)($p->monto_cobrado ?? 0), 2));
+
+            $capitalDesplegado = (float) $deployed->sum('monto_entregado');
+            $totalAcordado     = (float) $deployed->sum('monto');
+            $saldoActivo       = (float) $activos->sum('saldo_actual');
+            $saldoAtrasado     = (float) $atrasados->sum('saldo_actual');
+            $moraPendiente     = (float) $activos->sum('interes_acumulado');
+            $cobradoTotal      = (float) $pagosReales->sum('monto_cobrado');
+
+            $capitalRecuperado = min(
+                $capitalDesplegado,
+                (float) $pagosReales->sum('capital')
+            );
+            $interesCobradoTotal = max(0.0, round($cobradoTotal - $capitalRecuperado, 2));
+
+            $cobradoSemana = (float) $pagosSemana->sum('monto_cobrado');
+            $capitalSemana = min($cobradoSemana, (float) $pagosSemana->sum('capital'));
+            $interesSemana = max(0.0, round($cobradoSemana - $capitalSemana, 2));
+
+            $desembolsadoSemana = (float) $deployed
+                ->filter(fn($p) => $p->fecha_entrega && $p->fecha_entrega->betweenIncluded($inicio, $fin))
+                ->sum('monto_entregado');
+
+            $programadoCobro = (float) $programadoSemana->sum('monto_cuota');
+            $vencidoMonto    = (float) $pendientesVencidos->sum(fn($p) => $dueAmount($p));
+
+            $overdueIds30 = $pagos->filter(fn($p) => $p->fecha_programada
+                && $p->fecha_programada->lte($hoy->copy()->subDays(30))
+                && in_array($p->estatus, $payableStatuses))->pluck('prestamo_id')->unique();
+            $overdueIds60 = $pagos->filter(fn($p) => $p->fecha_programada
+                && $p->fecha_programada->lte($hoy->copy()->subDays(60))
+                && in_array($p->estatus, $payableStatuses))->pluck('prestamo_id')->unique();
+            $overdueIds90 = $pagos->filter(fn($p) => $p->fecha_programada
+                && $p->fecha_programada->lte($hoy->copy()->subDays(90))
+                && in_array($p->estatus, $payableStatuses))->pluck('prestamo_id')->unique();
+
+            $par30Saldo = (float) $activos->whereIn('id', $overdueIds30->all())->sum('saldo_actual');
+            $par60Saldo = (float) $activos->whereIn('id', $overdueIds60->all())->sum('saldo_actual');
+            $par90Saldo = (float) $activos->whereIn('id', $overdueIds90->all())->sum('saldo_actual');
+
+            $par30 = $saldoActivo > 0 ? round($par30Saldo / $saldoActivo * 100, 1) : 0.0;
+            $par60 = $saldoActivo > 0 ? round($par60Saldo / $saldoActivo * 100, 1) : 0.0;
+            $par90 = $saldoActivo > 0 ? round($par90Saldo / $saldoActivo * 100, 1) : 0.0;
+
+            $eficiencia = $programadoCobro > 0 ? round($cobradoSemana / $programadoCobro * 100, 1) : 0.0;
+            $roiReal    = $capitalDesplegado > 0 ? round($interesCobradoTotal / $capitalDesplegado * 100, 1) : 0.0;
+            $recuperado = $totalAcordado > 0 ? round($cobradoTotal / $totalAcordado * 100, 1) : 0.0;
+            $riesgoPct  = $saldoActivo > 0 ? round($saldoAtrasado / $saldoActivo * 100, 1) : 0.0;
+
+            $proxInicio = $fin->copy()->addDay()->startOfDay();
+            $proxFin    = $proxInicio->copy()->endOfWeek(\Carbon\Carbon::SUNDAY)->endOfDay();
+            $proximoProgramado = (float) $pagos->filter(fn($p) => $p->fecha_programada
+                && $p->fecha_programada->betweenIncluded($proxInicio, $proxFin)
+                && in_array($p->estatus, $payableStatuses))->sum(fn($p) => $dueAmount($p));
+
+            $score = 100;
+            $score -= min(35, $par30 * 0.7);
+            $score -= min(25, $riesgoPct * 0.45);
+            $score -= min(20, $eficiencia < 100 ? (100 - $eficiencia) * 0.25 : 0);
+            $score += min(10, $interesSemana > 0 && $capitalDesplegado > 0 ? ($interesSemana / $capitalDesplegado * 100) * 4 : 0);
+            $score = max(0, min(100, round($score, 1)));
+
+            $alertas = [];
+            if ($par30 >= 25) $alertas[] = 'PAR30 alto: priorizar recuperacion antes de crecer.';
+            if ($eficiencia < 80 && $programadoCobro > 0) $alertas[] = 'Cobranza semanal por debajo de lo programado.';
+            if ($moraPendiente > 0) $alertas[] = 'Mora pendiente activa: revisar promesas de pago.';
+            if ($desembolsadoSemana > $cobradoSemana && $saldoActivo > 0) $alertas[] = 'Crecimiento consume caja esta semana.';
+            if (!$alertas) $alertas[] = 'Cartera sin alerta critica esta semana.';
+
+            $recomendacion = 'Mantener ritmo y reinvertir solo en clientes con historial limpio.';
+            if ($par30 >= 25 || $riesgoPct >= 35) {
+                $recomendacion = 'Congelar crecimiento nuevo y enfocar cobranza en saldos vencidos de mayor monto.';
+            } elseif ($eficiencia >= 110 && $par30 < 10 && $interesSemana > 0) {
+                $recomendacion = 'Tiene espacio para crecer: aumentar colocacion controlada y conservar disciplina de cobro.';
+            } elseif ($eficiencia < 90) {
+                $recomendacion = 'Mejorar seguimiento diario: metas por cobrador y cierre de promesas vencidas.';
+            }
+
+            return [
+                'admin'               => $admin,
+                'admin_ids'           => $adminIds,
+                'score'               => $score,
+                'recomendacion'       => $recomendacion,
+                'alertas'             => $alertas,
+                'prestamos_total'     => $prestamos->count(),
+                'prestamos_activos'   => $activos->count(),
+                'prestamos_atrasados' => $atrasados->count(),
+                'clientes'            => Cliente::whereIn('admin_id', $adminIds)->where('activo', true)->count(),
+                'capital_desplegado'  => $capitalDesplegado,
+                'total_acordado'      => $totalAcordado,
+                'saldo_activo'        => $saldoActivo,
+                'saldo_atrasado'      => $saldoAtrasado,
+                'mora_pendiente'      => $moraPendiente,
+                'cobrado_total'       => $cobradoTotal,
+                'interes_total'       => $interesCobradoTotal,
+                'roi_real'            => $roiReal,
+                'recuperado_pct'      => $recuperado,
+                'desembolsado_semana' => $desembolsadoSemana,
+                'cobrado_semana'      => $cobradoSemana,
+                'capital_semana'      => $capitalSemana,
+                'interes_semana'      => $interesSemana,
+                'programado_semana'   => $programadoCobro,
+                'eficiencia'          => $eficiencia,
+                'vencido_monto'       => $vencidoMonto,
+                'vencido_pagos'       => $pendientesVencidos->count(),
+                'par30'               => $par30,
+                'par60'               => $par60,
+                'par90'               => $par90,
+                'par30_saldo'         => $par30Saldo,
+                'par60_saldo'         => $par60Saldo,
+                'par90_saldo'         => $par90Saldo,
+                'riesgo_pct'          => $riesgoPct,
+                'proximo_programado'  => $proximoProgramado,
+                'pagos_semana'        => $pagosSemana->count(),
+                'nuevos_prestamos'    => $deployed->filter(fn($p) => $p->fecha_entrega && $p->fecha_entrega->betweenIncluded($inicio, $fin))->count(),
+            ];
+        })->sortByDesc('score')->values();
+
+        $globales = [
+            'admins'              => $rows->count(),
+            'capital_desplegado'  => $rows->sum('capital_desplegado'),
+            'saldo_activo'        => $rows->sum('saldo_activo'),
+            'saldo_atrasado'      => $rows->sum('saldo_atrasado'),
+            'mora_pendiente'      => $rows->sum('mora_pendiente'),
+            'desembolsado_semana' => $rows->sum('desembolsado_semana'),
+            'cobrado_semana'      => $rows->sum('cobrado_semana'),
+            'interes_semana'      => $rows->sum('interes_semana'),
+            'programado_semana'   => $rows->sum('programado_semana'),
+            'vencido_monto'       => $rows->sum('vencido_monto'),
+            'proximo_programado'  => $rows->sum('proximo_programado'),
+            'prestamos_activos'   => $rows->sum('prestamos_activos'),
+            'prestamos_atrasados' => $rows->sum('prestamos_atrasados'),
+        ];
+        $globales['eficiencia'] = $globales['programado_semana'] > 0
+            ? round($globales['cobrado_semana'] / $globales['programado_semana'] * 100, 1) : 0.0;
+        $globales['riesgo_pct'] = $globales['saldo_activo'] > 0
+            ? round($globales['saldo_atrasado'] / $globales['saldo_activo'] * 100, 1) : 0.0;
+
+        $mejor = $rows->first();
+        $mayorRiesgo = $rows->sortByDesc('par30')->first();
+        $mayorUtilidad = $rows->sortByDesc('interes_semana')->first();
+
+        return view('owner.reporte_semanal', compact(
+            'rows', 'globales', 'inicio', 'fin', 'mejor', 'mayorRiesgo', 'mayorUtilidad'
+        ));
+    }
+
+    /**
      * Eliminar una nota.
      */
     public function destroyNota(int $id, AdminNota $nota)
