@@ -210,6 +210,18 @@ class Financiamiento extends Model
         $cobrado  = (float) $rends->filter(fn($m) => $this->periodoDeFecha($m->fecha) === $nPend)->sum('monto');
         $proximo  = $parcial ? $hoy->copy() : $this->fechaCobro($nPend);
 
+        // La fecha con la que se registra un cobro NUNCA debe ser futura: un
+        // cobro es un hecho real, ocurre hoy o antes. Cuando la ventana pendiente
+        // es la que corre HOY pero su corte programado cae a futuro (se cobra
+        // adelantado dentro del periodo), la fecha real es hoy —que sigue cayendo
+        // en esa misma ventana—. En atrasos $proximo ya es pasado y se conserva
+        // para abonar a la ventana vencida. Si la ventana pendiente aún no
+        // empieza (todo lo vencido está cubierto), se deja el corte programado:
+        // no hay fecha ≤ hoy que pertenezca a esa ventana futura.
+        $sugerida = ($proximo->gt($hoy) && $this->periodoDeFecha($hoy) === $nPend)
+            ? $hoy->copy()
+            : $proximo->copy();
+
         return (object) [
             'atrasados'      => $atrasadasN->count(),
             'monto_atrasado' => round($atrasadasN->sum(fn($n) => $this->esperadoPeriodo($n)), 2),
@@ -220,8 +232,188 @@ class Financiamiento extends Model
             'restante'       => round(max(0, $esperado - $cobrado), 2),
             'proximo'        => $proximo,
             // La fecha del movimiento determina la ventana a la que se abona
-            'fecha_sugerida' => $proximo->copy(),
+            'fecha_sugerida' => $sugerida,
         ];
+    }
+
+    /** Resumen histórico de la cuenta (KPIs de la tarjeta y del detalle). */
+    public function statsResumen(): array
+    {
+        $rendimientos = $this->movimientos->where('tipo', 'rendimiento');
+        $activos      = $this->inversoresActivos();
+
+        return [
+            'aportado_activo'       => (float) $activos->sum('aporte'),
+            'rendimientos_cobrados' => (float) $rendimientos->sum('monto'),
+            'total_reinvertido'     => (float) $rendimientos->sum('monto_reinversion'),
+            'total_retornado'       => (float) $rendimientos->sum('monto_retornado'),
+            'total_retiros_owner'   => (float) $this->movimientos->where('tipo', 'retiro')->sum('monto'),
+            'n_rendimientos'        => $rendimientos->count(),
+            'n_inversores_activos'  => $activos->count(),
+        ];
+    }
+
+    /**
+     * Serie para la gráfica "teórico vs real": el eje mezcla los cortes del
+     * calendario con las fechas en que DE VERDAD se cobró (y el día de hoy),
+     * de modo que un cobro adelantado o atrasado se ve en su fecha real.
+     * El teórico se prorratea por día dentro de cada ventana usando el capital
+     * vigente al inicio de esa ventana (aportes/retiros mueven la pendiente).
+     */
+    public function serieComparativa(?\Carbon\Carbon $hoy = null): array
+    {
+        $hoy    = ($hoy ?? now())->copy()->startOfDay();
+        $inicio = $this->fecha_inicio->copy()->startOfDay();
+        $rends  = $this->movimientos->where('tipo', 'rendimiento')
+            ->sortBy(fn($m) => $m->fecha->timestamp)->values();
+
+        $finReal = $rends->isNotEmpty() ? $rends->last()->fecha->copy()->startOfDay() : null;
+        $limite  = ($finReal && $finReal->gt($hoy)) ? $finReal->copy() : $hoy->copy();
+        if ($limite->lt($inicio)) $limite = $inicio->copy();
+
+        // Horizonte: hasta el primer corte que cubre el límite (el próximo cobro)
+        $nMax = 1;
+        while ($nMax < 520 && $this->fechaCobro($nMax)->lt($limite)) $nMax++;
+
+        // Esperado acumulado al cierre de cada periodo, para prorratear entre cortes
+        $cortes  = [0 => $inicio];
+        $acumEsp = [0 => 0.0];
+        for ($k = 1; $k <= $nMax; $k++) {
+            $cortes[$k]  = $this->fechaCobro($k);
+            $acumEsp[$k] = round($acumEsp[$k - 1] + $this->esperadoPeriodo($k), 2);
+        }
+
+        $teoricoEn = function (\Carbon\Carbon $d) use ($cortes, $acumEsp, $nMax): float {
+            if ($d->lte($cortes[0])) return 0.0;
+            for ($k = 1; $k <= $nMax; $k++) {
+                if ($d->lte($cortes[$k])) {
+                    $dias = max(1, $cortes[$k - 1]->diffInDays($cortes[$k]));
+                    $frac = min(1, $cortes[$k - 1]->diffInDays($d) / $dias);
+                    return round($acumEsp[$k - 1] + ($acumEsp[$k] - $acumEsp[$k - 1]) * $frac, 2);
+                }
+            }
+            return $acumEsp[$nMax];
+        };
+
+        $fechas = collect(array_values($cortes))
+            ->concat($rends->map(fn($m) => $m->fecha->copy()->startOfDay()))
+            ->when($hoy->gte($inicio), fn($c) => $c->push($hoy->copy()))
+            ->unique(fn($d) => $d->toDateString())
+            ->sortBy(fn($d) => $d->timestamp)
+            ->values();
+
+        $labels = $teo = $real = $cobros = [];
+        foreach ($fechas as $d) {
+            $labels[] = $d->equalTo($inicio) ? 'Inicio' : ($d->equalTo($hoy) ? 'Hoy' : $d->format('d/m/y'));
+            $teo[]    = $teoricoEn($d);
+            $cobros[] = $rends->contains(fn($m) => $m->fecha->isSameDay($d));
+            // La línea real se corta en hoy/último cobro (null en cortes futuros)
+            $real[]   = $d->gt($limite) ? null
+                : round((float) $rends->filter(fn($m) => $m->fecha->lte($d))->sum('monto'), 2);
+        }
+
+        return [
+            'labels'      => $labels,
+            'teorico'     => $teo,
+            'real'        => $real,
+            'cobros'      => $cobros,
+            'periodo'     => $this->periodo_label,
+            'teorico_hoy' => $teoricoEn($hoy),
+            'real_hoy'    => round((float) $rends->filter(fn($m) => $m->fecha->lte($hoy))->sum('monto'), 2),
+        ];
+    }
+
+    /**
+     * Evolución del capital que trabaja: cada aporte, retiro, salida de
+     * inversor o reinversión capitalizada mueve la línea en su fecha real.
+     */
+    public function serieCapital(?\Carbon\Carbon $hoy = null): array
+    {
+        $hoy    = ($hoy ?? now())->copy()->startOfDay();
+        $inicio = $this->fecha_inicio->copy()->startOfDay();
+        $money  = fn($v) => '$' . number_format($v, 2);
+
+        $eventos = $this->movimientos
+            ->filter(fn($m) => in_array($m->tipo, ['aporte', 'retiro', 'salida_inversor'])
+                || ($m->tipo === 'rendimiento' && $m->capitalizado && $m->monto_reinversion > 0))
+            ->sortBy(fn($m) => $m->fecha->format('Y-m-d') . str_pad((string) $m->id, 12, '0', STR_PAD_LEFT))
+            ->groupBy(fn($m) => $m->fecha->toDateString());
+
+        $labels = $data = $detalles = [];
+        $capital = 0.0;
+
+        foreach ($eventos as $dia => $movs) {
+            $lineas = [];
+            foreach ($movs as $m) {
+                if ($m->tipo === 'aporte') {
+                    $capital += $m->monto;
+                    $lineas[] = '+' . $money($m->monto) . ' aporte' . ($m->inversor ? ' de ' . $m->inversor->nombre : '');
+                } elseif ($m->tipo === 'retiro') {
+                    $capital -= $m->monto;
+                    $lineas[] = '−' . $money($m->monto) . ' retiro del owner';
+                } elseif ($m->tipo === 'salida_inversor') {
+                    $capital -= $m->monto;
+                    $lineas[] = '−' . $money($m->monto) . ' salida' . ($m->inversor ? ' de ' . $m->inversor->nombre : ' de inversor');
+                } else {
+                    $capital += $m->monto_reinversion;
+                    $lineas[] = '+' . $money($m->monto_reinversion) . ' reinversión capitalizada';
+                }
+            }
+            $capital    = round(max(0, $capital), 2);
+            $d          = \Carbon\Carbon::parse($dia)->startOfDay();
+            $labels[]   = $d->equalTo($inicio) ? 'Inicio' : $d->format('d/m/y');
+            $data[]     = $capital;
+            $detalles[] = $lineas;
+        }
+
+        // Punto final: el capital vigente al día de hoy
+        $ultimoDia = $eventos->keys()->last();
+        if ($ultimoDia === null || $hoy->toDateString() > $ultimoDia) {
+            $labels[]   = 'Hoy';
+            $data[]     = (float) $this->capital_actual;
+            $detalles[] = [];
+        }
+
+        return ['labels' => $labels, 'data' => $data, 'detalles' => $detalles];
+    }
+
+    /**
+     * Comparativa periodo a periodo: fecha programada vs fechas reales de
+     * cobro, esperado vs cobrado y el estado de cada ventana.
+     */
+    public function resumenPeriodos(?\Carbon\Carbon $hoy = null): array
+    {
+        $hoy   = ($hoy ?? now())->copy()->startOfDay();
+        $rends = $this->movimientos->where('tipo', 'rendimiento');
+
+        $nHoy = $this->periodoDeFecha($hoy);
+        $nMax = min(520, max($nHoy, (int) $rends->map(fn($m) => $this->periodoDeFecha($m->fecha))->max()));
+
+        $filas = [];
+        for ($n = 1; $n <= $nMax; $n++) {
+            $enVentana = $rends->filter(fn($m) => $this->periodoDeFecha($m->fecha) === $n);
+            $esperado  = $this->esperadoPeriodo($n);
+            $cobrado   = round((float) $enVentana->sum('monto'), 2);
+
+            if ($cobrado > 0 && $cobrado >= $esperado - 0.01) $estado = 'cubierto';
+            elseif ($cobrado > 0)                             $estado = 'parcial';
+            elseif ($n < $nHoy)                               $estado = 'atrasado';
+            elseif ($n === $nHoy)                             $estado = 'en_curso';
+            else                                              $estado = 'proximo';
+
+            $filas[] = [
+                'n'          => $n,
+                'programado' => $this->fechaCobro($n),
+                'capital'    => $this->capitalInicioPeriodo($n),
+                'esperado'   => $esperado,
+                'cobrado'    => $cobrado,
+                'fechas'     => $enVentana->sortBy(fn($m) => $m->fecha->timestamp)
+                    ->map(fn($m) => $m->fecha->format('d/m/y'))->values()->all(),
+                'estado'     => $estado,
+            ];
+        }
+
+        return $filas;
     }
 
     /**

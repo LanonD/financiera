@@ -124,6 +124,20 @@
 .fin-error{background:#fef2f2;border:1px solid rgba(220,38,38,.2);color:#b91c1c;font-size:12px;border-radius:8px;padding:10px 14px}
 .fin-empty{background:var(--card);border:1px dashed var(--border);border-radius:var(--radius);padding:54px 24px;text-align:center;color:var(--text3);font-size:13px}
 
+/* ── Tarjeta compacta (vista mínima; el detalle vive en su propia página) ── */
+.fin-card2{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:14px;padding:18px 20px;box-shadow:var(--shadow-sm);transition:box-shadow .2s,border-color .2s;display:grid;grid-template-columns:1fr 300px;gap:20px;align-items:stretch}
+.fin-card2:hover{box-shadow:var(--shadow-md);border-color:rgba(16,185,129,.25)}
+.fin-card2.finalizado{opacity:.72}
+.fin-c2-head{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.fin-c2-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+.fin-c2-stat{background:#f9fafb;border:1px solid var(--border);border-radius:9px;padding:9px 11px;min-width:0}
+.fin-c2-stat-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fin-c2-stat-value{font-size:15px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums;margin-top:2px}
+.fin-c2-side{display:flex;flex-direction:column;border-left:1px solid var(--border);padding-left:20px}
+.fin-c2-chart{position:relative;height:150px;width:100%;min-width:0;flex:1}
+@media(max-width:900px){.fin-card2{grid-template-columns:1fr}.fin-c2-side{border-left:none;border-top:1px dashed var(--border);padding-left:0;padding-top:14px;margin-top:2px}.fin-c2-chart{height:170px}}
+@media(max-width:560px){.fin-c2-stats{grid-template-columns:1fr 1fr}}
+
 /* Responsive */
 @media(max-width:1200px){
     .fin-kpi-grid{grid-template-columns:repeat(3,1fr)}
@@ -301,14 +315,8 @@
     </div>
 @else
 
-<div class="fin-list-header">
-    <div class="fin-list-hcell">Administrador</div>
-    <div class="fin-list-hcell">Capital en inversión</div>
-    <div class="fin-list-hcell fin-col-hide">Tasa del periodo</div>
-    <div class="fin-list-hcell">Inversores</div>
-    <div class="fin-list-hcell fin-col-hide">Generado</div>
-    <div class="fin-list-hcell">Estatus</div>
-    <div></div>
+<div style="font-size:11px;color:var(--text3);margin-bottom:10px">
+    {{ $financiamientos->count() }} cuenta{{ $financiamientos->count() === 1 ? '' : 's' }} de inversión · toca una tarjeta en <b>Ver detalle completo</b> para gestionar inversores, registrar cobros y ver todo el historial.
 </div>
 
 @foreach($financiamientos as $f)
@@ -318,419 +326,57 @@
     $rendPer  = $f->rendimiento_periodo;
     $activosI = $f->inversoresActivos();
 @endphp
-<div class="fin-card {{ $f->estatus === 'Finalizado' ? 'finalizado' : '' }}" id="finCard{{ $f->id }}">
-    <div class="fin-card-header" onclick="finToggle({{ $f->id }})">
-        <div style="display:flex;align-items:center;gap:11px;min-width:0">
-            <div class="fin-avatar" style="background:{{ $color }}">{{ strtoupper(substr($nombre, 0, 1)) }}</div>
-            <div style="min-width:0">
-                <div class="fin-admin-name">{{ $nombre }}</div>
-                <div class="fin-admin-sub">desde {{ $f->fecha_inicio->format('d/m/Y') }} · convenio {{ $f->plazo_meses }} meses</div>
+<div class="fin-card2 {{ $f->estatus === 'Finalizado' ? 'finalizado' : '' }}">
+    {{-- Columna izquierda: quién está financiado, quiénes invierten y las 4 cifras clave --}}
+    <div style="min-width:0">
+        <div class="fin-c2-head">
+            <div class="fin-avatar" style="width:42px;height:42px;background:{{ $color }}">{{ strtoupper(substr($nombre, 0, 1)) }}</div>
+            <div style="min-width:0;flex:1">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <span class="fin-admin-name" style="font-size:15px">{{ $nombre }}</span>
+                    <span class="fin-pill {{ $f->estatus === 'Activo' ? 'fin-pill-green' : 'fin-pill-gray' }}">{{ $f->estatus }}</span>
+                    <span class="fin-pill fin-pill-blue">{{ $fmtPct($f->rendimiento_pct) }}% {{ $f->frecuencia }}</span>
+                </div>
+                <div class="fin-admin-sub">financiado · capital vigente {{ $money($f->capital_actual) }} · desde {{ $f->fecha_inicio->format('d/m/Y') }} · convenio {{ $f->plazo_meses }} meses</div>
             </div>
         </div>
-        <div>
-            <div class="fin-col-label">Capital</div>
-            <div class="fin-col-value">{{ $money($f->capital_actual) }}</div>
-            <div class="fin-col-sub">aportado {{ $money($f->stats['aportado_activo']) }}</div>
-        </div>
-        <div class="fin-col-hide">
-            <div class="fin-col-label">Tasa</div>
-            <div class="fin-col-value" style="color:#10b981">{{ $fmtPct($f->rendimiento_pct) }}% {{ $f->frecuencia }}</div>
-            <div class="fin-col-sub">≈ {{ $money($rendPer) }} / {{ $f->periodo_label }}</div>
-        </div>
-        <div>
-            <div class="fin-col-label">Inversores</div>
-            <div style="display:flex;gap:5px;margin-top:2px;flex-wrap:wrap">
-                @forelse($activosI->take(3) as $inv)
-                    <span class="fin-pill {{ $inv->es_owner ? 'fin-pill-purple' : 'fin-pill-yellow' }}">{{ \Illuminate\Support\Str::limit($inv->nombre, 12) }}</span>
-                @empty
-                    <span class="fin-pill fin-pill-gray">sin inversores</span>
-                @endforelse
-                @if($activosI->count() > 3)<span class="fin-pill fin-pill-gray">+{{ $activosI->count() - 3 }}</span>@endif
+
+        <div class="fin-c2-stats">
+            <div class="fin-c2-stat">
+                <div class="fin-c2-stat-label">Total invertido</div>
+                <div class="fin-c2-stat-value">{{ $money($f->stats['aportado_activo']) }}</div>
+            </div>
+            <div class="fin-c2-stat">
+                <div class="fin-c2-stat-label">Reinvertido</div>
+                <div class="fin-c2-stat-value" style="color:#7c3aed">{{ $money($f->stats['total_reinvertido']) }}</div>
+            </div>
+            <div class="fin-c2-stat">
+                <div class="fin-c2-stat-label">Retornado</div>
+                <div class="fin-c2-stat-value" style="color:#d97706">{{ $money($f->stats['total_retornado']) }}</div>
+            </div>
+            <div class="fin-c2-stat">
+                <div class="fin-c2-stat-label">Rendimiento real</div>
+                <div class="fin-c2-stat-value" style="color:#10b981">{{ $money($f->stats['rendimientos_cobrados']) }}</div>
             </div>
         </div>
-        <div class="fin-col-hide">
-            <div class="fin-col-label">Generado</div>
-            <div class="fin-col-value">{{ $money($f->stats['rendimientos_cobrados']) }}</div>
-            <div class="fin-col-sub">{{ $f->stats['n_rendimientos'] }} cobro{{ $f->stats['n_rendimientos'] === 1 ? '' : 's' }}</div>
+
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)">Inversores:</span>
+            @forelse($activosI as $inv)
+                <span class="fin-pill {{ $inv->es_owner ? 'fin-pill-purple' : 'fin-pill-yellow' }}">{{ \Illuminate\Support\Str::limit($inv->nombre, 16) }}{{ $inv->es_owner ? ' · owner' : '' }}</span>
+            @empty
+                <span class="fin-pill fin-pill-gray">sin inversores</span>
+            @endforelse
         </div>
-        <div>
-            <span class="fin-pill {{ $f->estatus === 'Activo' ? 'fin-pill-green' : 'fin-pill-gray' }}">{{ $f->estatus }}</span>
-        </div>
-        <svg class="fin-chevron" id="finChevron{{ $f->id }}" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6l4 4 4-4"/></svg>
     </div>
 
-    <div class="fin-detail" id="finDetail{{ $f->id }}">
-
-        {{-- Stats --}}
-        <div class="fin-detail-grid">
-            <div class="fin-stat-box">
-                <div class="fin-stat-label">Capital en inversión</div>
-                <div class="fin-stat-value" style="color:#10b981">{{ $money($f->capital_actual) }}</div>
-                <div class="fin-stat-sub">aportes activos {{ $money($f->stats['aportado_activo']) }} + reinversión</div>
-            </div>
-            <div class="fin-stat-box">
-                <div class="fin-stat-label">Rendimiento por {{ $f->periodo_label }}</div>
-                <div class="fin-stat-value">{{ $money($rendPer) }}</div>
-                <div class="fin-stat-sub">{{ $fmtPct($f->rendimiento_pct) }}% {{ $f->frecuencia }} del capital</div>
-            </div>
-            <div class="fin-stat-box">
-                <div class="fin-stat-label">Reinvertido acumulado</div>
-                <div class="fin-stat-value" style="color:#7c3aed">{{ $money($f->stats['total_reinvertido']) }}</div>
-                <div class="fin-stat-sub">retiros owner −{{ $money($f->stats['total_retiros_owner']) }}</div>
-            </div>
-            <div class="fin-stat-box">
-                <div class="fin-stat-label">Retornado a inversores</div>
-                <div class="fin-stat-value" style="color:#d97706">{{ $money($f->stats['total_retornado']) }}</div>
-                <div class="fin-stat-sub">{{ $f->stats['rendimientos_cobrados'] > 0 ? $money($f->stats['rendimientos_cobrados']) . ' generados en total' : 'sin rendimientos aún' }}</div>
-            </div>
+    {{-- Columna derecha: mini gráfica teórico vs real + acceso al detalle --}}
+    <div class="fin-c2-side">
+        <div class="fin-stat-label" style="margin-bottom:4px">
+            Teórico <span style="color:#94a3b8">┈┈</span> vs real cobrado <span style="color:#10b981">━</span>
         </div>
-
-        {{-- Barra de reparto del rendimiento (retornos fijos sobre el aporte de cada inversor) --}}
-        @php
-            // retorno_mensual es mensual; en cuentas semanales se prorratea entre 4 semanas
-            $ppm = $f->periodos_por_mes;
-            $retFijos = $activosI->where('retorno_mensual', '>', 0)->values();
-            $totalRetFijo = (float) $retFijos->sum(fn($i) => $i->retorno_mensual / $ppm);
-            $reinvPer = max(0, $rendPer - $totalRetFijo);
-        @endphp
-        <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:13px 16px;margin-bottom:16px">
-            <div class="fin-stat-label" style="margin-bottom:0">
-                Reparto del rendimiento del {{ $fmtPct($f->rendimiento_pct) }}% {{ $f->frecuencia }} ≈ {{ $money($rendPer) }} por {{ $f->periodo_label }}
-            </div>
-            <div class="fin-split-bar">
-                @if($reinvPer > 0)
-                <div class="fin-split-seg" style="background:#7c3aed;flex:{{ $reinvPer }}" title="Reinversión {{ $money($reinvPer) }}">
-                    @if($rendPer > 0 && $reinvPer / $rendPer >= 0.22) Reinversión {{ $money($reinvPer) }} @endif
-                </div>
-                @endif
-                @foreach($retFijos as $ix => $inv)
-                @php $fijo = $inv->retorno_mensual / $ppm; @endphp
-                <div class="fin-split-seg" style="background:{{ $invColors[$ix % count($invColors)] }};flex:{{ $fijo }}" title="{{ $inv->nombre }} {{ $money($fijo) }}">
-                    @if($rendPer > 0 && $fijo / $rendPer >= 0.22) {{ \Illuminate\Support\Str::limit($inv->nombre, 10) }} {{ $money($fijo) }} @endif
-                </div>
-                @endforeach
-            </div>
-            <div style="font-size:11px;color:var(--text2);font-variant-numeric:tabular-nums">
-                Cada {{ $f->periodo_label }}:
-                <b style="color:#7c3aed">{{ $money($reinvPer) }}</b> se reinvierte
-                @foreach($retFijos as $ix => $inv)
-                    · <b style="color:{{ $invColors[$ix % count($invColors)] }}">{{ $money($inv->retorno_mensual / $ppm) }}</b> a {{ $inv->nombre }} ({{ $money($inv->retorno_mensual) }} fijos/mes ≈ {{ $fmtPct($inv->pct_retorno) }}% de su aporte{{ $ppm > 1 ? ' ÷ 4 semanas' : '' }})
-                @endforeach
-            </div>
-        </div>
-
-        {{-- Gráfica: rendimiento teórico vs cobrado (lo que registra el supervisor) --}}
-        <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:16px">
-            <div class="fin-stat-label" style="margin-bottom:2px">Rendimiento acumulado · teórico vs real</div>
-            <div style="font-size:11px;color:var(--text2);margin-bottom:8px">
-                La línea punteada es lo esperado según la tasa; la línea verde es lo que realmente se ha cobrado al admin (lo registra el supervisor cada {{ $f->periodo_label }}).
-            </div>
-            <div style="position:relative;height:215px;width:100%;min-width:0"><canvas id="finChartReal{{ $f->id }}"></canvas></div>
-        </div>
-
-        @if($errors->any() && (int) session('open_financiamiento') === $f->id)
-            <div class="fin-error" style="margin-bottom:14px">
-                @foreach($errors->all() as $e) <div>• {{ $e }}</div> @endforeach
-            </div>
-        @endif
-
-        {{-- Inversores --}}
-        <div class="fin-inv">
-            <div class="fin-inv-head">
-                <div class="fin-inv-title">Inversores de la cuenta</div>
-                <span style="font-size:11px;color:var(--text3)">convenio de salida: {{ $f->plazo_meses }} meses · después el capital pasa al owner</span>
-            </div>
-            <table class="fin-inv-table">
-                <thead>
-                    <tr>
-                        <th>Inversor</th>
-                        <th>Aporte</th>
-                        <th>Retorno mensual fijo</th>
-                        <th>Retorno / {{ $f->periodo_label }}</th>
-                        <th>Ingreso</th>
-                        <th>Límite convenio</th>
-                        <th>Estatus</th>
-                        <th style="width:150px"></th>
-                    </tr>
-                </thead>
-                <tbody>
-                @foreach($f->inversores as $inv)
-                    <tr class="{{ $inv->estatus !== 'Activo' ? 'inactivo' : '' }}">
-                        <td style="font-weight:700">
-                            {{ $inv->nombre }}
-                            @if($inv->es_owner)<span class="fin-pill fin-pill-purple" style="margin-left:5px">owner</span>@endif
-                        </td>
-                        <td style="font-weight:700">{{ $money($inv->aporte) }}</td>
-                        <td>
-                            @if($inv->estatus === 'Activo' && $inv->retorno_mensual > 0)
-                                <b>{{ $money($inv->retorno_mensual) }}</b>
-                                <div style="font-size:10px;color:var(--text3)">≈ {{ $fmtPct($inv->pct_retorno) }}% de su aporte</div>
-                            @else — @endif
-                        </td>
-                        <td>
-                            @if($inv->estatus === 'Activo' && $inv->retorno_mensual > 0)
-                                {{ $money($inv->retorno_mensual / $f->periodos_por_mes) }} fijo
-                                @if($f->periodos_por_mes > 1)
-                                    <div style="font-size:10px;color:var(--text3)">= {{ $money($inv->retorno_mensual) }} /mes ÷ 4 semanas</div>
-                                @endif
-                            @else — @endif
-                        </td>
-                        <td>{{ $inv->fecha_ingreso->format('d/m/Y') }}</td>
-                        <td>
-                            @if($inv->fecha_limite)
-                                {{ $inv->fecha_limite->format('d/m/Y') }}
-                                @if($inv->estatus === 'Activo' && $inv->convenio_vencido)
-                                    <span class="fin-pill fin-pill-red" style="margin-left:4px" title="Si se retira ahora, su capital pasa al owner">vencido</span>
-                                @endif
-                            @else — @endif
-                        </td>
-                        <td>
-                            @if($inv->estatus === 'Activo')<span class="fin-pill fin-pill-green">Activo</span>
-                            @elseif($inv->estatus === 'Retirado')<span class="fin-pill fin-pill-gray">Retirado {{ $inv->fecha_salida?->format('d/m/y') }}</span>
-                            @else<span class="fin-pill fin-pill-purple">Transferido {{ $inv->fecha_salida?->format('d/m/y') }}</span>@endif
-                        </td>
-                        <td>
-                            @if($f->estatus === 'Activo' && $inv->estatus === 'Activo')
-                            <div style="display:flex;gap:5px;justify-content:flex-end">
-                                @php
-                                    $invEdit = ['fid' => $f->id, 'iid' => $inv->id, 'nombre' => $inv->nombre, 'pct_retorno' => $inv->pct_retorno, 'retorno_mensual' => $inv->retorno_mensual, 'aporte' => $inv->aporte];
-                                @endphp
-                                <button class="btn btn-sm" style="background:#eff6ff;color:#1d4ed8;font-size:11px;padding:4px 9px"
-                                    onclick='finOpenEditInversor(@json($invEdit))'>Editar</button>
-                                @if(!$inv->es_owner)
-                                <form method="POST" action="{{ route('owner.financiamientos.inversores.salida', [$f->id, $inv->id]) }}"
-                                      onsubmit="return confirm('{{ $inv->convenio_vencido
-                                        ? 'El convenio venció el ' . $inv->fecha_limite->format('d/m/Y') . '. El capital de ' . $money($inv->aporte) . ' se transferirá al OWNER (el inversor pierde el derecho a reclamarlo). ¿Continuar?'
-                                        : 'Se devolverá el aporte de ' . $money($inv->aporte) . ' a ' . $inv->nombre . ' y saldrá de la inversión. Su retorno fijo pasará a reinversión. ¿Continuar?' }}')">
-                                    @csrf
-                                    <button type="submit" class="btn btn-sm" style="background:{{ $inv->convenio_vencido ? '#f5f3ff' : '#fff7ed' }};color:{{ $inv->convenio_vencido ? '#7c3aed' : '#ea580c' }};font-size:11px;padding:4px 9px">
-                                        {{ $inv->convenio_vencido ? 'Transferir al owner' : 'Retirar' }}
-                                    </button>
-                                </form>
-                                @endif
-                            </div>
-                            @endif
-                        </td>
-                    </tr>
-                @endforeach
-                </tbody>
-            </table>
-
-            @if($f->estatus === 'Activo')
-            <div class="fin-inv-add">
-                <form method="POST" action="{{ route('owner.financiamientos.inversores.store', $f->id) }}">
-                    @csrf
-                    <div class="fin-inv-add-grid">
-                        <div class="fin-field">
-                            <label>Nuevo inversor</label>
-                            <input type="text" name="nombre" required maxlength="120" placeholder="Nombre del inversor">
-                        </div>
-                        <div class="fin-field">
-                            <label>Aporte</label>
-                            <input type="number" name="aporte" id="finAddAporte{{ $f->id }}" step="0.01" min="0.01" required placeholder="0.00"
-                                   oninput="finSyncRet('finAddAporte{{ $f->id }}', 'finAddPct{{ $f->id }}', 'finAddRet{{ $f->id }}', 'aporte')">
-                        </div>
-                        @php
-                            // Margen mensual disponible: rendimiento mensual − retornos fijos ya comprometidos
-                            $dispMes = max(0, $f->capital_actual * $f->rendimiento_pct * $f->periodos_por_mes / 100 - $f->fijos_mensuales);
-                        @endphp
-                        <div class="fin-field">
-                            <label>Retorno fijo $/mes <span style="text-transform:none;font-weight:600">(disponible ≈ {{ $money($dispMes) }}/mes)</span></label>
-                            <input type="number" name="retorno_mensual" id="finAddRet{{ $f->id }}" step="0.01" min="0" placeholder="5000"
-                                   oninput="finSyncRet('finAddAporte{{ $f->id }}', 'finAddPct{{ $f->id }}', 'finAddRet{{ $f->id }}', 'ret')">
-                        </div>
-                        <div class="fin-field">
-                            <label>≈ % mensual</label>
-                            <input type="number" name="pct_retorno" id="finAddPct{{ $f->id }}" step="0.01" min="0" max="100" placeholder="10"
-                                   oninput="finSyncRet('finAddAporte{{ $f->id }}', 'finAddPct{{ $f->id }}', 'finAddRet{{ $f->id }}', 'pct')">
-                        </div>
-                        <div class="fin-field">
-                            <label>Fecha de ingreso</label>
-                            <input type="date" name="fecha_ingreso" value="{{ now()->toDateString() }}" required>
-                        </div>
-                        <label class="fin-check" style="grid-column:auto;white-space:nowrap;margin-bottom:8px">
-                            <input type="checkbox" name="es_owner" value="1"> Es del owner
-                        </label>
-                        <button type="submit" class="btn btn-primary" style="font-size:12px;white-space:nowrap">Agregar inversor</button>
-                    </div>
-                </form>
-            </div>
-            @endif
-        </div>
-
-        {{-- Forms --}}
-        @if($f->estatus === 'Activo')
-        <div class="fin-forms-row">
-            {{-- Registrar rendimiento --}}
-            <div class="fin-form-box">
-                <div class="fin-form-title">
-                    <span style="width:8px;height:8px;border-radius:99px;background:#10b981;display:inline-block"></span>
-                    Registrar rendimiento de la {{ $f->periodo_label }} (cobro al admin)
-                </div>
-                <form method="POST" action="{{ route('owner.financiamientos.movimientos.store', $f->id) }}">
-                    @csrf
-                    <input type="hidden" name="tipo" value="rendimiento">
-                    <div class="fin-form-grid">
-                        <div class="fin-field">
-                            <label style="display:flex;align-items:center;justify-content:space-between">
-                                <span>Monto cobrado</span>
-                                <button type="button" class="fin-usar-btn" onclick="finUsarEsperado({{ $f->id }}, {{ $rendPer }})">usar {{ $money($rendPer) }}</button>
-                            </label>
-                            <input type="number" name="monto" id="finRendMonto{{ $f->id }}" step="0.01" min="0.01" required placeholder="0.00"
-                                   oninput="finRendPreview({{ $f->id }})">
-                        </div>
-                        <div class="fin-field">
-                            <label>Fecha</label>
-                            <input type="date" name="fecha" value="{{ now()->toDateString() }}" required>
-                        </div>
-                        <div class="fin-split-preview" id="finRendPreviewBox{{ $f->id }}">
-                            <span>Reinversión: <b id="finPrevReinv{{ $f->id }}">$0.00</b></span>
-                            <span id="finPrevInvList{{ $f->id }}"></span>
-                        </div>
-                        <label class="fin-check">
-                            <input type="checkbox" name="capitalizar" value="1" checked>
-                            Capitalizar la reinversión (sumarla al capital para la siguiente {{ $f->periodo_label }})
-                        </label>
-                        <div class="fin-field" style="grid-column:1/-1">
-                            <label>Nota (opcional)</label>
-                            <input type="text" name="nota" maxlength="255" placeholder="Ej. rendimiento {{ $f->periodo_label }} {{ now()->locale('es')->isoFormat($f->frecuencia === 'semanal' ? 'w' : 'MMMM') }}">
-                        </div>
-                    </div>
-                    <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:12px;font-size:12px">Registrar rendimiento</button>
-                </form>
-            </div>
-
-            {{-- Movimiento de capital (owner) --}}
-            <div class="fin-form-box">
-                <div class="fin-form-title">
-                    <span style="width:8px;height:8px;border-radius:99px;background:#6366f1;display:inline-block"></span>
-                    Movimiento de capital del owner
-                </div>
-                <form method="POST" action="{{ route('owner.financiamientos.movimientos.store', $f->id) }}">
-                    @csrf
-                    <div class="fin-form-grid">
-                        <div class="fin-field">
-                            <label>Tipo</label>
-                            <select name="tipo" required>
-                                <option value="retiro">Retiro (− capital)</option>
-                                <option value="aporte">Aporte a la cuenta (+ capital)</option>
-                            </select>
-                        </div>
-                        <div class="fin-field">
-                            <label>Monto</label>
-                            <input type="number" name="monto" step="0.01" min="0.01" required placeholder="0.00">
-                        </div>
-                        <div class="fin-field">
-                            <label>Fecha</label>
-                            <input type="date" name="fecha" value="{{ now()->toDateString() }}" required>
-                        </div>
-                        <div class="fin-field">
-                            <label>Nota (opcional)</label>
-                            <input type="text" name="nota" maxlength="255" placeholder="Ej. retiro para nuevo proyecto">
-                        </div>
-                    </div>
-                    <div style="font-size:11px;color:var(--text3);margin-top:8px">El retiro descuenta del capital en inversión (de la ganancia reinvertida). Queda registrado para cuadrar con lo que el admin paga.</div>
-                    <button type="submit" class="btn" style="width:100%;justify-content:center;margin-top:10px;font-size:12px;background:#eef2ff;color:#4f46e5">Registrar movimiento</button>
-                </form>
-            </div>
-        </div>
-        @endif
-
-        {{-- Historial --}}
-        <div class="fin-hist">
-            <div class="fin-hist-title">Historial de movimientos</div>
-            @if($f->movimientos->isEmpty())
-                <div class="fin-hist-empty">Sin movimientos registrados todavía.</div>
-            @else
-            <table class="fin-hist-table">
-                <thead>
-                    <tr>
-                        <th>Fecha</th>
-                        <th>Tipo</th>
-                        <th>Monto</th>
-                        <th>Reinversión</th>
-                        <th>Retornado</th>
-                        <th>Detalle</th>
-                        <th style="width:36px"></th>
-                    </tr>
-                </thead>
-                <tbody>
-                @foreach($f->movimientos as $m)
-                    @php [$tLabel, $tClass] = $tipoLabels[$m->tipo] ?? [$m->tipo, 'fin-pill-gray']; @endphp
-                    <tr>
-                        <td>{{ $m->fecha->format('d/m/Y') }}</td>
-                        <td><span class="fin-pill {{ $tClass }}">{{ $tLabel }}</span></td>
-                        <td style="font-weight:700">{{ $money($m->monto) }}</td>
-                        <td>
-                            @if($m->tipo === 'rendimiento')
-                                {{ $money($m->monto_reinversion) }}
-                                @if($m->capitalizado)<span class="fin-pill fin-pill-purple" style="margin-left:4px" title="Sumado al capital">capitalizado</span>@endif
-                            @else — @endif
-                        </td>
-                        <td>{{ $m->tipo === 'rendimiento' ? $money($m->monto_retornado) : '—' }}</td>
-                        <td style="color:var(--text2);max-width:260px">
-                            @if($m->tipo === 'rendimiento' && $m->detalle)
-                                @foreach($m->detalle as $d)
-                                    <div class="fin-mov-detalle">→ {{ $d['nombre'] }}: {{ $money($d['monto']) }} ({{ $fmtPct($d['pct']) }}%)</div>
-                                @endforeach
-                            @endif
-                            @if($m->inversor)
-                                <div class="fin-mov-detalle">{{ $m->inversor->nombre }}</div>
-                            @endif
-                            @if($m->registradoPor)
-                                <div class="fin-mov-detalle">registrado por {{ $m->registradoPor->alias ?: $m->registradoPor->usuario }}{{ $m->registradoPor->puesto === 'supervisor' ? ' (supervisor)' : '' }}</div>
-                            @endif
-                            @if($m->nota)<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ $m->nota }}</div>@endif
-                            @if(!$m->nota && !$m->detalle && !$m->inversor && !$m->registradoPor) — @endif
-                        </td>
-                        <td>
-                            @if($m->inversor_id === null && !in_array($m->tipo, ['salida_inversor', 'transferencia_owner']))
-                            <form method="POST" action="{{ route('owner.financiamientos.movimientos.destroy', [$f->id, $m->id]) }}"
-                                  onsubmit="return confirm('¿Eliminar este movimiento? El capital se ajustará automáticamente.')">
-                                @csrf @method('DELETE')
-                                <button type="submit" class="fin-mov-del" title="Eliminar movimiento">✕</button>
-                            </form>
-                            @endif
-                        </td>
-                    </tr>
-                @endforeach
-                </tbody>
-            </table>
-            @endif
-        </div>
-
-        {{-- Acciones --}}
-        <div class="fin-actions">
-            @if($f->notas)
-                <span style="font-size:11px;color:var(--text3);margin-right:auto;align-self:center;max-width:50%">📝 {{ $f->notas }}</span>
-            @endif
-            @php
-                $editData = [
-                    'id'              => $f->id,
-                    'rendimiento_pct' => $f->rendimiento_pct,
-                    'frecuencia'      => $f->frecuencia,
-                    'plazo_meses'     => $f->plazo_meses,
-                    'fecha_inicio'    => $f->fecha_inicio->toDateString(),
-                    'notas'           => $f->notas,
-                    'nombre'          => $nombre,
-                    'fijos_mensuales' => $f->fijos_mensuales,
-                ];
-            @endphp
-            <button class="btn btn-sm" style="background:#eff6ff;color:#1d4ed8"
-                onclick='finOpenEditar(@json($editData))'>Editar acuerdo</button>
-            <form method="POST" action="{{ route('owner.financiamientos.toggle', $f->id) }}"
-                  onsubmit="return confirm('{{ $f->estatus === 'Activo' ? '¿Marcar esta cuenta de inversión como finalizada?' : '¿Reactivar esta cuenta de inversión?' }}')">
-                @csrf
-                <button type="submit" class="btn btn-sm" style="background:#f3f4f6;color:var(--text2)">
-                    {{ $f->estatus === 'Activo' ? 'Finalizar' : 'Reactivar' }}
-                </button>
-            </form>
-            <form method="POST" action="{{ route('owner.financiamientos.destroy', $f->id) }}"
-                  onsubmit="return confirm('¿Eliminar esta cuenta de inversión, sus inversores y TODO su historial? Esta acción no se puede deshacer.')">
-                @csrf @method('DELETE')
-                <button type="submit" class="btn btn-sm" style="background:#fef2f2;color:#dc2626">Eliminar</button>
-            </form>
-        </div>
+        <div class="fin-c2-chart"><canvas id="finChartReal{{ $f->id }}"></canvas></div>
+        <a href="{{ route('owner.financiamientos.show', $f->id) }}" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:10px;font-size:12px">Ver detalle completo →</a>
     </div>
 </div>
 @endforeach
@@ -909,142 +555,12 @@
     </div>
 </div>
 
-{{-- ── Modal: editar acuerdo ───────────────────────────────── --}}
-<div class="fin-modal-overlay" id="finModalEditar">
-    <div class="fin-modal">
-        <div class="fin-modal-header">
-            <div class="fin-modal-title">Editar acuerdo · <span id="finEditNombre"></span></div>
-            <button class="fin-modal-close" onclick="document.getElementById('finModalEditar').classList.remove('open')">×</button>
-        </div>
-        <form method="POST" id="finEditForm" action="">
-            @csrf @method('PUT')
-            <div class="fin-modal-body">
-                <div class="fin-modal-row-3">
-                    <div class="fin-field">
-                        <label>Tasa por periodo %</label>
-                        <input type="number" name="rendimiento_pct" id="finEditPct" step="0.01" min="0.01" max="100" required>
-                    </div>
-                    <div class="fin-field">
-                        <label>Frecuencia</label>
-                        <select name="frecuencia" id="finEditFrecuencia" required>
-                            <option value="semanal">Semanal</option>
-                            <option value="mensual">Mensual</option>
-                        </select>
-                    </div>
-                    <div class="fin-field">
-                        <label>Convenio (meses)</label>
-                        <input type="number" name="plazo_meses" id="finEditPlazo" min="1" max="120" required>
-                    </div>
-                </div>
-                <div class="fin-field">
-                    <label>Fecha de inicio</label>
-                    <input type="date" name="fecha_inicio" id="finEditFecha" required>
-                </div>
-                <div class="fin-field">
-                    <label>Notas del acuerdo (opcional)</label>
-                    <textarea name="notas" id="finEditNotas" rows="2" maxlength="2000"></textarea>
-                </div>
-                <div style="font-size:11px;color:var(--text3)">
-                    El rendimiento mensual con la nueva tasa debe alcanzar para los retornos fijos activos (<span id="finEditRetActivos"></span>/mes).
-                    El capital se modifica con aportes, retiros y salidas de inversores.
-                </div>
-            </div>
-            <div class="fin-modal-footer">
-                <button type="button" class="btn" style="background:#f3f4f6;color:var(--text2)" onclick="document.getElementById('finModalEditar').classList.remove('open')">Cancelar</button>
-                <button type="submit" class="btn btn-primary">Guardar cambios</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-{{-- ── Modal: editar inversor ──────────────────────────────── --}}
-<div class="fin-modal-overlay" id="finModalInversor">
-    <div class="fin-modal" style="width:400px">
-        <div class="fin-modal-header">
-            <div class="fin-modal-title">Editar inversor</div>
-            <button class="fin-modal-close" onclick="document.getElementById('finModalInversor').classList.remove('open')">×</button>
-        </div>
-        <form method="POST" id="finInvForm" action="">
-            @csrf @method('PUT')
-            <div class="fin-modal-body">
-                <div class="fin-field">
-                    <label>Nombre</label>
-                    <input type="text" name="nombre" id="finInvNombre" required maxlength="120">
-                </div>
-                <div class="fin-field">
-                    <label>Retorno fijo $/mes</label>
-                    <input type="number" name="retorno_mensual" id="finInvRet" step="0.01" min="0" required
-                           oninput="finSyncRet('finInvAporte', 'finInvPct', 'finInvRet', 'ret')">
-                </div>
-                <div class="fin-field">
-                    <label>≈ % mensual de su aporte (<span id="finInvAporteLbl"></span>)</label>
-                    <input type="number" name="pct_retorno" id="finInvPct" step="0.01" min="0" max="100"
-                           oninput="finSyncRet('finInvAporte', 'finInvPct', 'finInvRet', 'pct')">
-                </div>
-                <input type="hidden" id="finInvAporte" value="0">
-                <div style="font-size:11px;color:var(--text3)">El retorno es un monto fijo mensual (en cuentas semanales se prorratea entre 4 semanas) y se puede ajustar en cualquier momento; lo que no se retorna se reinvierte. Puedes capturarlo en $ o como % de su aporte.</div>
-            </div>
-            <div class="fin-modal-footer">
-                <button type="button" class="btn" style="background:#f3f4f6;color:var(--text2)" onclick="document.getElementById('finModalInversor').classList.remove('open')">Cancelar</button>
-                <button type="submit" class="btn btn-primary">Guardar</button>
-            </div>
-        </form>
-    </div>
-</div>
-
 @php
-    // Datos por financiamiento para el preview JS del desglose de rendimiento
-    $finDatos = $financiamientos->mapWithKeys(function ($f) {
-        // Serie teórico vs real: rendimiento acumulado esperado por periodo
-        // (línea recta con la tasa y el capital vigentes) contra la suma de
-        // los cobros de rendimiento realmente registrados.
-        $rends  = $f->movimientos->where('tipo', 'rendimiento')->sortBy(fn($m) => $m->fecha)->values();
-        $inicio = $f->fecha_inicio->copy()->startOfDay();
-        $hoy    = now()->startOfDay();
-        $ultima = $rends->isNotEmpty() ? $rends->last()->fecha->copy()->startOfDay() : null;
-        $limite = ($ultima && $ultima->gt($hoy)) ? $ultima : $hoy;
-
-        $labels  = ['Inicio'];
-        $teo     = [0.0];
-        $real    = [0.0];
-        $acum    = 0.0;
-        $teoAcum = 0.0;
-        $idx     = 0;
-        for ($n = 1; $n <= 60; $n++) {
-            $corte = $f->fechaCobro($n);
-            while ($idx < $rends->count() && $rends[$idx]->fecha->lte($corte)) {
-                $acum += $rends[$idx]->monto;
-                $idx++;
-            }
-            // El teórico de cada periodo usa el capital vigente a SU inicio
-            // (no el capital actual): así los periodos pasados no se recalculan
-            // cuando se capitaliza la reinversión.
-            $teoAcum += $f->esperadoPeriodo($n);
-            $labels[] = $corte->format('d/m/y');
-            $teo[]    = round($teoAcum, 2);
-            $real[]   = round($acum, 2);
-            if ($corte->gte($limite)) break;
-        }
-
-        // Fijos pendientes de la ventana de hoy (para el preview del reparto:
-        // en cobros parciales el fijo solo se paga una vez por periodo)
-        $pagadosHoy = $f->retornosPagadosPeriodo($f->periodoDeFecha(now()->startOfDay()));
-
-        return [$f->id => [
-            'tasa'       => (float) $f->rendimiento_pct,
-            'ppm'        => $f->periodos_por_mes,
-            'inversores' => $f->inversoresActivos()
-                ->filter(fn($i) => $i->retorno_mensual > 0)
-                ->map(fn($i) => [
-                    'nombre' => $i->nombre,
-                    'ret'    => (float) $i->retorno_mensual,
-                    'aporte' => (float) $i->aporte,
-                    'pend'   => round(max(0, $i->retorno_mensual / $f->periodos_por_mes - ($pagadosHoy[$i->id] ?? 0)), 2),
-                ])
-                ->values()->all(),
-            'grafica'    => ['labels' => $labels, 'teorico' => $teo, 'real' => $real, 'periodo' => $f->periodo_label],
-        ]];
-    });
+    // Serie teórico vs real (con fechas reales de cobro y "Hoy") para la
+    // mini gráfica de cada tarjeta. Todo lo demás vive en la página de detalle.
+    $finDatos = $financiamientos->mapWithKeys(fn($f) => [$f->id => [
+        'grafica' => $f->serieComparativa(),
+    ]]);
 @endphp
 
 <script src="{{ asset('js/chart.umd.min.js') }}"></script>
@@ -1053,15 +569,33 @@ const finFmt   = new Intl.NumberFormat('es-MX', { style: 'currency', currency: '
 const finFmt0  = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 });
 const finDatos = @json($finDatos);
 
-function finToggle(id) {
-    const det = document.getElementById('finDetail' + id);
-    det.classList.toggle('open');
-    document.getElementById('finChevron' + id).classList.toggle('open');
-    // La gráfica se dibuja hasta que el panel es visible (Chart.js necesita medir)
-    if (det.classList.contains('open')) finRealRender(id);
+// Línea vertical punteada en "Hoy" para las gráficas teórico vs real
+function finHoyLinePlugin(labels) {
+    const idx = labels.indexOf('Hoy');
+    return {
+        id: 'finHoyLine',
+        afterDatasetsDraw(chart) {
+            if (idx < 0) return;
+            const x = chart.scales.x.getPixelForValue(idx);
+            const { top, bottom } = chart.chartArea;
+            const ctx = chart.ctx;
+            ctx.save();
+            ctx.strokeStyle = 'rgba(99,102,241,.5)';
+            ctx.setLineDash([4, 4]);
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+            ctx.fillStyle = 'rgba(99,102,241,.85)';
+            ctx.font = '700 9px Sora';
+            ctx.textAlign = 'center';
+            ctx.fillText('HOY', x, top + 10);
+            ctx.restore();
+        },
+    };
 }
 
-// Gráfica teórico vs real del detalle de una cuenta (una sola vez por tarjeta)
+// Mini gráfica teórico vs real de cada tarjeta. El eje mezcla los cortes del
+// calendario con las fechas reales de cobro: cada punto verde es un cobro en
+// su fecha real. La versión grande y el resto del detalle viven en su página.
 function finRealRender(id) {
     const g = finDatos[id] && finDatos[id].grafica;
     const canvas = document.getElementById('finChartReal' + id);
@@ -1071,54 +605,29 @@ function finRealRender(id) {
         data: {
             labels: g.labels,
             datasets: [
-                { label: 'Teórico (según la tasa)', data: g.teorico, borderColor: '#94a3b8', backgroundColor: 'transparent',
-                  borderDash: [6, 4], tension: .25, pointRadius: 0, borderWidth: 2 },
-                { label: 'Real cobrado al admin', data: g.real, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,.10)',
-                  fill: true, tension: .25, pointRadius: 2, borderWidth: 2.5 },
+                { label: 'Teórico', data: g.teorico, borderColor: '#94a3b8', backgroundColor: 'transparent',
+                  borderDash: [5, 3], tension: .2, pointRadius: 0, borderWidth: 1.5 },
+                { label: 'Real', data: g.real, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,.10)',
+                  fill: true, tension: .15, borderWidth: 2, spanGaps: false,
+                  pointRadius: ctx => g.cobros[ctx.dataIndex] ? 3 : 0,
+                  pointHoverRadius: 5, pointBackgroundColor: '#10b981', pointBorderColor: '#fff', pointBorderWidth: 1 },
             ],
         },
         options: {
             maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
             plugins: {
-                legend: { position: 'bottom', labels: { boxWidth: 10, boxHeight: 10, font: { size: 10, family: 'Sora' }, padding: 10 } },
-                tooltip: { callbacks: { label: c => ' ' + c.dataset.label + ': ' + finFmt.format(c.parsed.y) } },
+                legend: { display: false },
+                tooltip: { callbacks: {
+                    label: c => c.parsed.y === null ? null : ' ' + c.dataset.label + ': ' + finFmt.format(c.parsed.y),
+                } },
             },
             scales: {
-                y: { ticks: { font: { size: 9, family: 'Sora' }, callback: v => finFmt0.format(v) }, grid: { color: 'rgba(15,22,35,.05)' } },
-                x: { ticks: { font: { size: 9, family: 'Sora' }, maxTicksLimit: 12 }, grid: { display: false } },
+                y: { ticks: { font: { size: 8, family: 'Sora' }, maxTicksLimit: 4, callback: v => finFmt0.format(v) }, grid: { color: 'rgba(15,22,35,.05)' } },
+                x: { ticks: { font: { size: 8, family: 'Sora' }, maxTicksLimit: 5 }, grid: { display: false } },
             },
         },
+        plugins: [finHoyLinePlugin(g.labels)],
     });
-}
-
-function finRendPreview(id) {
-    const datos = finDatos[id];
-    if (!datos) return;
-    const monto = parseFloat(document.getElementById('finRendMonto' + id).value) || 0;
-    // Retorno fijo por inversor: lo que le FALTA de su fijo en la ventana de
-    // hoy (en cobros parciales el fijo se paga una sola vez por periodo).
-    // Si el cobro no alcanza para los fijos pendientes, se escala.
-    let totalFijo = 0;
-    const fijos = datos.inversores.map(inv => {
-        const f = inv.pend !== undefined ? inv.pend : Math.round(inv.ret / (datos.ppm || 1) * 100) / 100;
-        totalFijo += f;
-        return { nombre: inv.nombre, fijo: f };
-    }).filter(x => x.fijo > 0);
-    const escala = (totalFijo > 0 && totalFijo > monto) ? monto / totalFijo : 1;
-    let retornado = 0;
-    const partes = fijos.map(x => {
-        const r = Math.round(x.fijo * escala * 100) / 100;
-        retornado += r;
-        return '→ ' + x.nombre + ': <b>' + finFmt.format(r) + '</b>';
-    });
-    document.getElementById('finPrevReinv' + id).textContent = finFmt.format(Math.max(0, Math.round((monto - retornado) * 100) / 100));
-    document.getElementById('finPrevInvList' + id).innerHTML = partes.length ? partes.join(' · ') : '(fijos del periodo ya pagados: todo se reinvierte)';
-}
-
-function finUsarEsperado(id, esperado) {
-    const input = document.getElementById('finRendMonto' + id);
-    input.value = esperado.toFixed(2);
-    input.dispatchEvent(new Event('input'));
 }
 
 /*
@@ -1282,38 +791,10 @@ function finPreviewRender() {
         '. Es una proyección estimada, no una garantía.';
 }
 
-function finOpenEditar(data) {
-    document.getElementById('finEditForm').action        = '{{ url('owner/financiamientos') }}/' + data.id;
-    document.getElementById('finEditNombre').textContent = data.nombre;
-    document.getElementById('finEditPct').value          = data.rendimiento_pct;
-    document.getElementById('finEditFrecuencia').value   = data.frecuencia;
-    document.getElementById('finEditPlazo').value        = data.plazo_meses;
-    document.getElementById('finEditFecha').value        = data.fecha_inicio;
-    document.getElementById('finEditNotas').value        = data.notas || '';
-    document.getElementById('finEditRetActivos').textContent = finFmt.format(data.fijos_mensuales || 0);
-    document.getElementById('finModalEditar').classList.add('open');
-}
-
-function finOpenEditInversor(data) {
-    document.getElementById('finInvForm').action  = '{{ url('owner/financiamientos') }}/' + data.fid + '/inversores/' + data.iid;
-    document.getElementById('finInvNombre').value = data.nombre;
-    document.getElementById('finInvRet').value    = (data.retorno_mensual || 0).toFixed(2);
-    document.getElementById('finInvPct').value    = data.pct_retorno;
-    document.getElementById('finInvAporte').value = data.aporte || 0;
-    document.getElementById('finInvAporteLbl').textContent = finFmt.format(data.aporte || 0);
-    document.getElementById('finModalInversor').classList.add('open');
-}
-
 // Cerrar modales al hacer click fuera
 document.querySelectorAll('.fin-modal-overlay').forEach(ov => {
     ov.addEventListener('click', e => { if (e.target === ov) ov.classList.remove('open'); });
 });
-
-// Reabrir tarjeta tras una acción
-@if(session('open_financiamiento'))
-    finToggle({{ (int) session('open_financiamiento') }});
-    document.getElementById('finCard{{ (int) session('open_financiamiento') }}')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-@endif
 
 // Reabrir modal crear si hubo errores de validación
 @if($errors->any() && old('admin_id') !== null)
@@ -1321,6 +802,9 @@ document.querySelectorAll('.fin-modal-overlay').forEach(ov => {
 @endif
 
 finCrearPreview();
+
+// Dibujar la mini gráfica teórico vs real de cada tarjeta (visibles al cargar)
+Object.keys(finDatos).forEach(id => finRealRender(id));
 
 /* ═════════════ Tutorial guiado de primera vez ═════════════ */
 const finTourPasos = [

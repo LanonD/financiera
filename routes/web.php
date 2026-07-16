@@ -25,6 +25,7 @@ Route::middleware(['auth', 'role:owner'])->prefix('owner')->name('owner.')->grou
     Route::get('/rendimientos',                [\App\Http\Controllers\OwnerController::class, 'rendimientos'])   ->name('rendimientos');
     Route::get('/financiamientos',             [\App\Http\Controllers\FinanciamientoController::class, 'index'])           ->name('financiamientos.index');
     Route::post('/financiamientos/tour-visto', [\App\Http\Controllers\FinanciamientoController::class, 'tourVisto'])       ->name('financiamientos.tourVisto');
+    Route::get('/financiamientos/{id}',        [\App\Http\Controllers\FinanciamientoController::class, 'show'])            ->whereNumber('id')->name('financiamientos.show');
     Route::post('/financiamientos',            [\App\Http\Controllers\FinanciamientoController::class, 'store'])           ->name('financiamientos.store');
     Route::put('/financiamientos/{id}',        [\App\Http\Controllers\FinanciamientoController::class, 'update'])          ->name('financiamientos.update');
     Route::post('/financiamientos/{id}/toggle',[\App\Http\Controllers\FinanciamientoController::class, 'toggle'])          ->name('financiamientos.toggle');

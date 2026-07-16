@@ -90,29 +90,9 @@ class CarteraController extends Controller
                 // Pagos realizados (los cobros de rendimiento), más reciente primero
                 $f->pagos  = $f->movimientos->where('tipo', 'rendimiento')->values();
 
-                // Serie teórico vs real (misma lógica que la vista del owner)
-                $rends   = $f->pagos->sortBy(fn($m) => $m->fecha)->values();
-                $ultima  = $rends->isNotEmpty() ? $rends->last()->fecha->copy()->startOfDay() : null;
-                $limite  = ($ultima && $ultima->gt($hoy)) ? $ultima : $hoy;
-                $labels  = ['Inicio'];
-                $teo     = [0.0];
-                $real    = [0.0];
-                $acum    = 0.0;
-                $teoAcum = 0.0;
-                $idx     = 0;
-                for ($n = 1; $n <= 60; $n++) {
-                    $corte = $f->fechaCobro($n);
-                    while ($idx < $rends->count() && $rends[$idx]->fecha->lte($corte)) {
-                        $acum += $rends[$idx]->monto;
-                        $idx++;
-                    }
-                    $teoAcum += $f->esperadoPeriodo($n);
-                    $labels[] = $corte->format('d/m/y');
-                    $teo[]    = round($teoAcum, 2);
-                    $real[]   = round($acum, 2);
-                    if ($corte->gte($limite)) break;
-                }
-                $f->grafica = ['labels' => $labels, 'teorico' => $teo, 'real' => $real];
+                // Serie teórico vs real (misma serie que ve el owner:
+                // los pagos aparecen en su fecha real, no en el corte teórico)
+                $f->grafica = $f->serieComparativa($hoy);
 
                 return $f;
             });

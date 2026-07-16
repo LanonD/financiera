@@ -164,7 +164,7 @@
         </div>
         <div class="sup-field" style="flex:0 1 160px">
             <label>Fecha</label>
-            <input type="date" name="fecha" value="{{ $f->fecha_prefill->toDateString() }}" required>
+            <input type="date" name="fecha" value="{{ $f->fecha_prefill->toDateString() }}" max="{{ $hoy->toDateString() }}" required>
         </div>
         <div class="sup-field">
             <label>Nota (opcional)</label>

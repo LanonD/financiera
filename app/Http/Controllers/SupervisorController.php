@@ -73,8 +73,11 @@ class SupervisorController extends Controller
 
         $data = $request->validate([
             'monto' => 'required|numeric|min:0.01',
-            'fecha' => 'required|date',
+            // Un cobro es un hecho real: no puede fecharse en el futuro.
+            'fecha' => 'required|date|before_or_equal:today',
             'nota'  => 'nullable|string|max:255',
+        ], [
+            'fecha.before_or_equal' => 'La fecha del cobro no puede ser futura (un cobro se registra el día en que se realiza o antes).',
         ]);
 
         // El supervisor siempre capitaliza la reinversión: es la regla del

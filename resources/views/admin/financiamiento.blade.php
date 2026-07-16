@@ -176,6 +176,30 @@ const cfFmt  = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MX
 const cfFmt0 = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 });
 const cfGraficas = @json($financiamientos->mapWithKeys(fn($f) => [$f->id => $f->grafica]));
 
+// Línea vertical punteada en "Hoy"
+function cfHoyLinePlugin(labels) {
+    const idx = labels.indexOf('Hoy');
+    return {
+        id: 'cfHoyLine',
+        afterDatasetsDraw(chart) {
+            if (idx < 0) return;
+            const x = chart.scales.x.getPixelForValue(idx);
+            const { top, bottom } = chart.chartArea;
+            const ctx = chart.ctx;
+            ctx.save();
+            ctx.strokeStyle = 'rgba(99,102,241,.5)';
+            ctx.setLineDash([4, 4]);
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+            ctx.fillStyle = 'rgba(99,102,241,.85)';
+            ctx.font = '700 9px Sora';
+            ctx.textAlign = 'center';
+            ctx.fillText('HOY', x, top + 10);
+            ctx.restore();
+        },
+    };
+}
+
 Object.entries(cfGraficas).forEach(([id, g]) => {
     new Chart(document.getElementById('cfChart' + id), {
         type: 'line',
@@ -183,22 +207,28 @@ Object.entries(cfGraficas).forEach(([id, g]) => {
             labels: g.labels,
             datasets: [
                 { label: 'Esperado (según la tasa)', data: g.teorico, borderColor: '#94a3b8', backgroundColor: 'transparent',
-                  borderDash: [6, 4], tension: .25, pointRadius: 0, borderWidth: 2 },
+                  borderDash: [6, 4], tension: .2, pointRadius: 0, borderWidth: 2 },
                 { label: 'Pagado', data: g.real, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,.10)',
-                  fill: true, tension: .25, pointRadius: 2, borderWidth: 2.5 },
+                  fill: true, tension: .15, borderWidth: 2.5, spanGaps: false,
+                  pointRadius: ctx => g.cobros[ctx.dataIndex] ? 4 : 0,
+                  pointHoverRadius: 6, pointBackgroundColor: '#10b981', pointBorderColor: '#fff', pointBorderWidth: 1.5 },
             ],
         },
         options: {
             maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
             plugins: {
                 legend: { position: 'bottom', labels: { boxWidth: 10, boxHeight: 10, font: { size: 10, family: 'Sora' }, padding: 10 } },
-                tooltip: { callbacks: { label: c => ' ' + c.dataset.label + ': ' + cfFmt.format(c.parsed.y) } },
+                tooltip: { callbacks: {
+                    label: c => c.parsed.y === null ? null : ' ' + c.dataset.label + ': ' + cfFmt.format(c.parsed.y),
+                    afterBody: items => (items.some(i => i.datasetIndex === 1) && g.cobros[items[0].dataIndex]) ? ['● Pago registrado este día'] : [],
+                } },
             },
             scales: {
                 y: { ticks: { font: { size: 9, family: 'Sora' }, callback: v => cfFmt0.format(v) }, grid: { color: 'rgba(15,22,35,.05)' } },
                 x: { ticks: { font: { size: 9, family: 'Sora' }, maxTicksLimit: 12 }, grid: { display: false } },
             },
         },
+        plugins: [cfHoyLinePlugin(g.labels)],
     });
 });
 </script>

@@ -20,18 +20,7 @@ class FinanciamientoController extends Controller
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function (Financiamiento $f) {
-                $rendimientos = $f->movimientos->where('tipo', 'rendimiento');
-                $activos      = $f->inversoresActivos();
-
-                $f->stats = [
-                    'aportado_activo'       => (float) $activos->sum('aporte'),
-                    'rendimientos_cobrados' => (float) $rendimientos->sum('monto'),
-                    'total_reinvertido'     => (float) $rendimientos->sum('monto_reinversion'),
-                    'total_retornado'       => (float) $rendimientos->sum('monto_retornado'),
-                    'total_retiros_owner'   => (float) $f->movimientos->where('tipo', 'retiro')->sum('monto'),
-                    'n_rendimientos'        => $rendimientos->count(),
-                    'n_inversores_activos'  => $activos->count(),
-                ];
+                $f->stats = $f->statsResumen();
 
                 return $f;
             });
@@ -54,6 +43,49 @@ class FinanciamientoController extends Controller
         $mostrarTour = !in_array('financiamientos', auth()->user()->tours_vistos ?? []);
 
         return view('owner.financiamientos', compact('financiamientos', 'globales', 'admins', 'mostrarTour'));
+    }
+
+    /**
+     * Detalle de una cuenta de inversión: KPIs de cumplimiento, gráfica
+     * teórico vs real con fechas reales de cobro, evolución del capital,
+     * comparativa por periodo, inversores e historial.
+     */
+    public function show(int $id)
+    {
+        $f = Financiamiento::with(['admin', 'inversores', 'movimientos.inversor', 'movimientos.registradoPor'])
+            ->findOrFail($id);
+
+        $stats    = $f->statsResumen();
+        $serie    = $f->serieComparativa();
+        $capital  = $f->serieCapital();
+        $periodos = $f->resumenPeriodos();
+        $estado   = $f->estadoCobros();
+
+        // Fijos pendientes de la ventana de hoy, para el preview del reparto
+        $pagadosHoy   = $f->retornosPagadosPeriodo($f->periodoDeFecha(now()->startOfDay()));
+        $inversoresJs = $f->inversoresActivos()
+            ->filter(fn($i) => $i->retorno_mensual > 0)
+            ->map(fn($i) => [
+                'nombre' => $i->nombre,
+                'ret'    => (float) $i->retorno_mensual,
+                'pend'   => round(max(0, $i->retorno_mensual / $f->periodos_por_mes - ($pagadosHoy[$i->id] ?? 0)), 2),
+            ])->values()->all();
+
+        return view('owner.financiamiento_detalle', compact('f', 'stats', 'serie', 'capital', 'periodos', 'estado', 'inversoresJs'));
+    }
+
+    /**
+     * Redirige de vuelta a la página desde la que se hizo la acción: el
+     * detalle del financiamiento si se venía de ahí, o el listado.
+     */
+    private function volver(int $id)
+    {
+        $prevPath = parse_url(url()->previous(), PHP_URL_PATH) ?? '';
+        if (preg_match('~/financiamientos/' . $id . '$~', $prevPath)) {
+            return redirect()->route('owner.financiamientos.show', $id);
+        }
+
+        return redirect()->route('owner.financiamientos.index')->with('open_financiamiento', $id);
     }
 
     /**
@@ -237,9 +269,7 @@ class FinanciamientoController extends Controller
             }
         }
 
-        return redirect()->route('owner.financiamientos.index')
-            ->with('success', 'Acuerdo actualizado.')
-            ->with('open_financiamiento', $f->id);
+        return $this->volver($f->id)->with('success', 'Acuerdo actualizado.');
     }
 
     /**
@@ -298,9 +328,7 @@ class FinanciamientoController extends Controller
             'nota'              => 'Aporte de ' . $inv->nombre,
         ]);
 
-        return redirect()->route('owner.financiamientos.index')
-            ->with('success', "Inversor \"{$inv->nombre}\" agregado.")
-            ->with('open_financiamiento', $f->id);
+        return $this->volver($f->id)->with('success', "Inversor \"{$inv->nombre}\" agregado.");
     }
 
     /**
@@ -336,9 +364,7 @@ class FinanciamientoController extends Controller
             'retorno_mensual' => $nuevoRet,
         ]);
 
-        return redirect()->route('owner.financiamientos.index')
-            ->with('success', "Inversor \"{$inversor->nombre}\" actualizado.")
-            ->with('open_financiamiento', $f->id);
+        return $this->volver($f->id)->with('success', "Inversor \"{$inversor->nombre}\" actualizado.");
     }
 
     /**
@@ -418,9 +444,7 @@ class FinanciamientoController extends Controller
             $msg = "Se devolvió el aporte a \"{$inversor->nombre}\"; su % de retorno pasa a reinversión.";
         }
 
-        return redirect()->route('owner.financiamientos.index')
-            ->with('success', $msg)
-            ->with('open_financiamiento', $f->id);
+        return $this->volver($f->id)->with('success', $msg);
     }
 
     /**
@@ -433,9 +457,12 @@ class FinanciamientoController extends Controller
         $data = $request->validate([
             'tipo'        => 'required|in:rendimiento,aporte,retiro',
             'monto'       => 'required|numeric|min:0.01',
-            'fecha'       => 'required|date',
+            // Cobros, aportes y retiros son hechos reales: nunca a futuro.
+            'fecha'       => 'required|date|before_or_equal:today',
             'nota'        => 'nullable|string|max:255',
             'capitalizar' => 'nullable|boolean',
+        ], [
+            'fecha.before_or_equal' => 'La fecha del movimiento no puede ser futura.',
         ]);
 
         $monto = round((float) $data['monto'], 2);
@@ -471,9 +498,7 @@ class FinanciamientoController extends Controller
             'retiro'      => 'Retiro registrado',
         ];
 
-        return redirect()->route('owner.financiamientos.index')
-            ->with('success', $labels[$data['tipo']] . '.')
-            ->with('open_financiamiento', $f->id);
+        return $this->volver($f->id)->with('success', $labels[$data['tipo']] . '.');
     }
 
     /**
@@ -505,9 +530,7 @@ class FinanciamientoController extends Controller
 
         $movimiento->delete();
 
-        return redirect()->route('owner.financiamientos.index')
-            ->with('success', 'Movimiento eliminado y capital ajustado.')
-            ->with('open_financiamiento', $f->id);
+        return $this->volver($f->id)->with('success', 'Movimiento eliminado y capital ajustado.');
     }
 
     /**
@@ -519,7 +542,7 @@ class FinanciamientoController extends Controller
         $f->estatus = $f->estatus === 'Activo' ? 'Finalizado' : 'Activo';
         $f->save();
 
-        return redirect()->route('owner.financiamientos.index')
+        return $this->volver($f->id)
             ->with('success', $f->estatus === 'Activo' ? 'Cuenta de inversión reactivada.' : 'Cuenta de inversión finalizada.');
     }
 
