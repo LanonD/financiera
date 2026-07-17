@@ -41,7 +41,6 @@ class SupervisorController extends Controller
                 $f->cobrado_periodo   = $estado->cobrado;
                 $f->restante_periodo  = $estado->restante;
                 $f->proximo_cobro     = $estado->proximo;
-                $f->fecha_prefill     = $estado->fecha_sugerida;
 
                 return $f;
             })
@@ -66,6 +65,12 @@ class SupervisorController extends Controller
     /**
      * Registrar el cobro del rendimiento del periodo al admin financiado.
      * Usa la misma lógica de reparto que el owner (retornos fijos + reinversión).
+     *
+     * La fecha del cobro NO la elige el supervisor: se registra con el
+     * momento real en que se hace clic en "Registrar cobro". Así la fecha
+     * real queda separada de la ventana teórica que salda (que calcula
+     * Financiamiento::registrarRendimiento), y el reporte teórico vs real
+     * puede mostrar de verdad si un cobro llegó a tiempo o tarde.
      */
     public function storeRendimiento(Request $request, int $id)
     {
@@ -73,18 +78,14 @@ class SupervisorController extends Controller
 
         $data = $request->validate([
             'monto' => 'required|numeric|min:0.01',
-            // Un cobro es un hecho real: no puede fecharse en el futuro.
-            'fecha' => 'required|date|before_or_equal:today',
             'nota'  => 'nullable|string|max:255',
-        ], [
-            'fecha.before_or_equal' => 'La fecha del cobro no puede ser futura (un cobro se registra el día en que se realiza o antes).',
         ]);
 
         // El supervisor siempre capitaliza la reinversión: es la regla del
         // acuerdo (interés compuesto); la excepción la maneja el owner.
         $f->registrarRendimiento(
             round((float) $data['monto'], 2),
-            $data['fecha'],
+            now()->toDateString(),
             $data['nota'] ?? null,
             true,
             auth()->user()->id

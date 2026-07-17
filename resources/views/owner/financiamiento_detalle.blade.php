@@ -86,8 +86,8 @@
 .fd-act-rrow{display:flex;justify-content:space-between;gap:10px;padding:2px 0;font-size:11px;font-variant-numeric:tabular-nums}
 .fd-act-rrow+.fd-act-rrow{border-top:1px dashed var(--border)}
 .fd-act-note{margin-top:6px;font-size:11px;color:var(--text2);font-style:italic}
-.fd-act-del{background:none;border:none;color:var(--text3);font-size:11px;font-weight:600;cursor:pointer;padding:0;font-family:var(--font);text-decoration:underline;text-decoration-color:var(--border)}
-.fd-act-del:hover{color:#dc2626}
+.fd-act-del{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;font-size:11px;font-weight:700;cursor:pointer;padding:3px 9px;border-radius:6px;font-family:var(--font);display:inline-flex;align-items:center;gap:4px}
+.fd-act-del:hover{background:#fee2e2;border-color:#fca5a5}
 .fd-act-empty{padding:32px;text-align:center;color:var(--text3);font-size:12px;display:none}
 
 /* Forms */
@@ -630,35 +630,49 @@
 
                     <div class="fd-act-meta">
                         @if($m->tipo === 'rendimiento')
-                            @php $per = $f->periodoDeFecha($m->fecha); @endphp
+                            @php $per = $f->ventanaDe($m); @endphp
                             <span class="fin-pill fin-pill-gray">Periodo {{ $per }} · programado {{ $f->fechaCobro($per)->format('d/m/y') }}</span>
                         @endif
                         @if($m->registradoPor)
                             <span>registró <b>{{ $m->registradoPor->alias ?: $m->registradoPor->usuario }}</b>{{ $m->registradoPor->puesto === 'supervisor' ? ' (supervisor)' : '' }}</span>
                         @endif
                         @if($puede_eliminar)
-                            <form method="POST" action="{{ route('owner.financiamientos.movimientos.destroy', [$f->id, $m->id]) }}" style="display:inline"
+                            <form method="POST" action="{{ route('owner.financiamientos.movimientos.destroy', [$f->id, $m->id]) }}" style="margin-left:auto"
                                   onsubmit="return confirm('¿Eliminar este movimiento? El capital se ajustará automáticamente.')">
                                 @csrf @method('DELETE')
-                                <button type="submit" class="fd-act-del" title="Eliminar movimiento">Eliminar</button>
+                                <button type="submit" class="fd-act-del" title="Eliminar movimiento">🗑 Eliminar cobro</button>
                             </form>
                         @endif
                     </div>
 
                     @if($m->tipo === 'rendimiento')
+                    @php
+                        $tieneReinvDesglosada = collect($m->detalle ?? [])->contains(fn($dd) => ($dd['reinversion'] ?? 0) > 0);
+                    @endphp
                     <div class="fd-act-reparto">
                         @if($m->monto_reinversion > 0)
                         <div class="fd-act-rrow">
-                            <span style="color:#7c3aed;font-weight:700">Reinversión{{ $m->capitalizado ? ' · sumada al capital' : '' }}</span>
+                            <span style="color:#7c3aed;font-weight:700">Reinversión total{{ $m->capitalizado ? ' · sumada al capital' : '' }}</span>
                             <span style="color:#7c3aed;font-weight:800">{{ $money($m->monto_reinversion) }}</span>
                         </div>
                         @endif
                         @foreach($m->detalle ?? [] as $dd)
-                        <div class="fd-act-rrow">
-                            <span>→ Retorno a <b>{{ $dd['nombre'] }}</b> <span style="color:var(--text3)">({{ $fmtPct($dd['pct']) }}% de su aporte)</span></span>
-                            <span style="color:#d97706;font-weight:700">{{ $money($dd['monto']) }}</span>
-                        </div>
+                            @if(($dd['monto'] ?? 0) > 0)
+                            <div class="fd-act-rrow">
+                                <span>→ Retorno en efectivo a <b>{{ $dd['nombre'] }}</b> <span style="color:var(--text3)">({{ $fmtPct($dd['pct']) }}% de su aporte)</span></span>
+                                <span style="color:#d97706;font-weight:700">{{ $money($dd['monto']) }}</span>
+                            </div>
+                            @endif
+                            @if(($dd['reinversion'] ?? 0) > 0)
+                            <div class="fd-act-rrow">
+                                <span>→ Reinversión de <b>{{ $dd['nombre'] }}</b> <span style="color:var(--text3)">· capital propio, no toma retorno fijo</span></span>
+                                <span style="color:#7c3aed;font-weight:700">{{ $money($dd['reinversion']) }}</span>
+                            </div>
+                            @endif
                         @endforeach
+                        @if($m->monto_reinversion > 0 && !$tieneReinvDesglosada)
+                        <div class="fd-act-rrow"><span style="color:var(--text3)">Capital compartido del fondo (cobro registrado antes del desglose por inversor)</span><span></span></div>
+                        @endif
                         @if($m->monto_reinversion <= 0 && empty($m->detalle))
                         <div class="fd-act-rrow"><span style="color:var(--text3)">Sin reparto registrado</span><span></span></div>
                         @endif

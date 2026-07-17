@@ -162,17 +162,13 @@
             </label>
             <input type="number" name="monto" id="supMonto{{ $f->id }}" step="0.01" min="0.01" required placeholder="0.00">
         </div>
-        <div class="sup-field" style="flex:0 1 160px">
-            <label>Fecha</label>
-            <input type="date" name="fecha" value="{{ $f->fecha_prefill->toDateString() }}" max="{{ $hoy->toDateString() }}" required>
-        </div>
         <div class="sup-field">
             <label>Nota (opcional)</label>
             <input type="text" name="nota" maxlength="255" placeholder="Ej. cobro {{ $perLbl }} en efectivo">
         </div>
         <button type="submit" class="sup-btn"
             onclick="return confirm('¿Registrar el cobro a {{ $nombre }} por el monto capturado?')">Registrar cobro</button>
-        <div style="flex-basis:100%;font-size:11px;color:var(--text3);margin-top:-4px">La fecha determina a qué {{ $perLbl }} corresponde el cobro; puedes registrar varios cobros parciales dentro del mismo periodo.</div>
+        <div style="flex-basis:100%;font-size:11px;color:var(--text3);margin-top:-4px">Se registra con la fecha y hora de hoy ({{ $hoy->format('d/m/Y') }}), el momento real del cobro; el sistema decide solo a qué {{ $perLbl }} corresponde y marca si llegó a tiempo o tarde.</div>
     </form>
 
     <button type="button" class="sup-hist-toggle" onclick="document.getElementById('supHist{{ $f->id }}').classList.toggle('open')">

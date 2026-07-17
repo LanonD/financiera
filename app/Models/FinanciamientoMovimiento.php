@@ -9,12 +9,13 @@ class FinanciamientoMovimiento extends Model
     protected $table = 'financiamiento_movimientos';
 
     protected $fillable = [
-        'financiamiento_id', 'inversor_id', 'tipo', 'monto',
+        'financiamiento_id', 'inversor_id', 'tipo', 'periodo', 'monto',
         'monto_reinversion', 'monto_retornado', 'capitalizado',
         'detalle', 'fecha', 'nota', 'registrado_por',
     ];
 
     protected $casts = [
+        'periodo'           => 'integer',
         'monto'             => 'float',
         'monto_reinversion' => 'float',
         'monto_retornado'   => 'float',

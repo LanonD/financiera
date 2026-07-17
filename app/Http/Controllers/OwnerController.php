@@ -945,6 +945,19 @@ class OwnerController extends Controller
         $fin    = $base->copy()->endOfWeek(\Carbon\Carbon::SUNDAY)->endOfDay();
         $hoy    = now()->startOfDay();
 
+        // Semana anterior (para variaciones % de los KPI)
+        $prevInicio = $inicio->copy()->subWeek();
+        $prevFin    = $fin->copy()->subWeek();
+
+        // Días de la semana seleccionada (flujo diario de caja)
+        $diasSemana = [];
+        for ($d = $inicio->copy(); $d->lte($fin); $d->addDay()) {
+            $diasSemana[] = [
+                'key'   => $d->toDateString(),
+                'label' => ucfirst($d->locale('es')->isoFormat('ddd DD')),
+            ];
+        }
+
         $admins = User::with('carteraFinanciada')
             ->where('puesto', 'admin')
             ->whereNull('cartera_financiada_de')
@@ -952,13 +965,24 @@ class OwnerController extends Controller
             ->orderBy('usuario')
             ->get();
 
+        // Filtro por administrador: el reporte completo (KPIs, gráficas, aging,
+        // morosos y CSV) se recalcula sólo con el admin seleccionado.
+        $adminsLista = $admins;
+        $adminSel    = (int) $request->query('admin', 0);
+        if ($adminSel > 0 && $admins->contains('id', $adminSel)) {
+            $admins = $admins->where('id', $adminSel)->values();
+        } else {
+            $adminSel = 0;
+        }
+
         $deployedStatuses = ['Activo', 'Atrasado', 'Finalizado'];
         $activeStatuses   = ['Activo', 'Atrasado'];
         $payableStatuses  = ['Pendiente', 'Atrasado', 'Parcial'];
         $realPayStatuses  = ['Pagado', 'Parcial'];
 
         $rows = $admins->map(function (User $admin) use (
-            $inicio, $fin, $hoy, $deployedStatuses, $activeStatuses, $payableStatuses, $realPayStatuses
+            $inicio, $fin, $hoy, $prevInicio, $prevFin, $diasSemana,
+            $deployedStatuses, $activeStatuses, $payableStatuses, $realPayStatuses
         ) {
             $adminIds = collect([$admin->id, $admin->carteraFinanciada?->id])->filter()->values()->all();
 
@@ -1041,6 +1065,67 @@ class OwnerController extends Controller
                 && $p->fecha_programada->betweenIncluded($proxInicio, $proxFin)
                 && in_array($p->estatus, $payableStatuses))->sum(fn($p) => $dueAmount($p));
 
+            // ── Semana anterior (variación de KPI) ────────────────────
+            $pagosPrev = $pagosReales->filter(fn($p) => $p->fecha_pago
+                && $p->fecha_pago->betweenIncluded($prevInicio, $prevFin));
+            $cobradoPrev = (float) $pagosPrev->sum('monto_cobrado');
+            $capitalPrev = min($cobradoPrev, (float) $pagosPrev->sum('capital'));
+            $interesPrev = max(0.0, round($cobradoPrev - $capitalPrev, 2));
+            $desembolsadoPrev = (float) $deployed
+                ->filter(fn($p) => $p->fecha_entrega && $p->fecha_entrega->betweenIncluded($prevInicio, $prevFin))
+                ->sum('monto_entregado');
+            $programadoPrev = (float) $pagos->filter(fn($p) => $p->fecha_programada
+                && $p->fecha_programada->betweenIncluded($prevInicio, $prevFin)
+                && !in_array($p->tipo_pago ?? 'plan', ['congelado', 'liquidado']))->sum('monto_cuota');
+            $eficienciaPrev = $programadoPrev > 0 ? round($cobradoPrev / $programadoPrev * 100, 1) : 0.0;
+
+            // ── Flujo diario de caja de la semana ─────────────────────
+            $dailyCobrado = [];
+            $dailyDesembolsado = [];
+            foreach ($diasSemana as $dia) {
+                $dailyCobrado[] = round((float) $pagosSemana
+                    ->filter(fn($p) => $p->fecha_pago && $p->fecha_pago->toDateString() === $dia['key'])
+                    ->sum('monto_cobrado'), 2);
+                $dailyDesembolsado[] = round((float) $deployed
+                    ->filter(fn($p) => $p->fecha_entrega && $p->fecha_entrega->toDateString() === $dia['key'])
+                    ->sum('monto_entregado'), 2);
+            }
+
+            // ── Aging de saldos vencidos (antigüedad de la cuota vencida) ──
+            $aging = ['b1_30' => 0.0, 'b31_60' => 0.0, 'b61_90' => 0.0, 'b90p' => 0.0];
+            foreach ($pendientesVencidos as $p) {
+                $dias  = (int) $p->fecha_programada->diffInDays($hoy);
+                $monto = $dueAmount($p);
+                if     ($dias <= 30) $aging['b1_30']  += $monto;
+                elseif ($dias <= 60) $aging['b31_60'] += $monto;
+                elseif ($dias <= 90) $aging['b61_90'] += $monto;
+                else                 $aging['b90p']   += $monto;
+            }
+            $aging = array_map(fn($v) => round($v, 2), $aging);
+
+            // ── Concentración de riesgo: top morosos y top 5 saldos ───
+            $topMorosos = $atrasados->sortByDesc('saldo_actual')->take(5)->map(function ($p) use ($hoy, $payableStatuses) {
+                $masAntiguo = $p->pagos
+                    ->filter(fn($x) => $x->fecha_programada
+                        && $x->fecha_programada->lt($hoy)
+                        && in_array($x->estatus, $payableStatuses)
+                        && !in_array($x->tipo_pago ?? 'plan', ['congelado', 'liquidado']))
+                    ->sortBy('fecha_programada')->first();
+                return [
+                    'prestamo_id' => $p->id,
+                    'cliente'     => $p->cliente->nombre ?? 'Sin cliente',
+                    'saldo'       => (float) $p->saldo_actual,
+                    'mora'        => (float) $p->interes_acumulado,
+                    'dias'        => $masAntiguo ? (int) $masAntiguo->fecha_programada->diffInDays($hoy) : 0,
+                ];
+            })->values();
+
+            $top5Pct = 0.0;
+            if ($saldoActivo > 0) {
+                $top5Pct = round($activos->sortByDesc('saldo_actual')->take(5)->sum('saldo_actual')
+                    / $saldoActivo * 100, 1);
+            }
+
             $score = 100;
             $score -= min(35, $par30 * 0.7);
             $score -= min(25, $riesgoPct * 0.45);
@@ -1101,6 +1186,20 @@ class OwnerController extends Controller
                 'proximo_programado'  => $proximoProgramado,
                 'pagos_semana'        => $pagosSemana->count(),
                 'nuevos_prestamos'    => $deployed->filter(fn($p) => $p->fecha_entrega && $p->fecha_entrega->betweenIncluded($inicio, $fin))->count(),
+                // Semana anterior
+                'cobrado_prev'        => $cobradoPrev,
+                'interes_prev'        => $interesPrev,
+                'desembolsado_prev'   => $desembolsadoPrev,
+                'programado_prev'     => $programadoPrev,
+                'eficiencia_prev'     => $eficienciaPrev,
+                'flujo_neto'          => round($cobradoSemana - $desembolsadoSemana, 2),
+                'flujo_neto_prev'     => round($cobradoPrev - $desembolsadoPrev, 2),
+                // Flujo diario, aging y concentración
+                'daily_cobrado'       => $dailyCobrado,
+                'daily_desembolsado'  => $dailyDesembolsado,
+                'aging'               => $aging,
+                'top_morosos'         => $topMorosos,
+                'top5_pct'            => $top5Pct,
             ];
         })->sortByDesc('score')->values();
 
@@ -1124,12 +1223,94 @@ class OwnerController extends Controller
         $globales['riesgo_pct'] = $globales['saldo_activo'] > 0
             ? round($globales['saldo_atrasado'] / $globales['saldo_activo'] * 100, 1) : 0.0;
 
+        // ── Globales adicionales: semana anterior, flujo neto, aging ──
+        $globales['cobrado_prev']      = $rows->sum('cobrado_prev');
+        $globales['interes_prev']      = $rows->sum('interes_prev');
+        $globales['desembolsado_prev'] = $rows->sum('desembolsado_prev');
+        $globales['programado_prev']   = $rows->sum('programado_prev');
+        $globales['eficiencia_prev']   = $globales['programado_prev'] > 0
+            ? round($globales['cobrado_prev'] / $globales['programado_prev'] * 100, 1) : 0.0;
+        $globales['flujo_neto']        = round($globales['cobrado_semana'] - $globales['desembolsado_semana'], 2);
+        $globales['flujo_neto_prev']   = round($globales['cobrado_prev'] - $globales['desembolsado_prev'], 2);
+        $globales['vencido_pagos']     = $rows->sum('vencido_pagos');
+        $globales['aging'] = [
+            'b1_30'  => round($rows->sum(fn($r) => $r['aging']['b1_30']),  2),
+            'b31_60' => round($rows->sum(fn($r) => $r['aging']['b31_60']), 2),
+            'b61_90' => round($rows->sum(fn($r) => $r['aging']['b61_90']), 2),
+            'b90p'   => round($rows->sum(fn($r) => $r['aging']['b90p']),   2),
+        ];
+
+        // Flujo diario global (suma de todos los admins)
+        $nDias = count($diasSemana);
+        $globalDailyCob = array_fill(0, $nDias, 0.0);
+        $globalDailyDes = array_fill(0, $nDias, 0.0);
+        foreach ($rows as $r) {
+            foreach ($r['daily_cobrado']      as $i => $v) { $globalDailyCob[$i] += $v; }
+            foreach ($r['daily_desembolsado'] as $i => $v) { $globalDailyDes[$i] += $v; }
+        }
+        $globales['daily_labels']      = array_column($diasSemana, 'label');
+        $globales['daily_cobrado']     = array_map(fn($v) => round($v, 2), $globalDailyCob);
+        $globales['daily_desembolsado']= array_map(fn($v) => round($v, 2), $globalDailyDes);
+
+        // ── Tendencia 8 semanas (cobrado vs programado vs desembolsado) ──
+        $adminIdsAll = $rows->flatMap(fn($r) => $r['admin_ids'])->unique()->values()->all();
+        $trendStart  = $inicio->copy()->subWeeks(7);
+
+        $cobDia = $progDia = $desDia = collect();
+        if (!empty($adminIdsAll)) {
+            $cobDia = DB::table('pagos')
+                ->join('prestamos', 'pagos.prestamo_id', '=', 'prestamos.id')
+                ->whereIn('prestamos.admin_id', $adminIdsAll)
+                ->whereIn('pagos.estatus', $realPayStatuses)
+                ->where('pagos.monto_cobrado', '>', 0)
+                ->whereNotNull('pagos.fecha_pago')
+                ->whereBetween('pagos.fecha_pago', [$trendStart->toDateString(), $fin->toDateString()])
+                ->selectRaw('DATE(pagos.fecha_pago) as dia, SUM(pagos.monto_cobrado) as total')
+                ->groupBy('dia')->pluck('total', 'dia');
+
+            $progDia = DB::table('pagos')
+                ->join('prestamos', 'pagos.prestamo_id', '=', 'prestamos.id')
+                ->whereIn('prestamos.admin_id', $adminIdsAll)
+                ->whereRaw("COALESCE(pagos.tipo_pago, 'plan') NOT IN ('congelado', 'liquidado')")
+                ->whereNotNull('pagos.fecha_programada')
+                ->whereBetween('pagos.fecha_programada', [$trendStart->toDateString(), $fin->toDateString()])
+                ->selectRaw('DATE(pagos.fecha_programada) as dia, SUM(pagos.monto_cuota) as total')
+                ->groupBy('dia')->pluck('total', 'dia');
+
+            $desDia = DB::table('prestamos')
+                ->whereIn('admin_id', $adminIdsAll)
+                ->whereIn('estatus', $deployedStatuses)
+                ->whereNotNull('fecha_entrega')
+                ->whereBetween('fecha_entrega', [$trendStart->toDateString(), $fin->toDateString()])
+                ->selectRaw('DATE(fecha_entrega) as dia, SUM(monto_entregado) as total')
+                ->groupBy('dia')->pluck('total', 'dia');
+        }
+
+        $tendencia = ['labels' => [], 'cobrado' => [], 'programado' => [], 'desembolsado' => [], 'eficiencia' => []];
+        for ($w = 7; $w >= 0; $w--) {
+            $ws = $inicio->copy()->subWeeks($w);
+            $we = $ws->copy()->addDays(6);
+            $c = $g = $d = 0.0;
+            for ($cur = $ws->copy(); $cur->lte($we); $cur->addDay()) {
+                $k  = $cur->toDateString();
+                $c += (float) ($cobDia[$k]  ?? 0);
+                $g += (float) ($progDia[$k] ?? 0);
+                $d += (float) ($desDia[$k]  ?? 0);
+            }
+            $tendencia['labels'][]       = $ws->format('d/m') . '–' . $we->format('d/m');
+            $tendencia['cobrado'][]      = round($c, 2);
+            $tendencia['programado'][]   = round($g, 2);
+            $tendencia['desembolsado'][] = round($d, 2);
+            $tendencia['eficiencia'][]   = $g > 0 ? round($c / $g * 100, 1) : 0.0;
+        }
+
         $mejor = $rows->first();
         $mayorRiesgo = $rows->sortByDesc('par30')->first();
         $mayorUtilidad = $rows->sortByDesc('interes_semana')->first();
 
         return view('owner.reporte_semanal', compact(
-            'rows', 'globales', 'inicio', 'fin', 'mejor', 'mayorRiesgo', 'mayorUtilidad'
+            'rows', 'globales', 'inicio', 'fin', 'mejor', 'mayorRiesgo', 'mayorUtilidad', 'tendencia',
+            'adminsLista', 'adminSel'
         ));
     }
 

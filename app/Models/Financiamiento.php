@@ -111,6 +111,22 @@ class Financiamiento extends Model
     }
 
     /**
+     * Ventana a la que pertenece un movimiento. Para 'rendimiento' es la
+     * ventana que se saldó (guardada en `periodo` al registrar el cobro, vía
+     * estadoCobros), NO la que le tocaría por calendario a su fecha real: un
+     * cobro atrasado tiene una fecha real posterior al corte teórico, y
+     * recalcularla con periodoDeFecha() lo empujaría a la ventana siguiente.
+     * Los demás tipos (aporte/retiro/salida_inversor) sí son hechos de
+     * calendario puro y usan su fecha real directamente.
+     */
+    public function ventanaDe(FinanciamientoMovimiento $m): int
+    {
+        return $m->tipo === 'rendimiento'
+            ? ($m->periodo ?? $this->periodoDeFecha($m->fecha))
+            : $this->periodoDeFecha($m->fecha);
+    }
+
+    /**
      * Capital que genera rendimiento en el periodo n, reconstruido del
      * historial: los aportes/retiros/salidas cuentan desde el periodo en cuya
      * ventana caen (capital que alcanzó a estar dentro en ese periodo); las
@@ -122,7 +138,7 @@ class Financiamiento extends Model
         $capital = 0.0;
 
         foreach ($this->movimientos as $m) {
-            $ventana = $this->periodoDeFecha($m->fecha);
+            $ventana = $this->ventanaDe($m);
 
             if ($m->tipo === 'rendimiento') {
                 if ($m->capitalizado && $ventana < $n) {
@@ -157,7 +173,7 @@ class Financiamiento extends Model
     {
         $pagados = [];
         foreach ($this->movimientos->where('tipo', 'rendimiento') as $m) {
-            if ($this->periodoDeFecha($m->fecha) !== $n) continue;
+            if ($this->ventanaDe($m) !== $n) continue;
             foreach ($m->detalle ?? [] as $d) {
                 $pagados[$d['inversor_id']] = round(($pagados[$d['inversor_id']] ?? 0) + $d['monto'], 2);
             }
@@ -178,7 +194,7 @@ class Financiamiento extends Model
 
         // Una ventana con al menos un cobro cuenta como cubierta (los cobros
         // parciales se completan dentro de la misma ventana).
-        $cubiertas = $rends->map(fn($m) => $this->periodoDeFecha($m->fecha))->unique();
+        $cubiertas = $rends->map(fn($m) => $this->ventanaDe($m))->unique();
 
         $vencidos = 0;
         while ($vencidos < 520 && $this->fechaCobro($vencidos + 1)->lte($hoy)) {
@@ -192,7 +208,7 @@ class Financiamiento extends Model
         // Ventana actual con cobros parciales (aún no llega al esperado)
         $nActual        = $this->periodoDeFecha($hoy);
         $esperadoActual = $this->esperadoPeriodo($nActual);
-        $cobradoActual  = (float) $rends->filter(fn($m) => $this->periodoDeFecha($m->fecha) === $nActual)->sum('monto');
+        $cobradoActual  = (float) $rends->filter(fn($m) => $this->ventanaDe($m) === $nActual)->sum('monto');
         $parcial        = $atrasadasN->isEmpty()
             && $cubiertas->contains($nActual)
             && ($esperadoActual - $cobradoActual) > 0.01;
@@ -207,20 +223,8 @@ class Financiamiento extends Model
         }
 
         $esperado = $this->esperadoPeriodo($nPend);
-        $cobrado  = (float) $rends->filter(fn($m) => $this->periodoDeFecha($m->fecha) === $nPend)->sum('monto');
+        $cobrado  = (float) $rends->filter(fn($m) => $this->ventanaDe($m) === $nPend)->sum('monto');
         $proximo  = $parcial ? $hoy->copy() : $this->fechaCobro($nPend);
-
-        // La fecha con la que se registra un cobro NUNCA debe ser futura: un
-        // cobro es un hecho real, ocurre hoy o antes. Cuando la ventana pendiente
-        // es la que corre HOY pero su corte programado cae a futuro (se cobra
-        // adelantado dentro del periodo), la fecha real es hoy —que sigue cayendo
-        // en esa misma ventana—. En atrasos $proximo ya es pasado y se conserva
-        // para abonar a la ventana vencida. Si la ventana pendiente aún no
-        // empieza (todo lo vencido está cubierto), se deja el corte programado:
-        // no hay fecha ≤ hoy que pertenezca a esa ventana futura.
-        $sugerida = ($proximo->gt($hoy) && $this->periodoDeFecha($hoy) === $nPend)
-            ? $hoy->copy()
-            : $proximo->copy();
 
         return (object) [
             'atrasados'      => $atrasadasN->count(),
@@ -231,8 +235,6 @@ class Financiamiento extends Model
             'cobrado'        => $cobrado,
             'restante'       => round(max(0, $esperado - $cobrado), 2),
             'proximo'        => $proximo,
-            // La fecha del movimiento determina la ventana a la que se abona
-            'fecha_sugerida' => $sugerida,
         ];
     }
 
@@ -387,11 +389,11 @@ class Financiamiento extends Model
         $rends = $this->movimientos->where('tipo', 'rendimiento');
 
         $nHoy = $this->periodoDeFecha($hoy);
-        $nMax = min(520, max($nHoy, (int) $rends->map(fn($m) => $this->periodoDeFecha($m->fecha))->max()));
+        $nMax = min(520, max($nHoy, (int) $rends->map(fn($m) => $this->ventanaDe($m))->max()));
 
         $filas = [];
         for ($n = 1; $n <= $nMax; $n++) {
-            $enVentana = $rends->filter(fn($m) => $this->periodoDeFecha($m->fecha) === $n);
+            $enVentana = $rends->filter(fn($m) => $this->ventanaDe($m) === $n);
             $esperado  = $this->esperadoPeriodo($n);
             $cobrado   = round((float) $enVentana->sum('monto'), 2);
 
@@ -428,7 +430,12 @@ class Financiamiento extends Model
      */
     public function registrarRendimiento(float $monto, string $fecha, ?string $nota, bool $capitalizar, ?int $registradoPor = null): FinanciamientoMovimiento
     {
-        $ventana = $this->periodoDeFecha(\Carbon\Carbon::parse($fecha));
+        // La ventana que salda este cobro es la más antigua aún pendiente a la
+        // fecha real del cobro (estadoCobros hace el waterfall: atrasada más
+        // vieja, o la parcial en curso, o la siguiente sin cubrir). Así un
+        // cobro tarde sigue saldando la ventana que le tocaba, en vez de
+        // enrutarse a la ventana siguiente por caer después de su corte.
+        $ventana = $this->estadoCobros(\Carbon\Carbon::parse($fecha))->periodo;
         $pagados = $this->retornosPagadosPeriodo($ventana);
 
         $detalle    = [];
@@ -449,16 +456,50 @@ class Financiamiento extends Model
         foreach ($pendientes as $fila) {
             $retorno = round($fila['pend'] * $escala, 2);
             $montoRetornado += $retorno;
-            $detalle[] = [
+            $detalle[$fila['inv']->id] = [
                 'inversor_id' => $fila['inv']->id,
                 'nombre'      => $fila['inv']->nombre,
                 'pct'         => (float) $fila['inv']->pct_retorno,
                 'monto'       => $retorno,
+                'reinversion' => 0.0,
             ];
         }
 
         $montoRetornado   = round($montoRetornado, 2);
         $montoReinversion = round(max(0, $monto - $montoRetornado), 2);
+
+        // La reinversión es de los inversores SIN retorno fijo (retorno_mensual
+        // = 0): su trato es capitalizar el 100% de su parte. Quien sí tiene un
+        // retorno fijo pactado sólo cobra en efectivo y nunca acumula
+        // crecimiento, aunque ese periodo no se le haya alcanzado a pagar todo
+        // su fijo. Si hay varios inversores "reinversores", se reparten la
+        // reinversión según su aporte (el último se queda con el residuo de
+        // redondeo para que la suma cuadre exacto con $montoReinversion).
+        if ($montoReinversion > 0) {
+            $reinversores  = $this->inversoresActivos()->filter(fn($i) => (float) $i->retorno_mensual <= 0)->values();
+            $sumAporteReinv = (float) $reinversores->sum('aporte');
+
+            if ($sumAporteReinv > 0) {
+                $restante = $montoReinversion;
+                foreach ($reinversores as $idx => $inv) {
+                    $parte = ($idx === $reinversores->count() - 1)
+                        ? $restante
+                        : round($montoReinversion * ($inv->aporte / $sumAporteReinv), 2);
+                    $restante = round($restante - $parte, 2);
+
+                    $detalle[$inv->id] ??= [
+                        'inversor_id' => $inv->id,
+                        'nombre'      => $inv->nombre,
+                        'pct'         => (float) $inv->pct_retorno,
+                        'monto'       => 0.0,
+                        'reinversion' => 0.0,
+                    ];
+                    $detalle[$inv->id]['reinversion'] = $parte;
+                }
+            }
+        }
+
+        $detalle = array_values($detalle);
 
         if ($capitalizar && $montoReinversion > 0) {
             $this->capital_actual = round($this->capital_actual + $montoReinversion, 2);
@@ -468,6 +509,7 @@ class Financiamiento extends Model
         return FinanciamientoMovimiento::create([
             'financiamiento_id' => $this->id,
             'tipo'              => 'rendimiento',
+            'periodo'           => $ventana,
             'monto'             => $monto,
             'monto_reinversion' => $montoReinversion,
             'monto_retornado'   => $montoRetornado,
