@@ -26,65 +26,72 @@ class OwnerController extends Controller
         $admins = User::where('puesto', 'admin')
             ->whereNull('cartera_financiada_de')
             ->orderBy('created_at', 'desc')
-            ->get()
-            ->map(function (User $u) {
+            ->get();
 
-                $empleados = Empleado::where('admin_id', $u->id)
-                    ->where('activo', true)
-                    ->orderBy('nombre')
-                    ->get();
+        $ids = $admins->pluck('id')->all();
 
-                $clientes = Cliente::where('admin_id', $u->id)
-                    ->where('activo', true)
-                    ->orderBy('nombre')
-                    ->get();
+        // Carga en lote agrupada por admin (evita el N+1 de una consulta por
+        // recurso y por administrador; el cálculo por admin es idéntico).
+        $empleadosPorAdmin = Empleado::whereIn('admin_id', $ids)->where('activo', true)
+            ->orderBy('nombre')->get()->groupBy('admin_id');
+        $clientesPorAdmin  = Cliente::whereIn('admin_id', $ids)->where('activo', true)
+            ->orderBy('nombre')->get()->groupBy('admin_id');
+        $prestamosPorAdmin = Prestamo::with('cliente')->whereIn('admin_id', $ids)
+            ->orderBy('created_at', 'desc')->get()->groupBy('admin_id');
+        $notasPorAdmin     = AdminNota::whereIn('admin_id', $ids)
+            ->orderBy('created_at', 'desc')->get()->groupBy('admin_id');
 
-                // ALL prestamos (all statuses) for rich detail
-                $allPrestamos = Prestamo::with('cliente')
-                    ->where('admin_id', $u->id)
-                    ->orderBy('created_at', 'desc')
-                    ->get();
+        // Cobrado real por admin (préstamos desplegados) en una sola consulta
+        $cobradoPorAdmin = DB::table('pagos')
+            ->join('prestamos', 'pagos.prestamo_id', '=', 'prestamos.id')
+            ->whereIn('prestamos.admin_id', $ids)
+            ->whereIn('prestamos.estatus', ['Activo', 'Atrasado', 'Finalizado'])
+            ->whereIn('pagos.estatus', ['Pagado', 'Parcial'])
+            ->groupBy('prestamos.admin_id')
+            ->selectRaw('prestamos.admin_id as admin_id, SUM(pagos.monto_cobrado) as total')
+            ->pluck('total', 'admin_id');
 
-                $prestamos       = $allPrestamos->whereIn('estatus', ['Activo', 'Atrasado']);
-                $porEstatus      = $allPrestamos->groupBy('estatus')->map->count();
-                $deployedIds     = $allPrestamos->whereIn('estatus', ['Activo','Atrasado','Finalizado'])->pluck('id');
-                $capitalDesplegado = $allPrestamos->whereIn('estatus', ['Activo','Atrasado','Finalizado'])->sum('monto_entregado');
-                $totalAcordado     = $allPrestamos->whereIn('estatus', ['Activo','Atrasado','Finalizado'])->sum('monto');
-                $totalCobrado      = $deployedIds->isNotEmpty()
-                    ? (float) Pago::whereIn('prestamo_id', $deployedIds->all())
-                        ->whereIn('estatus', ['Pagado','Parcial'])->sum('monto_cobrado')
-                    : 0.0;
-                $saldoPendiente  = $allPrestamos->whereIn('estatus', ['Activo','Atrasado'])->sum('saldo_actual');
-                $moraPendiente   = $allPrestamos->whereIn('estatus', ['Activo','Atrasado'])->sum('interes_acumulado');
-                $rendimientoPct  = $capitalDesplegado > 0
-                    ? round(max(0, $totalCobrado - $capitalDesplegado) / $capitalDesplegado * 100, 1)
-                    : 0;
+        $admins = $admins->map(function (User $u) use (
+            $empleadosPorAdmin, $clientesPorAdmin, $prestamosPorAdmin, $notasPorAdmin, $cobradoPorAdmin
+        ) {
+            $empleados    = $empleadosPorAdmin->get($u->id, collect());
+            $clientes     = $clientesPorAdmin->get($u->id, collect());
+            $allPrestamos = $prestamosPorAdmin->get($u->id, collect());
 
-                $u->stats = [
-                    'empleados' => $empleados->count(),
-                    'clientes'  => $clientes->count(),
-                    'prestamos' => $prestamos->count(),
-                ];
+            $prestamos       = $allPrestamos->whereIn('estatus', ['Activo', 'Atrasado']);
+            $porEstatus      = $allPrestamos->groupBy('estatus')->map->count();
+            $capitalDesplegado = $allPrestamos->whereIn('estatus', ['Activo','Atrasado','Finalizado'])->sum('monto_entregado');
+            $totalAcordado     = $allPrestamos->whereIn('estatus', ['Activo','Atrasado','Finalizado'])->sum('monto');
+            $totalCobrado      = (float) ($cobradoPorAdmin[$u->id] ?? 0);
+            $saldoPendiente  = $allPrestamos->whereIn('estatus', ['Activo','Atrasado'])->sum('saldo_actual');
+            $moraPendiente   = $allPrestamos->whereIn('estatus', ['Activo','Atrasado'])->sum('interes_acumulado');
+            $rendimientoPct  = $capitalDesplegado > 0
+                ? round(max(0, $totalCobrado - $capitalDesplegado) / $capitalDesplegado * 100, 1)
+                : 0;
 
-                $u->detalle = [
-                    'empleados'          => $empleados,
-                    'clientes'           => $clientes,
-                    'prestamos'          => $allPrestamos,
-                    'por_estatus'        => $porEstatus,
-                    'capital_desplegado' => $capitalDesplegado,
-                    'total_acordado'     => $totalAcordado,
-                    'total_cobrado'      => $totalCobrado,
-                    'saldo_pendiente'    => $saldoPendiente,
-                    'mora_pendiente'     => $moraPendiente,
-                    'rendimiento_pct'    => $rendimientoPct,
-                ];
+            $u->stats = [
+                'empleados' => $empleados->count(),
+                'clientes'  => $clientes->count(),
+                'prestamos' => $prestamos->count(),
+            ];
 
-                $u->notas = AdminNota::where('admin_id', $u->id)
-                    ->orderBy('created_at', 'desc')
-                    ->get();
+            $u->detalle = [
+                'empleados'          => $empleados,
+                'clientes'           => $clientes,
+                'prestamos'          => $allPrestamos,
+                'por_estatus'        => $porEstatus,
+                'capital_desplegado' => $capitalDesplegado,
+                'total_acordado'     => $totalAcordado,
+                'total_cobrado'      => $totalCobrado,
+                'saldo_pendiente'    => $saldoPendiente,
+                'mora_pendiente'     => $moraPendiente,
+                'rendimiento_pct'    => $rendimientoPct,
+            ];
 
-                return $u;
-            });
+            $u->notas = $notasPorAdmin->get($u->id, collect());
+
+            return $u;
+        });
 
         $totales = [
             'total'     => $admins->count(),
@@ -632,11 +639,41 @@ class OwnerController extends Controller
             $cur->addDay();
         }
 
+        // Carga en lote agrupada por admin (evita 4 consultas por administrador
+        // dentro del map; el cálculo por admin queda idéntico).
+        $prestamosPorAdmin = Prestamo::whereIn('admin_id', $adminIds)->get()->groupBy('admin_id');
+        $cobradoPorAdmin = DB::table('pagos')
+            ->join('prestamos', 'pagos.prestamo_id', '=', 'prestamos.id')
+            ->whereIn('prestamos.admin_id', $adminIds)
+            ->whereIn('prestamos.estatus', $deployedStatuses)
+            ->whereIn('pagos.estatus', ['Pagado', 'Parcial'])
+            ->groupBy('prestamos.admin_id')
+            ->selectRaw('prestamos.admin_id as admin_id, SUM(pagos.monto_cobrado) as total')
+            ->pluck('total', 'admin_id');
+        $capRecPorAdmin = DB::table('pagos')
+            ->join('prestamos', 'pagos.prestamo_id', '=', 'prestamos.id')
+            ->whereIn('prestamos.admin_id', $adminIds)
+            ->whereIn('prestamos.estatus', $deployedStatuses)
+            ->whereIn('pagos.estatus', ['Pagado', 'Parcial'])
+            ->where('pagos.monto_cobrado', '>', 0)
+            ->groupBy('prestamos.admin_id')
+            ->selectRaw('prestamos.admin_id as admin_id, SUM(pagos.capital) as total')
+            ->pluck('total', 'admin_id');
+        $pagosXEstatusPorAdmin = DB::table('pagos')
+            ->join('prestamos', 'pagos.prestamo_id', '=', 'prestamos.id')
+            ->whereIn('prestamos.admin_id', $adminIds)
+            ->whereIn('prestamos.estatus', $deployedStatuses)
+            ->whereIn('pagos.estatus', ['Pagado', 'Parcial'])
+            ->selectRaw('prestamos.admin_id as admin_id, prestamos.estatus as est, SUM(pagos.monto_cobrado) as cobrado')
+            ->groupBy('prestamos.admin_id', 'prestamos.estatus')
+            ->get()->groupBy('admin_id')->map(fn($rows) => $rows->keyBy('est'));
+
         $stats = $admins->map(function (User $admin) use (
             $deployedStatuses, $activeStatuses,
-            $desembolsosRaw, $cobrosRaw, $dateRange
+            $desembolsosRaw, $cobrosRaw, $dateRange,
+            $prestamosPorAdmin, $cobradoPorAdmin, $capRecPorAdmin, $pagosXEstatusPorAdmin
         ) {
-            $allPrestamos = Prestamo::where('admin_id', $admin->id)->get();
+            $allPrestamos = $prestamosPorAdmin->get($admin->id, collect());
             $byEstatus    = $allPrestamos->groupBy('estatus');
 
             $deployed = $allPrestamos->filter(fn($p) => in_array($p->estatus, $deployedStatuses));
@@ -648,36 +685,15 @@ class OwnerController extends Controller
             $saldo_pendiente    = (float) $activos->sum('saldo_actual');
             $mora_pendiente     = (float) $activos->sum('interes_acumulado');
 
-            $pids = $deployed->pluck('id');
-            $total_cobrado = $pids->isNotEmpty()
-                ? (float) Pago::whereIn('prestamo_id', $pids)
-                    ->whereIn('estatus', ['Pagado', 'Parcial'])
-                    ->sum('monto_cobrado')
-                : 0.0;
-
             // Capital recuperado: sólo filas con cobro real (monto_cobrado > 0); sumar
             // 'capital' sobre todas las filas Pagado duplica el principal cuando un
             // préstamo se liquidó (las cuotas plan liquidadas conservan su capital).
-            $capital_recuperado = $pids->isNotEmpty()
-                ? (float) Pago::whereIn('prestamo_id', $pids)
-                    ->whereIn('estatus', ['Pagado', 'Parcial'])
-                    ->where('monto_cobrado', '>', 0)
-                    ->sum('capital')
-                : 0.0;
-            $capital_recuperado = min($capital_recuperado, $capital_desplegado);
-            $interes_cobrado = max(0.0, round($total_cobrado - $capital_recuperado, 2));
+            $total_cobrado      = (float) ($cobradoPorAdmin[$admin->id] ?? 0);
+            $capital_recuperado = min((float) ($capRecPorAdmin[$admin->id] ?? 0), $capital_desplegado);
+            $interes_cobrado    = max(0.0, round($total_cobrado - $capital_recuperado, 2));
 
             // ── Breakdown por estatus (para filtro interactivo del donut) ──
-            $pagosXEstatus = collect();
-            if ($pids->isNotEmpty()) {
-                $pagosXEstatus = DB::table('pagos')
-                    ->join('prestamos', 'pagos.prestamo_id', '=', 'prestamos.id')
-                    ->whereIn('pagos.prestamo_id', $pids)
-                    ->whereIn('pagos.estatus', ['Pagado', 'Parcial'])
-                    ->selectRaw('prestamos.estatus as est, SUM(pagos.monto_cobrado) as cobrado')
-                    ->groupBy('prestamos.estatus')
-                    ->get()->keyBy('est');
-            }
+            $pagosXEstatus = $pagosXEstatusPorAdmin->get($admin->id, collect());
             $estatusData = [];
             foreach (['Activo', 'Atrasado', 'Finalizado', 'Pendiente', 'Retirado'] as $_est) {
                 $g = $allPrestamos->where('estatus', $_est);
