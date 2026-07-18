@@ -101,6 +101,7 @@ Route::middleware(['auth', 'role:admin,promo'])->group(function () {
     Route::post('/prestamos/{id}/cancelar',                      [PrestamoController::class, 'cancelar'])->name('prestamos.cancelar');
     Route::post('/prestamos/{id}/refinanciar',                   [PrestamoController::class, 'refinanciar'])->name('prestamos.refinanciar');
     Route::post('/prestamos/{id}/cobro-extra',                   [PagoController::class, 'registrarExtra'])->name('prestamos.cobroExtra');
+    Route::post('/prestamos/{id}/cobro-extraordinario',          [PagoController::class, 'registrarExtraordinario'])->name('prestamos.cobroExtraordinario');
     Route::post('/prestamos/{id}/pagar-cuota',                   [PagoController::class, 'pagarCuota'])->name('prestamos.pagarCuota');
     Route::post('/prestamos/{id}/ponerse-al-dia',                [PagoController::class, 'ponerseAlDia'])->name('prestamos.ponerseAlDia');
     Route::post('/prestamos/{id}/agendar-cobro',                 [PagoController::class, 'agendarCobro'])->name('prestamos.agendarCobro');

@@ -27,6 +27,7 @@ class PrestamoActividad extends Model
         'desembolso'   => ['color' => '#8b5cf6', 'icon' => '💸', 'label' => 'Desembolsado'],
         'pago'         => ['color' => '#16a34a', 'icon' => '✓',  'label' => 'Pago registrado'],
         'cobro_extra'  => ['color' => '#10b981', 'icon' => '⚡', 'label' => 'Cobro extra'],
+        'cobro_extraordinario' => ['color' => '#e11d48', 'icon' => '★', 'label' => 'Cobro extraordinario'],
         'agendado'     => ['color' => '#6366f1', 'icon' => '📅', 'label' => 'Cobro agendado'],
         'estatus'      => ['color' => '#f59e0b', 'icon' => '◉',  'label' => 'Cambio de estatus'],
         'cobrador'     => ['color' => '#0ea5e9', 'icon' => '👤', 'label' => 'Cobrador'],

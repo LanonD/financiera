@@ -576,6 +576,120 @@ class PagoController extends Controller
     }
 
     /**
+     * Admin / Promo: registrar un cobro extraordinario, FUERA del plan de
+     * pagos (a diferencia de "Cobro inmediato"): no marca ni adelanta
+     * ninguna cuota del plan, solo baja la deuda total (saldo_actual)
+     * directo, después de saldar mora. Queda como un renglón propio en la
+     * tabla (tipo_pago='extraordinario') para verse aparte de las cuotas.
+     *
+     * Si el abono deja la deuda en $0, finalizarSiLiquidado() se encarga de
+     * marcar las cuotas del plan que sigan pendientes como "liquidado" (ya
+     * no hay nada que cobrarles) y cierra el préstamo — sin que este método
+     * tenga que tocarlas una por una.
+     */
+    public function registrarExtraordinario(Request $request, $id)
+    {
+        $request->validate([
+            'monto' => 'required|numeric|min:0.01',
+            'nota'  => 'nullable|string|max:255',
+        ]);
+
+        $user     = Auth::user();
+        $empleado = $user->empleado;
+        $adminId  = $user->adminId();
+        $prestamo = Prestamo::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
+
+        if (!in_array($prestamo->estatus, ['Activo', 'Atrasado'])) {
+            return redirect()->back()->with('error', 'Solo se puede registrar un cobro extraordinario en préstamos activos.');
+        }
+
+        // Bring mora up to date
+        if ((float)$prestamo->interes_diario > 0
+            && ($prestamo->interes_mora_activo || $prestamo->estatus === 'Atrasado')) {
+            $hoy   = now()->toDateString();
+            $desde = $prestamo->fecha_ultimo_interes ? $prestamo->fecha_ultimo_interes->toDateString() : $hoy;
+            $dias  = (int) \Carbon\Carbon::parse($desde)->diffInDays($hoy);
+            if ($dias > 0) {
+                $prestamo->interes_acumulado    = round((float)$prestamo->interes_acumulado + ($dias * (float)$prestamo->interes_diario), 2);
+                $prestamo->fecha_ultimo_interes = $hoy;
+            }
+        }
+
+        $montoTotal = (float)$request->monto;
+        $monto      = $montoTotal;
+
+        // ── 1. Mora primero ──────────────────────────────────────────────────
+        $moraPendiente = (float)$prestamo->interes_acumulado;
+        $pagoMora      = 0;
+        if ($moraPendiente > 0 && $monto > 0) {
+            $pagoMora                    = min($monto, $moraPendiente);
+            $prestamo->interes_acumulado = round($moraPendiente - $pagoMora, 2);
+            $monto                      -= $pagoMora;
+        }
+
+        // ── 2. El resto baja la deuda directo — NO toca cuotas del plan ni
+        //       adelanta pagos futuros. Se topa a lo que realmente se debe;
+        //       si sobra, queda a favor del cliente (no se aplica a nada). ──
+        $saldoAntes      = (float) $prestamo->saldo_actual;
+        $aplicadoCapital = round(min($monto, $saldoAntes), 2);
+        $sobrante        = round($monto - $aplicadoCapital, 2);
+        if ($aplicadoCapital > 0) {
+            $prestamo->saldo_actual = round($saldoAntes - $aplicadoCapital, 2);
+        }
+
+        $prestamo->save();
+
+        // ── 3. Registrar el cobro como renglón propio de la tabla, aparte
+        //       del plan (no es una cuota; no tiene "numero" en el plan). ───
+        if ($aplicadoCapital > 0) {
+            $fecha     = now()->toDateString();
+            $maxNumero = Pago::where('prestamo_id', $prestamo->id)->max('numero_pago') ?? 0;
+            $notaPago  = 'Cobro extraordinario' . ($request->nota ? ' — ' . $request->nota : '');
+
+            Pago::create([
+                'prestamo_id'      => $prestamo->id,
+                'cobrador_id'      => $empleado?->id,
+                'numero_pago'      => $maxNumero + 1,
+                'monto_cuota'      => $aplicadoCapital,
+                'interes'          => 0,
+                'capital'          => $aplicadoCapital,
+                'saldo_restante'   => $prestamo->saldo_actual,
+                'monto_cobrado'    => $aplicadoCapital,
+                'tipo_cobro'       => 'completo',
+                'tipo_pago'        => 'extraordinario',
+                'nota_cobro'       => $notaPago,
+                'fecha_programada' => $fecha,
+                'fecha_pago'       => $fecha,
+                'estatus'          => 'Pagado',
+            ]);
+        }
+
+        // ── 4. Actualizar estado: el atraso del plan NO se toca (las cuotas
+        //       siguen intactas); solo revisar si la deuda quedó en $0. ─────
+        $prestamo->finalizarSiLiquidado();
+        $mensajeFin = $prestamo->estatus === 'Finalizado' ? ' ✓ Préstamo finalizado.' : '';
+
+        // ── 5. Registrar actividad y responder ──────────────────────────────
+        $quien   = Auth::user()->empleado?->nombre ?? Auth::user()->usuario;
+        $resumen = '';
+        if ($pagoMora > 0)        $resumen .= ' Mora: $' . number_format($pagoMora, 2) . '.';
+        if ($aplicadoCapital > 0) $resumen .= ' Deuda reducida: $' . number_format($aplicadoCapital, 2) . '.';
+        if ($sobrante > 0.01)     $resumen .= ' Sobrante $' . number_format($sobrante, 2) . ' a favor del cliente (no se aplicó a nada).';
+
+        $descExtra = 'Cobro extraordinario de $' . number_format($montoTotal, 2) . ' registrado por ' . $quien . ', fuera del plan de pagos.' . $resumen . $mensajeFin;
+        PrestamoActividad::log($prestamo->id, 'cobro_extraordinario', $descExtra, [
+            'total'    => $montoTotal,
+            'mora'     => $pagoMora,
+            'aplicado' => $aplicadoCapital,
+            'sobrante' => $sobrante,
+            'saldo'    => $prestamo->saldo_actual,
+        ]);
+
+        return redirect()->back()->with('success',
+            'Cobro extraordinario de $' . number_format($montoTotal, 2) . ' registrado, fuera del plan de pagos.' . $resumen . $mensajeFin);
+    }
+
+    /**
      * Admin / Promo: schedule a custom future payment outside the plan.
      */
     public function agendarCobro(Request $request, $id)

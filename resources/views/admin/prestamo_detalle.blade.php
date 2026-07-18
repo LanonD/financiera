@@ -10,6 +10,14 @@ $pagados    = $pagos->where('estatus', 'Pagado')->filter(fn($p) => !in_array($p-
 $pendientes = $pagos->whereIn('estatus', ['Pendiente','Atrasado']);
 $parciales  = $pagos->where('estatus', 'Parcial');
 
+// Solo el cobro más próximo (el más antiguo sin resolver, en el orden en que
+// ya viene $pagos: fecha_programada, numero_pago) puede pagarse por fila.
+// Si hay atraso, es el vencido más viejo — así se cobra en orden y el saldo
+// mostrado en cada fila no se descuadra por pagar fuera de turno.
+$proximoPagoId = $pendientes
+    ->first(fn($p) => !in_array($p->tipo_pago ?? 'plan', ['congelado','liquidado']))
+    ?->id;
+
 // Calcular saldo real corriendo por cada pago (para la columna Saldo de la tabla)
 // Ordena primero por pagos ya cobrados (fecha_pago ASC), luego pendientes (numero_pago ASC)
 $pagosOrdenados = $pagos->sortBy(function($p) {
@@ -311,39 +319,48 @@ $esMiPrestamo   = $empDetalle && $prestamo->promotor_id == $empDetalle->id;
 @if(in_array($prestamo->estatus, ['Activo','Atrasado']) && in_array($puesto, ['admin','promo']))
 <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
     <div style="padding:12px 18px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600">Acciones del préstamo</div>
-    <div style="padding:16px 18px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">
+    <div style="padding:16px 18px;display:grid;grid-template-columns:repeat(auto-fill, minmax(190px, 1fr));gap:12px;align-items:start">
 
         {{-- Cobro Inmediato --}}
-        <div style="display:flex;flex-direction:column;gap:4px;min-width:140px">
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
             <button onclick="document.getElementById('modal-cobro-extra').showModal()"
-                style="padding:8px 16px;border-radius:8px;border:1.5px solid #2563eb;background:rgba(37,99,235,.07);color:#2563eb;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap">
+                style="width:100%;box-sizing:border-box;padding:8px 14px;border-radius:8px;border:1.5px solid #2563eb;background:rgba(37,99,235,.07);color:#2563eb;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">
                 + Cobro inmediato
             </button>
             <span style="font-size:11px;color:var(--text3);padding:0 2px">Registra un cobro de cualquier monto. Se aplica primero a mora, luego salda las cuotas atrasadas (y adelanta las siguientes).</span>
         </div>
 
+        {{-- Cobro Extraordinario --}}
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+            <button onclick="document.getElementById('modal-cobro-extraordinario').showModal()"
+                style="width:100%;box-sizing:border-box;padding:8px 14px;border-radius:8px;border:1.5px solid #e11d48;background:rgba(225,29,72,.07);color:#e11d48;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">
+                ★ Cobro extraordinario
+            </button>
+            <span style="font-size:11px;color:var(--text3);padding:0 2px">Pago fuera del plan: baja la deuda directo, sin marcar ni adelantar cuotas.</span>
+        </div>
+
         {{-- Agendar Cobro --}}
-        <div style="display:flex;flex-direction:column;gap:4px;min-width:140px">
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
             <button onclick="document.getElementById('modal-agendar').showModal()"
-                style="padding:8px 16px;border-radius:8px;border:1.5px solid #7c3aed;background:rgba(124,58,237,.07);color:#7c3aed;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap">
+                style="width:100%;box-sizing:border-box;padding:8px 14px;border-radius:8px;border:1.5px solid #7c3aed;background:rgba(124,58,237,.07);color:#7c3aed;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">
                 📅 Agendar cobro
             </button>
             <span style="font-size:11px;color:var(--text3);padding:0 2px">Programa un cobro acordado para una fecha futura específica.</span>
         </div>
 
         {{-- Pago Diferido (Payment Hold) --}}
-        <div style="display:flex;flex-direction:column;gap:4px;min-width:140px">
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
             <form method="POST" action="{{ route('prestamos.paymentHold', $prestamo->id) }}" style="margin:0"
                 onsubmit="return confirm('{{ ($prestamo->payment_hold ?? false) ? '¿Cancelar el pago diferido y restaurar el plan?' : '¿Establecer pago diferido? El siguiente cobro se combinará con el siguiente y se pagará doble.' }}')">
                 @csrf
                 @if($prestamo->payment_hold ?? false)
                 <button type="submit"
-                    style="padding:8px 16px;border-radius:8px;border:1.5px solid #fb923c;background:rgba(251,146,60,.12);color:#c2410c;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap">
+                    style="width:100%;box-sizing:border-box;padding:8px 14px;border-radius:8px;border:1.5px solid #fb923c;background:rgba(251,146,60,.12);color:#c2410c;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">
                     ↩ Cancelar pago diferido
                 </button>
                 @else
                 <button type="submit"
-                    style="padding:8px 16px;border-radius:8px;border:1.5px solid #f59e0b;background:rgba(245,158,11,.07);color:#92400e;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap">
+                    style="width:100%;box-sizing:border-box;padding:8px 14px;border-radius:8px;border:1.5px solid #f59e0b;background:rgba(245,158,11,.07);color:#92400e;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">
                     ⏸ Establecer pago diferido
                 </button>
                 @endif
@@ -357,9 +374,9 @@ $esMiPrestamo   = $empDetalle && $prestamo->promotor_id == $empDetalle->id;
 
         {{-- Cambiar Frecuencia (admin only) --}}
         @if($puesto === 'admin')
-        <div style="display:flex;flex-direction:column;gap:4px;min-width:140px">
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
             <button onclick="document.getElementById('modal-frecuencia').showModal()"
-                style="padding:8px 16px;border-radius:8px;border:1.5px solid #d1d5db;background:#f9fafb;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap">
+                style="width:100%;box-sizing:border-box;padding:8px 14px;border-radius:8px;border:1.5px solid #d1d5db;background:#f9fafb;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">
                 ⚙ Cambiar frecuencia
             </button>
             <span style="font-size:11px;color:var(--text3);padding:0 2px">Reprograma todos los pagos pendientes con una nueva frecuencia y fecha de inicio.</span>
@@ -368,9 +385,9 @@ $esMiPrestamo   = $empDetalle && $prestamo->promotor_id == $empDetalle->id;
 
         {{-- Refinanciar (admin only) --}}
         @if($puesto === 'admin')
-        <div style="display:flex;flex-direction:column;gap:4px;min-width:140px">
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
             <button onclick="abrirModalRefinanciar()"
-                style="padding:8px 16px;border-radius:8px;border:1.5px solid #0891b2;background:rgba(8,145,178,.07);color:#0e7490;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap">
+                style="width:100%;box-sizing:border-box;padding:8px 14px;border-radius:8px;border:1.5px solid #0891b2;background:rgba(8,145,178,.07);color:#0e7490;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">
                 ↺ Refinanciar
             </button>
             <span style="font-size:11px;color:var(--text3);padding:0 2px">Consolida la deuda actual en un nuevo préstamo con nuevos términos.</span>
@@ -645,11 +662,12 @@ $esMiPrestamo   = $empDetalle && $prestamo->promotor_id == $empDetalle->id;
             };
 
             $tipoBadge = match($tipoPago) {
-                'extra'     => ['#dbeafe','#1d4ed8','Extra'],
-                'agendado'  => ['#ede9fe','#6d28d9','Agendado'],
-                'congelado' => ['#ffedd5','#c2410c','Diferido'],
-                'liquidado' => ['#f3f4f6','#6b7280','Liquidado'],
-                default     => null,
+                'extra'          => ['#dbeafe','#1d4ed8','Extra'],
+                'extraordinario' => ['#ffe4e6','#e11d48','★ Extraordinario'],
+                'agendado'       => ['#ede9fe','#6d28d9','Agendado'],
+                'congelado'      => ['#ffedd5','#c2410c','Diferido'],
+                'liquidado'      => ['#f3f4f6','#6b7280','Liquidado'],
+                default          => null,
             };
 
             $estatusLabel = match(true) {
@@ -704,7 +722,7 @@ $esMiPrestamo   = $empDetalle && $prestamo->promotor_id == $empDetalle->id;
             <td class="pd-col-nota" style="font-size:12px;color:var(--text2);max-width:160px">{{ $notaDisplay }}</td>
             @if(in_array($puesto, ['admin','promo']) && in_array($prestamo->estatus, ['Activo','Atrasado']))
             <td>
-                @if(!$esDimmed && in_array($p->estatus, ['Pendiente','Atrasado']))
+                @if(!$esDimmed && $p->id === $proximoPagoId)
                 <div style="display:flex;gap:4px;flex-wrap:nowrap">
                     <button
                         onclick="abrirModalCuota({{ $p->id }}, {{ $p->numero_pago }}, {{ $p->monto_cuota }}, false)"
@@ -717,6 +735,8 @@ $esMiPrestamo   = $empDetalle && $prestamo->promotor_id == $empDetalle->id;
                         Parcial
                     </button>
                 </div>
+                @elseif(!$esDimmed && in_array($p->estatus, ['Pendiente','Atrasado']))
+                <span style="font-size:11px;color:var(--text3)" title="Primero se debe cobrar la cuota más antigua pendiente">en espera de turno</span>
                 @else
                 <span style="font-size:11px;color:var(--text3)">—</span>
                 @endif
@@ -792,6 +812,51 @@ $esMiPrestamo   = $empDetalle && $prestamo->promotor_id == $empDetalle->id;
             <button type="submit"
                 style="padding:8px 18px;border-radius:8px;border:none;background:#2563eb;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">
                 Registrar cobro
+            </button>
+        </div>
+    </form>
+</dialog>
+
+{{-- Modal: Cobro Extraordinario --}}
+<dialog id="modal-cobro-extraordinario" style="border:none;border-radius:14px;padding:0;box-shadow:0 8px 40px rgba(0,0,0,.18);max-width:420px;width:100%">
+    <div style="padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <div>
+            <div style="font-size:15px;font-weight:700">★ Cobro Extraordinario</div>
+            <div style="font-size:12px;color:var(--text2);margin-top:2px">Pago grande fuera de ruta: salda mora y cuotas atrasadas; el excedente adelanta las siguientes</div>
+        </div>
+        <button onclick="document.getElementById('modal-cobro-extraordinario').close()"
+            style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text3);line-height:1">&times;</button>
+    </div>
+    <form method="POST" action="{{ route('prestamos.cobroExtraordinario', $prestamo->id) }}" onsubmit="return submitOnce(this)">
+        @csrf
+        <div style="padding:20px 24px;display:grid;gap:14px">
+            <div>
+                <label style="font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:5px">Monto a cobrar *</label>
+                <div style="display:flex;align-items:center;gap:6px">
+                    <span style="font-size:13px;color:var(--text2)">$</span>
+                    <input type="number" name="monto" step="0.01" min="0.01" required placeholder="0.00"
+                        style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:monospace;outline:none">
+                </div>
+                @if((float)($prestamo->interes_acumulado ?? 0) > 0)
+                <div style="margin-top:6px;font-size:11px;color:#f59e0b;font-weight:600">
+                    ⚠ Mora pendiente: ${{ number_format($prestamo->interes_acumulado,2,'.',',') }} — se aplicará primero a mora.
+                </div>
+                @endif
+            </div>
+            <div>
+                <label style="font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:5px">Nota (opcional)</label>
+                <input type="text" name="nota" maxlength="255" placeholder="Ej. Transferencia bancaria del cliente"
+                    style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
+            </div>
+        </div>
+        <div style="padding:14px 24px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end">
+            <button type="button" onclick="document.getElementById('modal-cobro-extraordinario').close()"
+                style="padding:8px 18px;border-radius:8px;border:1px solid var(--border);background:#f9fafb;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">
+                Cancelar
+            </button>
+            <button type="submit"
+                style="padding:8px 18px;border-radius:8px;border:none;background:#e11d48;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">
+                Registrar cobro extraordinario
             </button>
         </div>
     </form>
