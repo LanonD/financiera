@@ -18,7 +18,7 @@ class SearchController extends Controller
 
         if ($q) {
             $clientes = Cliente::with('promotor')
-                ->where('admin_id', $adminId)
+                ->deAdmin($adminId)
                 ->where(function ($query) use ($q) {
                     $query->where('nombre', 'like', "%{$q}%")
                           ->orWhere('celular', 'like', "%{$q}%");
@@ -28,7 +28,7 @@ class SearchController extends Controller
             // Get loans related to the found clients (already scoped via admin_id)
             $clienteIds = $clientes->pluck('id');
             $prestamos = Prestamo::with('cliente')
-                ->where('admin_id', $adminId)
+                ->deAdmin($adminId)
                 ->whereIn('cliente_id', $clienteIds)
                 ->get();
         }

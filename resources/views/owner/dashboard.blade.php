@@ -238,6 +238,19 @@
 
         {{-- Acciones --}}
         <div class="ow-row-actions" onclick="event.stopPropagation()">
+            {{-- Vista admin (impersonar) --}}
+            @if($admin->activo)
+            <form method="POST" action="{{ route('owner.admins.impersonar', $admin->id) }}" style="margin:0">
+                @csrf
+                <button type="submit" class="btn btn-sm"
+                    style="background:#eef2ff;color:#4f46e5"
+                    title="Entrar al sistema como este admin (vista admin)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:13px;height:13px"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    Ver como
+                </button>
+            </form>
+            @endif
+
             {{-- Notas --}}
             @php $notasCount = $admin->notas ? count($admin->notas) : 0; @endphp
             <button type="button" class="btn btn-sm"

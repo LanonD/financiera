@@ -95,6 +95,12 @@
     </div>
 
     <div class="sel-logout">
+        @if(session('impersonador_id'))
+        <form method="POST" action="{{ route('impersonar.salir') }}" style="margin-bottom:8px">
+            @csrf
+            <button type="submit" style="color:#4f46e5">← Volver a mi cuenta de owner</button>
+        </form>
+        @endif
         <form method="POST" action="{{ route('logout') }}">
             @csrf
             <button type="submit">Cerrar sesión</button>

@@ -20,14 +20,14 @@ class DesembolsoController extends Controller
         $isAdmin  = in_array('admin', $roles);
         $adminId  = $user->adminId();
 
-        Prestamo::where('admin_id', $adminId)
+        Prestamo::deAdmin($adminId)
             ->where('estatus', 'Pendiente')
             ->whereNull('fecha_entrega')
             ->where('created_at', '<', now()->subDays(5))
             ->update(['estatus' => 'Retirado']);
 
         $query = Prestamo::with(['cliente', 'promotor'])
-            ->where('admin_id', $adminId)
+            ->deAdmin($adminId)
             ->where('estatus', 'Pendiente')
             ->whereNull('fecha_entrega');
 
@@ -52,7 +52,7 @@ class DesembolsoController extends Controller
         $prestamos_pendientes = $query->with('desembolso')->orderBy('created_at')->get();
 
         $desembolsadores = Empleado::whereJsonContains('roles', 'desembolso')
-            ->where('admin_id', $adminId)
+            ->deAdmin($adminId)
             ->where('activo', true)
             ->orderBy('nombre')
             ->get();

@@ -244,6 +244,16 @@ $estatusCfg = [
             <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:12px;height:12px"><path d="M8 2L4 6l4 4"/></svg>
             Volver
         </a>
+        @if($admin->activo)
+        <form method="POST" action="{{ route('owner.admins.impersonar', $admin->id) }}" style="margin:0">
+            @csrf
+            <button type="submit" class="btn btn-sm" style="background:#eef2ff;color:#4f46e5"
+                title="Entrar al sistema como este admin (vista admin)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:12px;height:12px"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                Ver como admin
+            </button>
+        </form>
+        @endif
         <button class="btn btn-sm btn-primary"
             onclick="document.getElementById('modalEditarDet').classList.add('open')">
             <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="width:12px;height:12px"><path d="M9.5 2l2.5 2.5-7 7H2.5V9l7-7z"/></svg>

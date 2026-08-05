@@ -10,6 +10,14 @@ class User extends Authenticatable
 {
     use HasFactory, Notifiable;
 
+    /**
+     * Centinela de adminId() cuando el owner está en "vista global": el macro
+     * de query deAdmin() lo interpreta como "sin filtro de admin" (todos los
+     * administradores). Las consultas no refactorizadas que lo comparen con
+     * where('admin_id', -1) simplemente no encuentran nada (fail-safe).
+     */
+    public const ADMIN_GLOBAL = -1;
+
     public function getAuthIdentifierName(): string
     {
         return 'usuario';
@@ -50,11 +58,26 @@ class User extends Authenticatable
      */
     public function getAllRoles(): array
     {
+        // En vista global el owner navega la interfaz de admin conservando
+        // también sus permisos de owner.
+        if ($this->esVistaGlobal()) {
+            return ['owner', 'admin'];
+        }
+
         $emp = $this->empleado;
         if ($emp && !empty($emp->roles)) {
             return $emp->roles;
         }
         return $this->puesto ? [$this->puesto] : [];
+    }
+
+    /**
+     * ¿El owner activó la "vista global"? (POV de admin con los datos de
+     * TODOS los administradores juntos; sólo lectura, exclusivo del owner).
+     */
+    public function esVistaGlobal(): bool
+    {
+        return $this->puesto === 'owner' && (bool) session('vista_global');
     }
 
     /**
@@ -81,6 +104,9 @@ class User extends Authenticatable
      */
     public function adminId(): ?int
     {
+        if ($this->esVistaGlobal()) {
+            return self::ADMIN_GLOBAL;
+        }
         if ($this->puesto === 'admin') {
             if ($this->carteraActiva() === 'financiada' && ($sombra = $this->carteraFinanciada)) {
                 return $sombra->id;

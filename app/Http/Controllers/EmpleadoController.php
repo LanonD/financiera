@@ -18,7 +18,7 @@ class EmpleadoController extends Controller
         $adminId = auth()->user()->adminId();
 
         $todos = Empleado::where('activo', true)
-            ->where('admin_id', $adminId)
+            ->deAdmin($adminId)
             ->with(['usuario', 'promotor'])
             ->get();
 
@@ -33,7 +33,7 @@ class EmpleadoController extends Controller
     public function show($id)
     {
         $adminId  = auth()->user()->adminId();
-        $empleado = Empleado::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
+        $empleado = Empleado::where('id', $id)->deAdmin($adminId)->firstOrFail();
         $roles    = $empleado->roles ?? [$empleado->puesto];
 
         // Aggregate data for all roles this employee has

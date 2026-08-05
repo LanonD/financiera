@@ -16,16 +16,16 @@ class DashboardController extends Controller
         $adminId = Auth::user()->adminId();
 
         $kpis = Cache::remember("dashboard_kpis_{$adminId}", 180, fn() => [
-            'total_prestamos'   => Prestamo::where('admin_id', $adminId)->count(),
-            'prestamos_activos' => Prestamo::where('admin_id', $adminId)->whereIn('estatus', ['Activo', 'Atrasado'])->count(),
-            'prestamos_mora'    => Prestamo::where('admin_id', $adminId)->where('estatus', 'Atrasado')->count(),
-            'total_clientes'    => Cliente::where('admin_id', $adminId)->where('activo', true)->count(),
-            'total_empleados'   => Empleado::where('admin_id', $adminId)->where('activo', true)->count(),
-            'cartera_total'     => Prestamo::where('admin_id', $adminId)->whereIn('estatus', ['Activo', 'Atrasado'])->sum('saldo_actual'),
+            'total_prestamos'   => Prestamo::deAdmin($adminId)->count(),
+            'prestamos_activos' => Prestamo::deAdmin($adminId)->whereIn('estatus', ['Activo', 'Atrasado'])->count(),
+            'prestamos_mora'    => Prestamo::deAdmin($adminId)->where('estatus', 'Atrasado')->count(),
+            'total_clientes'    => Cliente::deAdmin($adminId)->where('activo', true)->count(),
+            'total_empleados'   => Empleado::deAdmin($adminId)->where('activo', true)->count(),
+            'cartera_total'     => Prestamo::deAdmin($adminId)->whereIn('estatus', ['Activo', 'Atrasado'])->sum('saldo_actual'),
         ]);
 
         $prestamos = Prestamo::with(['cliente', 'promotor', 'cobrador'])
-            ->where('admin_id', $adminId)
+            ->deAdmin($adminId)
             ->whereIn('estatus', ['Activo', 'Atrasado', 'Pendiente'])
             ->orderByDesc('created_at')
             ->limit(10)

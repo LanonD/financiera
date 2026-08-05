@@ -63,7 +63,7 @@ class PagoController extends Controller
         if ($isCollectorOrPromo) {
             // Collector/promo ven solo los préstamos donde están asignados como cobradores
             $prestamos = Prestamo::with(['cliente'])
-                ->where('admin_id', $adminId)
+                ->deAdmin($adminId)
                 ->where('cobrador_id', $empleado->id)
                 ->whereIn('estatus', ['Activo', 'Atrasado'])
                 ->get()
@@ -85,7 +85,7 @@ class PagoController extends Controller
         } else {
             // Admin sees all loans within their tenant scope
             $prestamos = Prestamo::with(['cliente', 'cobrador'])
-                ->where('admin_id', $adminId)
+                ->deAdmin($adminId)
                 ->whereIn('estatus', ['Activo', 'Atrasado'])
                 ->get()
                 ->map(function ($p) use ($acumularMora) {
@@ -116,7 +116,7 @@ class PagoController extends Controller
         $cobradorSel = (int) $request->query('cobrador', 0);
 
         // Cobradores visibles: admin → todos; promo → solo su equipo
-        $cobradoresQuery = Empleado::where('admin_id', $adminId)->where('activo', true);
+        $cobradoresQuery = Empleado::deAdmin($adminId)->where('activo', true);
         if (!$isAdmin && $empleado) {
             $cobradoresQuery->where('promotor_id', $empleado->id);
         }
@@ -129,7 +129,7 @@ class PagoController extends Controller
         $prestamosPorCobrador = collect();
         foreach ($cobradores as $cob) {
             $loansQuery = Prestamo::with(['cliente', 'pagos'])
-                ->where('admin_id', $adminId)
+                ->deAdmin($adminId)
                 ->where('cobrador_id', $cob->id)
                 ->whereIn('estatus', ['Activo', 'Atrasado']);
 
@@ -189,7 +189,7 @@ class PagoController extends Controller
         $filtroBusqueda   = $request->query('busqueda', '');
 
         $query = Prestamo::with(['cliente', 'cobrador'])
-            ->where('admin_id', $adminId)
+            ->deAdmin($adminId)
             ->whereIn('estatus', ['Activo', 'Atrasado']);
 
         // Promo: only sees loans where they are the assigned promotor
@@ -250,7 +250,7 @@ class PagoController extends Controller
         // Cobradores disponibles:
         // Admin → todos los cobradores del tenant
         // Promo → solo cobradores asignados a su equipo (promotor_id = su empleado.id)
-        $cobradoresQuery = Empleado::where('activo', true)->where('admin_id', $adminId);
+        $cobradoresQuery = Empleado::where('activo', true)->deAdmin($adminId);
 
         if ($isPromo && $empleado) {
             $cobradoresQuery->where('promotor_id', $empleado->id);

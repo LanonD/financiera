@@ -25,6 +25,11 @@ Route::middleware(['auth', 'role:owner'])->prefix('owner')->name('owner.')->grou
     Route::get('/rendimientos',                [\App\Http\Controllers\OwnerController::class, 'rendimientos'])   ->name('rendimientos');
     Route::get('/reporte-semanal',             [\App\Http\Controllers\OwnerController::class, 'reporteSemanal']) ->name('reporteSemanal');
     Route::get('/explorador',                  [\App\Http\Controllers\OwnerExploradorController::class, 'index'])->name('explorador');
+    // Vista global: POV de admin con los datos de todos los administradores.
+    // En este modo el owner conserva el rol owner (ver User::getAllRoles),
+    // por eso "salir" también puede vivir dentro de este grupo.
+    Route::get('/vista-global/entrar',         [\App\Http\Controllers\VistaGlobalController::class, 'entrar'])->name('vistaGlobal.entrar');
+    Route::get('/vista-global/salir',          [\App\Http\Controllers\VistaGlobalController::class, 'salir'])->name('vistaGlobal.salir');
     Route::get('/financiamientos',             [\App\Http\Controllers\FinanciamientoController::class, 'index'])           ->name('financiamientos.index');
     Route::post('/financiamientos/tour-visto', [\App\Http\Controllers\FinanciamientoController::class, 'tourVisto'])       ->name('financiamientos.tourVisto');
     Route::get('/financiamientos/{id}',        [\App\Http\Controllers\FinanciamientoController::class, 'show'])            ->whereNumber('id')->name('financiamientos.show');
@@ -45,10 +50,16 @@ Route::middleware(['auth', 'role:owner'])->prefix('owner')->name('owner.')->grou
     Route::post('/admins/{id}/reset-password', [\App\Http\Controllers\OwnerController::class, 'resetPassword'])  ->name('admins.resetPassword');
     Route::put('/admins/{id}',                 [\App\Http\Controllers\OwnerController::class, 'update'])         ->name('admins.update');
     Route::delete('/admins/{id}',              [\App\Http\Controllers\OwnerController::class, 'destroy'])        ->name('admins.destroy');
+    Route::post('/admins/{id}/impersonar',     [\App\Http\Controllers\ImpersonacionController::class, 'entrar']) ->name('admins.impersonar');
     Route::post('/admins/{id}/notas',          [\App\Http\Controllers\OwnerController::class, 'storeNota'])      ->name('admins.notas.store');
     Route::delete('/admins/{id}/notas/{nota}', [\App\Http\Controllers\OwnerController::class, 'destroyNota'])   ->name('admins.notas.destroy');
     Route::post('/perfil/password',            [\App\Http\Controllers\OwnerController::class, 'changeOwnPassword'])->name('perfil.password');
 });
+
+// Volver a la cuenta owner desde una sesión impersonada (el usuario autenticado
+// en ese momento es el admin, por eso va fuera del grupo role:owner)
+Route::post('/impersonar/salir', [\App\Http\Controllers\ImpersonacionController::class, 'salir'])
+    ->middleware('auth')->name('impersonar.salir');
 
 // ── Supervisor de admins: cobro del rendimiento de financiamientos ──
 Route::middleware(['auth', 'role:supervisor'])->prefix('supervisor')->name('supervisor.')->group(function () {

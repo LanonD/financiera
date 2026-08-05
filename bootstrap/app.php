@@ -18,6 +18,8 @@ return Application::configure(basePath: dirname(__DIR__))
         // Cabeceras de seguridad en todas las respuestas web
         $middleware->web(append: [
             \App\Http\Middleware\SecurityHeaders::class,
+            // La vista global del owner no permite modificar datos
+            \App\Http\Middleware\VistaGlobalSoloLectura::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

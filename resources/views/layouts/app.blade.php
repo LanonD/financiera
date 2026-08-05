@@ -94,6 +94,17 @@
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><ellipse cx="8" cy="3.5" rx="5.5" ry="2"/><path d="M2.5 3.5v9c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2v-9"/><path d="M2.5 8c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2"/></svg>
                 Explorador
             </a>
+            @if(auth()->user()->esVistaGlobal())
+            <a href="{{ route('owner.vistaGlobal.salir') }}" class="nav-item active">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.5"/><path d="M1.5 8h13M8 1.5a10 10 0 0 1 2.6 6.5A10 10 0 0 1 8 14.5 10 10 0 0 1 5.4 8 10 10 0 0 1 8 1.5z"/></svg>
+                Salir de vista global
+            </a>
+            @else
+            <a href="{{ route('owner.vistaGlobal.entrar') }}" class="nav-item">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.5"/><path d="M1.5 8h13M8 1.5a10 10 0 0 1 2.6 6.5A10 10 0 0 1 8 14.5 10 10 0 0 1 5.4 8 10 10 0 0 1 8 1.5z"/></svg>
+                Vista global (admin)
+            </a>
+            @endif
         @endif
 
         {{-- ══ SUPERVISOR DE ADMINS: cobros de financiamientos ══ --}}
@@ -238,6 +249,31 @@
             @yield('topbar_actions')
         </div>
     </div>
+
+    {{-- Banner de vista global (owner viendo los datos de todos los admins) --}}
+    @if(auth()->user()->esVistaGlobal())
+    <div style="display:flex;align-items:center;gap:10px;position:sticky;top:56px;z-index:50;background:linear-gradient(90deg,#0f766e,#0d9488);border-bottom:1px solid #115e59;padding:8px 28px;font-size:12px;font-weight:600;color:#fff;flex-wrap:wrap">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        <span>Vista global — estás viendo los datos de <b>todos los administradores</b> en modo sólo lectura.</span>
+        <a href="{{ route('owner.vistaGlobal.salir') }}" style="margin:0 0 0 auto;padding:4px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.15);color:#fff;font-size:11px;font-weight:700;text-decoration:none;white-space:nowrap">
+            ← Salir de vista global
+        </a>
+    </div>
+    @endif
+
+    {{-- Banner de vista admin (owner impersonando a un administrador) --}}
+    @if(session('impersonador_id'))
+    <div style="display:flex;align-items:center;gap:10px;position:sticky;top:56px;z-index:50;background:linear-gradient(90deg,#4f46e5,#7c3aed);border-bottom:1px solid #4338ca;padding:8px 28px;font-size:12px;font-weight:600;color:#fff;flex-wrap:wrap">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span>Vista admin — estás viendo el sistema como <b>{{ auth()->user()->nombre ?: auth()->user()->usuario }}</b> desde tu cuenta de owner.</span>
+        <form method="POST" action="{{ route('impersonar.salir') }}" style="margin:0 0 0 auto">
+            @csrf
+            <button type="submit" style="padding:4px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.15);color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font);white-space:nowrap">
+                ← Volver a owner
+            </button>
+        </form>
+    </div>
+    @endif
 
     {{-- Offline banner --}}
     <div id="offline-banner" style="display:none;align-items:center;gap:8px;position:sticky;top:56px;z-index:49;background:#fef9c3;border-bottom:1px solid #fcd34d;padding:8px 28px;font-size:12px;font-weight:600;color:#92400e">

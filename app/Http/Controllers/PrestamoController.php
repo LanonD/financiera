@@ -26,7 +26,7 @@ class PrestamoController extends Controller
         $adminId = $user->adminId();
 
         $query = Prestamo::with(['cliente', 'promotor', 'cobrador'])
-            ->where('admin_id', $adminId);
+            ->deAdmin($adminId);
 
         if (in_array('promo', $user->getAllRoles()) && !in_array('admin', $user->getAllRoles())) {
             $empleado = $user->empleado;
@@ -95,10 +95,10 @@ class PrestamoController extends Controller
 
         // Listas para los selects de filtro (del tenant completo, no del set paginado)
         $listaPromotores = Empleado::whereJsonContains('roles', 'promo')
-            ->where('admin_id', $adminId)->where('activo', true)
+            ->deAdmin($adminId)->where('activo', true)
             ->orderBy('nombre')->pluck('nombre')->filter()->unique()->values();
         $listaCobradores = Empleado::whereJsonContains('roles', 'collector')
-            ->where('admin_id', $adminId)->where('activo', true)
+            ->deAdmin($adminId)->where('activo', true)
             ->orderBy('nombre')->pluck('nombre')->filter()->unique()->values();
 
         return view('admin.prestamos', compact('prestamos', 'filtros', 'puesto', 'listaPromotores', 'listaCobradores'));
@@ -110,7 +110,7 @@ class PrestamoController extends Controller
         $puesto = $user->puesto;
 
         $adminId = $user->adminId();
-        $query   = Cliente::where('activo', true)->where('admin_id', $adminId);
+        $query   = Cliente::where('activo', true)->deAdmin($adminId);
         if (in_array('promo', $user->getAllRoles()) && !in_array('admin', $user->getAllRoles())) {
             $empleado = $user->empleado;
             if ($empleado) {
@@ -123,7 +123,7 @@ class PrestamoController extends Controller
         // Map: client_id => ['promotor' => nombre, 'id' => prestamo_id] — mismo admin, préstamo activo
         $clientesConPrestamo = Cache::remember("clientes_con_prestamo_{$adminId}", 60, fn() =>
             Prestamo::whereIn('cliente_id', $clientes->pluck('id'))
-                ->where('admin_id', $adminId)
+                ->deAdmin($adminId)
                 ->whereIn('estatus', ['Activo', 'Atrasado', 'Pendiente'])
                 ->with('promotor')
                 ->get()
@@ -406,7 +406,7 @@ class PrestamoController extends Controller
         $adminId  = auth()->user()->adminId();
         $prestamo = Prestamo::with(['cliente', 'promotor', 'cobrador'])
             ->where('id', $id)
-            ->where('admin_id', $adminId)
+            ->deAdmin($adminId)
             ->firstOrFail();
 
         // Auto-retire pending loans with no disbursement after 5 days
@@ -462,7 +462,7 @@ class PrestamoController extends Controller
         $adminId  = auth()->user()->adminId();
         $prestamo = Prestamo::with(['cliente', 'promotor', 'cobrador'])
             ->where('id', $id)
-            ->where('admin_id', $adminId)
+            ->deAdmin($adminId)
             ->firstOrFail();
 
         // Mantener saldos y estatus coherentes antes de imprimir
@@ -552,10 +552,10 @@ class PrestamoController extends Controller
         $adminId    = auth()->user()->adminId();
         $prestamo   = Prestamo::with(['cliente', 'promotor', 'cobrador', 'desembolso'])
             ->where('id', $id)
-            ->where('admin_id', $adminId)
+            ->deAdmin($adminId)
             ->firstOrFail();
 
-        $empleados = Empleado::where('admin_id', $adminId)->where('activo', true)->get();
+        $empleados = Empleado::deAdmin($adminId)->where('activo', true)->get();
 
         $cobradores     = $empleados->filter(fn($e) => $e->hasRole('collector'))->values();
         $promotores     = $empleados->filter(fn($e) => $e->hasRole('promo'))->values();

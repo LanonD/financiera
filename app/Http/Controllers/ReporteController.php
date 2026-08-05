@@ -18,7 +18,7 @@ class ReporteController extends Controller
         $fecha_desde = $request->query('desde', now()->startOfMonth()->toDateString());
 
         // Prestamo IDs belonging to this admin (used to scope Pago queries)
-        $prestamoIds = Prestamo::where('admin_id', $adminId)->pluck('id');
+        $prestamoIds = Prestamo::deAdmin($adminId)->pluck('id');
 
         // ── Resumen del período ──────────────────────────────────────────────
         $resumen = Pago::whereBetween('fecha_pago', [$fecha_desde, $fecha_hasta])
@@ -37,7 +37,7 @@ class ReporteController extends Controller
             ")->first();
 
         // ── Cartera activa ───────────────────────────────────────────────────
-        $cartera = Prestamo::where('admin_id', $adminId)
+        $cartera = Prestamo::deAdmin($adminId)
             ->whereIn('estatus', ['Activo', 'Atrasado'])
             ->selectRaw("
                 COUNT(*) as num_prestamos,
@@ -56,7 +56,7 @@ class ReporteController extends Controller
             ->selectRaw("COUNT(*) as num, COALESCE(SUM(monto_cobrado),0) as total")
             ->first();
 
-        $desembolsos_hoy = Prestamo::where('admin_id', $adminId)
+        $desembolsos_hoy = Prestamo::deAdmin($adminId)
             ->whereDate('fecha_entrega', $hoy)
             ->whereNotNull('fecha_entrega')
             ->selectRaw("COUNT(*) as num, COALESCE(SUM(monto_entregado),0) as total")
@@ -64,7 +64,7 @@ class ReporteController extends Controller
 
         // ── Dinero enviado en el período ─────────────────────────────────────
         // Usa fecha_inicio como referencia de cuándo salió el dinero a la calle
-        $enviado_rango = Prestamo::where('admin_id', $adminId)
+        $enviado_rango = Prestamo::deAdmin($adminId)
             ->whereBetween('fecha_inicio', [$fecha_desde, $fecha_hasta])
             ->selectRaw("
                 COUNT(*) as num_prestamos,
@@ -74,7 +74,7 @@ class ReporteController extends Controller
             ")->first();
 
         // ── Enviados por día (para el chart) ─────────────────────────────────
-        $enviados_por_dia = Prestamo::where('admin_id', $adminId)
+        $enviados_por_dia = Prestamo::deAdmin($adminId)
             ->whereBetween('fecha_inicio', [$fecha_desde, $fecha_hasta])
             ->selectRaw("DATE(fecha_inicio) as dia, COALESCE(SUM(monto_entregado),0) as total_enviado")
             ->groupBy('dia')
@@ -117,7 +117,7 @@ class ReporteController extends Controller
             ->get();
 
         // ── Préstamos por estatus ────────────────────────────────────────────
-        $por_estatus = Prestamo::where('admin_id', $adminId)
+        $por_estatus = Prestamo::deAdmin($adminId)
             ->selectRaw("
                 estatus,
                 COUNT(*) as num,
@@ -129,7 +129,7 @@ class ReporteController extends Controller
 
         // ── Top 10 atrasados ─────────────────────────────────────────────────
         $atrasados = Prestamo::with('cliente')
-            ->where('prestamos.admin_id', $adminId)
+            ->deAdmin($adminId, 'prestamos.admin_id')
             ->where('prestamos.estatus', 'Atrasado')
             ->join('pagos as p2', function ($j) {
                 $j->on('prestamos.id', '=', 'p2.prestamo_id')
