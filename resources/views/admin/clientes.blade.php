@@ -41,7 +41,8 @@
 </div>
 
 @php
-    $hayFiltros = $filtros['q'] !== '' || $filtros['prestamo'] !== 'todos' || $filtros['promotor'] !== '';
+    $hayFiltros = $filtros['q'] !== '' || $filtros['prestamo'] !== 'todos'
+        || $filtros['promotor'] !== '' || $filtros['score'] !== '';
 @endphp
 
 <form method="GET" action="{{ route('clientes.index') }}" id="frmClientes" class="cl-filters">
@@ -64,6 +65,16 @@
                 </label>
                 @endforeach
             </div>
+        </div>
+        <div class="cl-divider"></div>
+        <div class="cl-field">
+            <label>Credit score</label>
+            <select class="cl-input" name="score" style="min-width:165px" onchange="document.getElementById('frmClientes').submit()">
+                <option value="">Todos</option>
+                @foreach(\App\Support\CreditScore::RANGOS as $val => $r)
+                <option value="{{ $val }}" {{ $filtros['score'] === $val ? 'selected' : '' }}>{{ $r['label'] }}</option>
+                @endforeach
+            </select>
         </div>
         @if($puesto === 'admin' && $promotores->isNotEmpty())
         <div class="cl-divider"></div>
@@ -123,18 +134,7 @@
                 $clientStatus = 'Sin préstamo'; $statusStyle = 'background:#f3f4f6;color:#9ca3af';
             }
 
-            $allPagos   = $todosP->flatMap(fn($p) => $p->pagos);
-            $totalPagos = $allPagos->count();
-            $pagados    = $allPagos->where('estatus', 'Pagado')->count();
-            $atrasadosP = $allPagos->where('estatus', 'Atrasado')->count();
-            if ($totalPagos === 0) {
-                $score = 700;
-            } else {
-                $ratio = $pagados / $totalPagos;
-                $score = (int)(520 + ($ratio * 320)) - ($atrasadosP * 8);
-                $score = max(500, min(850, $score));
-            }
-            if ($clientStatus === 'Atrasado') $score = min($score, 650);
+            $score = \App\Support\CreditScore::paraPrestamos($todosP);
             if ($score >= 750)     { $scoreColor = '#16a34a'; $barColor = '#22c55e'; }
             elseif ($score >= 650) { $scoreColor = '#ca8a04'; $barColor = '#f59e0b'; }
             else                   { $scoreColor = '#dc2626'; $barColor = '#ef4444'; }

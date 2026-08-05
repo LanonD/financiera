@@ -8,6 +8,7 @@ use App\Models\Empleado;
 use App\Models\Prestamo;
 use App\Models\Pago;
 use App\Models\PrestamoActividad;
+use App\Support\CreditScore;
 use App\Support\PaymentSchedule;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
@@ -22,7 +23,7 @@ class ClienteController extends Controller
         $adminId = $user->adminId();
 
         $query = Cliente::with(['promotor', 'prestamos.pagos'])
-            ->where('admin_id', $adminId)
+            ->deAdmin($adminId)
             ->where('activo', true);
 
         if (in_array('promo', $user->getAllRoles()) && !in_array('admin', $user->getAllRoles())) {
@@ -33,10 +34,16 @@ class ClienteController extends Controller
         }
 
         // ── Filtros server-side ───────────────────────────────
+        $score = (string)$request->query('score', '');
+        if (!isset(CreditScore::RANGOS[$score])) {
+            $score = '';
+        }
+
         $filtros = [
             'q'        => trim((string)$request->query('q', '')),
             'prestamo' => $request->query('prestamo', 'todos'),   // todos | con | sin
             'promotor' => trim((string)$request->query('promotor', '')),
+            'score'    => $score,                                  // '' | excelente | bueno | riesgo
         ];
 
         if ($filtros['q'] !== '') {
@@ -60,10 +67,23 @@ class ClienteController extends Controller
             $query->whereHas('promotor', fn ($p) => $p->where('nombre', $filtros['promotor']));
         }
 
-        $clientes = $query->orderBy('nombre')->paginate(25)->withQueryString();
+        // El score se deriva del historial de pagos, así que se filtra en SQL:
+        // hacerlo en PHP sólo alcanzaría a los 25 clientes de la página actual.
+        if ($filtros['score'] !== '') {
+            $rango = CreditScore::RANGOS[$filtros['score']];
+            $query->select('clientes.*')
+                ->leftJoinSub(
+                    CreditScore::subconsulta(),
+                    CreditScore::ALIAS,
+                    CreditScore::ALIAS . '.cliente_id', '=', 'clientes.id'
+                )
+                ->whereRaw(CreditScore::expresionSql() . ' BETWEEN ? AND ?', [$rango['min'], $rango['max']]);
+        }
+
+        $clientes = $query->orderBy('clientes.nombre')->paginate(25)->withQueryString();
 
         $promotores = Empleado::whereJsonContains('roles', 'promo')
-            ->where('admin_id', $adminId)
+            ->deAdmin($adminId)
             ->where('activo', true)
             ->orderBy('nombre')
             ->get();
@@ -75,7 +95,7 @@ class ClienteController extends Controller
     {
         $adminId    = auth()->user()->adminId();
         $promotores = Empleado::whereJsonContains('roles', 'promo')
-            ->where('admin_id', $adminId)
+            ->deAdmin($adminId)
             ->where('activo', true)
             ->get();
         return view('admin.cliente_crear', compact('promotores'));
@@ -139,7 +159,7 @@ class ClienteController extends Controller
         $adminId = auth()->user()->adminId();
         $cliente = Cliente::with('promotor')
             ->where('id', $id)
-            ->where('admin_id', $adminId)
+            ->deAdmin($adminId)
             ->firstOrFail();
 
         $prestamos = Prestamo::with(['pagos', 'promotor'])
@@ -169,9 +189,9 @@ class ClienteController extends Controller
     public function edit($id)
     {
         $adminId    = auth()->user()->adminId();
-        $cliente    = Cliente::where('id', $id)->where('admin_id', $adminId)->firstOrFail();
+        $cliente    = Cliente::where('id', $id)->deAdmin($adminId)->firstOrFail();
         $promotores = Empleado::whereJsonContains('roles', 'promo')
-            ->where('admin_id', $adminId)
+            ->deAdmin($adminId)
             ->where('activo', true)
             ->get();
 
@@ -223,7 +243,7 @@ class ClienteController extends Controller
     {
         $adminId    = auth()->user()->adminId();
         $promotores = Empleado::whereJsonContains('roles', 'promo')
-            ->where('admin_id', $adminId)
+            ->deAdmin($adminId)
             ->where('activo', true)
             ->get();
 

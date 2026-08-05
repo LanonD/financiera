@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Support\CreditScore;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -60,6 +61,22 @@ class OwnerExploradorController extends Controller
         foreach ($cfg['filters'] as $f) {
             $p = 'f_' . $f['param'];
             switch ($f['type']) {
+                case 'text':
+                    $val = trim((string) $request->query($p, ''));
+                    if ($val !== '') {
+                        $query->where(DB::raw($f['sql']), 'like', "%{$val}%");
+                    }
+                    $f['value'] = $val;
+                    break;
+
+                case 'exact':
+                    $val = trim((string) $request->query($p, ''));
+                    if ($val !== '') {
+                        $query->where(DB::raw($f['sql']), '=', $val);
+                    }
+                    $f['value'] = $val;
+                    break;
+
                 case 'select':
                     $val = (string) $request->query($p, '');
                     if ($val !== '') {
@@ -272,11 +289,15 @@ class OwnerExploradorController extends Controller
                 'label' => 'Clientes',
                 'query' => fn () => DB::table('clientes as c')
                     ->leftJoin('users as a', 'a.id', '=', 'c.admin_id')
-                    ->leftJoin('empleados as prom', 'prom.id', '=', 'c.promotor_id'),
+                    ->leftJoin('empleados as prom', 'prom.id', '=', 'c.promotor_id')
+                    ->leftJoinSub(CreditScore::subconsulta(), CreditScore::ALIAS, function ($join) {
+                        $join->on(CreditScore::ALIAS . '.cliente_id', '=', 'c.id');
+                    }),
                 'columns' => [
                     'id'         => ['label' => 'ID',        'sql' => 'c.id',         'type' => 'int'],
                     'admin'      => ['label' => 'Admin',     'sql' => $adminName,     'type' => 'text'],
                     'nombre'     => ['label' => 'Nombre',    'sql' => 'c.nombre',     'type' => 'text'],
+                    'score'      => ['label' => 'Credit Score', 'sql' => CreditScore::expresionSql(), 'type' => 'credit_score'],
                     'celular'    => ['label' => 'Celular',   'sql' => 'c.celular',    'type' => 'text'],
                     'email'      => ['label' => 'Email',     'sql' => 'c.email',      'type' => 'text'],
                     'curp'       => ['label' => 'CURP',      'sql' => 'c.curp',       'type' => 'text'],
@@ -286,12 +307,29 @@ class OwnerExploradorController extends Controller
                     'activo'     => ['label' => 'Activo',    'sql' => 'c.activo',     'type' => 'bool'],
                     'created_at' => ['label' => 'Alta',      'sql' => 'c.created_at', 'type' => 'datetime'],
                 ],
-                'search'  => ['c.nombre', 'c.celular', 'c.curp', 'c.email', 'c.direccion'],
+                'search'  => [
+                    'c.id', 'c.nombre', 'c.celular', 'c.fijo', 'c.curp', 'c.email', 'c.direccion',
+                    'prom.nombre', 'c.contacto_nombre', 'c.contacto_telefono', 'c.contacto_direccion',
+                    'c.contacto_nombre2', 'c.contacto_telefono2', 'c.contacto_direccion2',
+                ],
                 'filters' => [
-                    ['param' => 'admin',  'label' => 'Administrador', 'type' => 'select',    'sql' => 'c.admin_id',  'options' => 'admins'],
-                    ['param' => 'activo', 'label' => 'Activo',        'type' => 'select',    'sql' => 'c.activo',    'options' => $boolOpts],
-                    ['param' => 'ocup',   'label' => 'Ocupación',     'type' => 'select',    'sql' => 'c.ocupacion', 'options' => ['Empleado', 'Negocio propio', 'Independiente', 'Otro']],
-                    ['param' => 'alta',   'label' => 'Fecha de alta', 'type' => 'daterange', 'sql' => 'c.created_at'],
+                    ['param' => 'id',          'label' => 'ID',                    'type' => 'exact',     'sql' => 'c.id',          'input' => 'number'],
+                    ['param' => 'admin',       'label' => 'Administrador',         'type' => 'select',    'sql' => 'c.admin_id',    'options' => 'admins'],
+                    ['param' => 'nombre',      'label' => 'Nombre',                'type' => 'text',      'sql' => 'c.nombre'],
+                    ['param' => 'score',       'label' => 'Credit Score',          'type' => 'range',     'sql' => CreditScore::expresionSql(), 'suffix' => '', 'min_attr' => CreditScore::MIN, 'max_attr' => CreditScore::MAX],
+                    ['param' => 'celular',     'label' => 'Celular',               'type' => 'text',      'sql' => 'c.celular'],
+                    ['param' => 'fijo',        'label' => 'Teléfono fijo',         'type' => 'text',      'sql' => 'c.fijo'],
+                    ['param' => 'email',       'label' => 'Email',                 'type' => 'text',      'sql' => 'c.email'],
+                    ['param' => 'promotor',    'label' => 'Promotor',              'type' => 'text',      'sql' => 'prom.nombre'],
+                    ['param' => 'activo',      'label' => 'Activo',                'type' => 'select',    'sql' => 'c.activo',     'options' => $boolOpts],
+                    ['param' => 'contacto1',   'label' => 'Contacto 1 · Nombre',   'type' => 'text',      'sql' => 'c.contacto_nombre'],
+                    ['param' => 'telefono1',   'label' => 'Contacto 1 · Teléfono', 'type' => 'text',      'sql' => 'c.contacto_telefono'],
+                    ['param' => 'direccion1',  'label' => 'Contacto 1 · Dirección','type' => 'text',      'sql' => 'c.contacto_direccion'],
+                    ['param' => 'contacto2',   'label' => 'Contacto 2 · Nombre',   'type' => 'text',      'sql' => 'c.contacto_nombre2'],
+                    ['param' => 'telefono2',   'label' => 'Contacto 2 · Teléfono', 'type' => 'text',      'sql' => 'c.contacto_telefono2'],
+                    ['param' => 'direccion2',  'label' => 'Contacto 2 · Dirección','type' => 'text',      'sql' => 'c.contacto_direccion2'],
+                    ['param' => 'alta',        'label' => 'Fecha de alta',         'type' => 'daterange', 'sql' => 'c.created_at'],
+                    ['param' => 'actualizado', 'label' => 'Última actualización',  'type' => 'daterange', 'sql' => 'c.updated_at'],
                 ],
                 'sums'         => [],
                 'default_sort' => ['id', 'desc'],

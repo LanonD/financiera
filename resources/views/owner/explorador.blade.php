@@ -25,6 +25,7 @@
 .exp-input:focus,.exp-select:focus{border-color:var(--accent)}
 .exp-select{cursor:pointer}
 .exp-search{min-width:230px;flex:1}
+.exp-filter-text{width:170px}
 .exp-num{width:95px}
 .exp-date{width:130px}
 .exp-range{display:flex;gap:4px;align-items:center}
@@ -69,6 +70,10 @@
 .exp-pill-yellow{background:#fefce8;color:#ca8a04}
 .exp-pill-purple{background:#f5f3ff;color:#7c3aed}
 .exp-pill-gray{background:#f3f4f6;color:#6b7280}
+.exp-score{display:inline-flex;align-items:center;justify-content:center;min-width:42px;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:800;font-variant-numeric:tabular-nums}
+.exp-score-good{background:#dcfce7;color:#166534}
+.exp-score-warn{background:#fef3c7;color:#92400e}
+.exp-score-risk{background:#fee2e2;color:#991b1b}
 .exp-empty{padding:50px 20px;text-align:center;color:var(--text3);font-size:13px}
 
 /* ── Paginación ─────────────────────────────────────────── */
@@ -133,7 +138,18 @@
         </div>
 
         @foreach($filtros as $f)
-            @if($f['type'] === 'select')
+            @if(in_array($f['type'], ['text', 'exact']))
+                <div class="exp-fgroup">
+                    <span class="exp-flabel">{{ $f['label'] }}</span>
+                    <input
+                        type="{{ $f['input'] ?? 'text' }}"
+                        name="f_{{ $f['param'] }}"
+                        value="{{ $f['value'] }}"
+                        class="exp-input exp-filter-text"
+                        placeholder="{{ $f['placeholder'] ?? 'Cualquier valor' }}"
+                    >
+                </div>
+            @elseif($f['type'] === 'select')
                 <div class="exp-fgroup">
                     <span class="exp-flabel">{{ $f['label'] }}</span>
                     <select name="f_{{ $f['param'] }}" class="exp-select">
@@ -158,11 +174,11 @@
         @foreach($filtros as $f)
             @if($f['type'] === 'range')
                 <div class="exp-fgroup">
-                    <span class="exp-flabel">{{ $f['label'] }} ($)</span>
+                    <span class="exp-flabel">{{ $f['label'] }}{{ $f['suffix'] ?? ' ($)' }}</span>
                     <div class="exp-range">
-                        <input type="number" step="any" name="f_{{ $f['param'] }}_min" value="{{ $f['min'] }}" class="exp-input exp-num" placeholder="Mín">
+                        <input type="number" step="any" name="f_{{ $f['param'] }}_min" value="{{ $f['min'] }}" class="exp-input exp-num" placeholder="Mín" @if(isset($f['min_attr'])) min="{{ $f['min_attr'] }}" @endif @if(isset($f['max_attr'])) max="{{ $f['max_attr'] }}" @endif>
                         <span>—</span>
-                        <input type="number" step="any" name="f_{{ $f['param'] }}_max" value="{{ $f['max'] }}" class="exp-input exp-num" placeholder="Máx">
+                        <input type="number" step="any" name="f_{{ $f['param'] }}_max" value="{{ $f['max'] }}" class="exp-input exp-num" placeholder="Máx" @if(isset($f['min_attr'])) min="{{ $f['min_attr'] }}" @endif @if(isset($f['max_attr'])) max="{{ $f['max_attr'] }}" @endif>
                     </div>
                 </div>
             @elseif($f['type'] === 'daterange')
@@ -244,6 +260,8 @@
                                 {{ \Carbon\Carbon::parse($v)->format('d/m/Y H:i') }}
                             @elseif($col['type'] === 'bool')
                                 <span class="exp-pill {{ $v ? 'exp-pill-green' : 'exp-pill-gray' }}">{{ $v ? 'Sí' : 'No' }}</span>
+                            @elseif($col['type'] === 'credit_score')
+                                <span class="exp-score {{ $v >= 750 ? 'exp-score-good' : ($v >= 650 ? 'exp-score-warn' : 'exp-score-risk') }}">{{ $v }}</span>
                             @elseif($col['type'] === 'badge')
                                 <span class="exp-pill exp-pill-{{ $pillColor($v) }}">{{ $v }}</span>
                             @elseif($col['type'] === 'text')
