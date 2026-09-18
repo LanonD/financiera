@@ -449,7 +449,7 @@
     <div class="pf-section-head">
         <div>
             <div class="pf-title">Rendimiento general de cartera</div>
-            <div class="pf-subtitle">Flujo diario de desembolsos y cobros — filtra por admin, rango y modo</div>
+            <div class="pf-subtitle">Flujo diario de desembolsos y cobros — el rango funciona como ventana de consulta</div>
         </div>
         <div class="pf-mode-btns" id="pfModeBtns">
             <button class="pf-mbtn active" data-mode="comparar" onclick="setPfMode(this)">Desembolsos vs Cobros</button>
@@ -468,16 +468,17 @@
         </select>
 
         <span class="pf-filter-label" style="margin-left:4px">Desde</span>
-        <input type="date" class="pf-date" id="pf-desde" onchange="updatePortfolioChart()">
+        <input type="date" class="pf-date" id="pf-desde" onchange="clearPfQuickRange(); updatePortfolioChart()">
 
         <span class="pf-filter-label">Hasta</span>
-        <input type="date" class="pf-date" id="pf-hasta" onchange="updatePortfolioChart()">
+        <input type="date" class="pf-date" id="pf-hasta" onchange="clearPfQuickRange(); updatePortfolioChart()">
 
         <div class="pf-quick-btns" id="pfQuickBtns">
             <button class="pf-qbtn" onclick="setPfRange(7,this)">7D</button>
             <button class="pf-qbtn" onclick="setPfRange(30,this)">30D</button>
             <button class="pf-qbtn" onclick="setPfRange(60,this)">60D</button>
             <button class="pf-qbtn active" onclick="setPfRange(90,this)">90D</button>
+            <button class="pf-qbtn" onclick="setPfHistory(this)">Histórico</button>
         </div>
     </div>
 
@@ -497,21 +498,22 @@
 <div class="pf-section">
     <div class="pf-section-head">
         <div>
-            <div class="pf-title">Posición neta acumulada</div>
-            <div class="pf-subtitle">Suma corrida de (cobros − desembolsos) · usa los mismos filtros de arriba · verde = zona positiva · rojo = zona negativa</div>
+            <div class="pf-title">Posición neta global del capital</div>
+            <div class="pf-subtitle">Cobros − desembolsos desde el primer movimiento · cambiar el rango no reinicia el saldo</div>
         </div>
         {{-- KPI chip: valor actual --}}
         <div id="accumKpi" style="display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:9px;background:#f0fdf4;border:1.5px solid #bbf7d0;min-width:160px;justify-content:center">
             <div>
-                <div id="accumKpiLabel" style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#15803d">Posición actual</div>
+                <div id="accumKpiLabel" style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#15803d">Posición global actual</div>
                 <div id="accumKpiValue" style="font-size:18px;font-weight:800;color:#15803d;letter-spacing:-.02em">$0</div>
             </div>
         </div>
     </div>
     <div class="pf-legend">
-        <span class="pf-legend-item"><span class="pf-legend-dot" style="background:#10b981"></span>Zona positiva (cobros &gt; desembolsos)</span>
-        <span class="pf-legend-item"><span class="pf-legend-dot" style="background:#f43f5e"></span>Zona negativa (desembolsos &gt; cobros)</span>
+        <span class="pf-legend-item"><span class="pf-legend-dot" style="background:#10b981"></span>Excedente neto recuperado</span>
+        <span class="pf-legend-item"><span class="pf-legend-dot" style="background:#d97706"></span>Capital neto desplegado (no representa una pérdida)</span>
     </div>
+    <div id="accumOpening" style="font-size:11px;color:var(--text3);margin:-2px 0 10px"></div>
     <div class="pf-chart-wrap">
         <canvas id="accumChart"></canvas>
     </div>
@@ -779,6 +781,7 @@ const CC = {
     desembolso:'#6366f1',  // capital desplegado / desembolsos (índigo)
     pos:       '#10b981',  // zona positiva
     neg:       '#f43f5e',  // zona negativa (rosa, menos agresivo que rojo puro)
+    deployed:  '#d97706',  // capital neto colocado; no equivale a una pérdida
     grid:      'rgba(15,22,35,.05)',
     gridZero:  'rgba(15,22,35,.16)',
     tick:      '#9aa3b2',
@@ -889,6 +892,19 @@ function setPfRange(days, btn) {
     updatePortfolioChart();
 }
 
+// Mostrar todos los movimientos disponibles desde el inicio de la operación.
+function setPfHistory(btn) {
+    document.querySelectorAll('#pfQuickBtns .pf-qbtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('pf-desde').value = PF.dates[0];
+    document.getElementById('pf-hasta').value = PF.dates[PF.dates.length - 1];
+    updatePortfolioChart();
+}
+
+function clearPfQuickRange() {
+    document.querySelectorAll('#pfQuickBtns .pf-qbtn').forEach(b => b.classList.remove('active'));
+}
+
 // Construir/actualizar gráfica de portafolio
 function updatePortfolioChart() {
     // Quitar el active de los botones rápidos si cambian las fechas manualmente
@@ -924,6 +940,13 @@ function updatePortfolioChart() {
     const filtLabels = PF.labels.slice(startIdx, endIdx + 1);
     const filtDes    = rawDes.slice(startIdx, endIdx + 1);
     const filtCob    = rawCob.slice(startIdx, endIdx + 1);
+
+    // El rango es sólo una ventana: la posición conserva todos los movimientos
+    // ocurridos antes de la primera fecha visible como saldo de apertura.
+    const openingBalance = rawCob.slice(0, startIdx).reduce(
+        (balance, cobro, i) => balance + cobro - rawDes[i],
+        0
+    );
 
     // Construir datasets según modo
     let datasets;
@@ -977,7 +1000,12 @@ function updatePortfolioChart() {
     }
 
     // Actualizar gráfica acumulada (usa los mismos datos filtrados)
-    updateAccumChart(filtLabels, filtDes, filtCob);
+    updateAccumChart(filtLabels, filtDes, filtCob, openingBalance, {
+        adminId,
+        cutoffDate: PF.dates[endIdx],
+        isCurrentCutoff: endIdx === PF.dates.length - 1,
+        openingDate: startIdx > 0 ? PF.dates[startIdx - 1] : null,
+    });
 
     // Reusar o crear
     if (portfolioChart) {
@@ -1041,9 +1069,9 @@ function updatePortfolioChart() {
 // ════════════════════════════════════════════════════════════
 let accumChart = null;
 
-function updateAccumChart(labels, rawDes, rawCob) {
+function updateAccumChart(labels, rawDes, rawCob, openingBalance = 0, context = {}) {
     // Calcular suma corrida: accum[i] = Σ(cobros[0..i]) - Σ(desembolsos[0..i])
-    let running = 0;
+    let running = openingBalance;
     const accumData = rawCob.map((c, i) => {
         running += c - rawDes[i];
         return running;
@@ -1057,25 +1085,37 @@ function updateAccumChart(labels, rawDes, rawCob) {
     const kpiEl    = document.getElementById('accumKpi');
     const kpiLabel = document.getElementById('accumKpiLabel');
     const kpiVal   = document.getElementById('accumKpiValue');
-    const color    = isPos ? '#15803d' : '#b91c1c';
-    const bg       = isPos ? '#f0fdf4' : '#fef2f2';
-    const border   = isPos ? '#bbf7d0' : '#fca5a5';
+    const color    = isPos ? '#15803d' : '#b45309';
+    const bg       = isPos ? '#f0fdf4' : '#fffbeb';
+    const border   = isPos ? '#bbf7d0' : '#fde68a';
     kpiEl.style.background  = bg;
     kpiEl.style.borderColor = border;
     kpiLabel.style.color    = color;
     kpiVal.style.color      = color;
-    const sign = lastVal > 0 ? '+' : '';
+    const sign = lastVal > 0 ? '+' : (lastVal < 0 ? '−' : '');
     kpiVal.textContent = sign + '$' + Math.abs(lastVal).toLocaleString('es-MX', {minimumFractionDigits:0, maximumFractionDigits:0});
+    const scope = context.adminId === 'all' ? 'global' : 'del administrador';
+    const moment = context.isCurrentCutoff ? 'actual' : 'al corte ' + formatPfDate(context.cutoffDate);
     if (lastVal > 0) {
-        kpiLabel.textContent = '✅ Posición actual (positiva)';
+        kpiLabel.textContent = 'Posición ' + scope + ' ' + moment + ' · excedente recuperado';
     } else if (lastVal < 0) {
-        kpiLabel.textContent = '🔴 Posición actual (negativa)';
+        kpiLabel.textContent = 'Posición ' + scope + ' ' + moment + ' · capital desplegado';
     } else {
-        kpiLabel.textContent = 'Posición actual (en cero)';
+        kpiLabel.textContent = 'Posición ' + scope + ' ' + moment + ' · en cero';
+    }
+
+    const openingEl = document.getElementById('accumOpening');
+    if (context.openingDate) {
+        const openingSign = openingBalance > 0 ? '+' : (openingBalance < 0 ? '−' : '');
+        openingEl.textContent = 'Saldo de apertura al ' + formatPfDate(context.openingDate) + ': ' +
+            openingSign + '$' + Math.abs(openingBalance).toLocaleString('es-MX', {maximumFractionDigits:0}) +
+            '. La gráfica continúa desde ese saldo.';
+    } else {
+        openingEl.textContent = 'Histórico completo desde el primer movimiento · saldo de apertura: $0.';
     }
 
     // Colores por punto
-    const ptColors = accumData.map(v => v >= 0 ? CC.pos : CC.neg);
+    const ptColors = accumData.map(v => v >= 0 ? CC.pos : CC.deployed);
 
     const dataset = {
         label: 'Posición acumulada',
@@ -1083,10 +1123,10 @@ function updateAccumChart(labels, rawDes, rawCob) {
         fill: {
             target: 'origin',
             above: rgba(CC.pos, .14),
-            below: rgba(CC.neg, .14),
+            below: rgba(CC.deployed, .14),
         },
         segment: {
-            borderColor: ctx => ctx.p0.parsed.y >= 0 ? CC.pos : CC.neg,
+            borderColor: ctx => ctx.p0.parsed.y >= 0 ? CC.pos : CC.deployed,
         },
         tension: 0.4,
         pointRadius: accumData.map(v => v !== 0 ? 2.5 : 0),
@@ -1121,13 +1161,13 @@ function updateAccumChart(labels, rawDes, rawCob) {
                     ...TIP,
                     callbacks: {
                         title: items => items[0].label,
-                        labelColor: ctx => ({ borderColor:'transparent', backgroundColor: ctx.raw >= 0 ? CC.pos : CC.neg, borderRadius:3 }),
+                        labelColor: ctx => ({ borderColor:'transparent', backgroundColor: ctx.raw >= 0 ? CC.pos : CC.deployed, borderRadius:3 }),
                         label: ctx => {
                             const v   = ctx.raw;
                             const abs = Math.abs(v);
                             const formatted = '$' + abs.toLocaleString('es-MX', {minimumFractionDigits:0, maximumFractionDigits:0});
-                            if (v > 0)  return '▲ Positivo: +' + formatted;
-                            if (v < 0)  return '▼ Negativo: −' + formatted;
+                            if (v > 0)  return 'Excedente neto recuperado: +' + formatted;
+                            if (v < 0)  return 'Capital neto desplegado: ' + formatted;
                             return 'En cero: $0';
                         }
                     }
@@ -1160,13 +1200,23 @@ function updateAccumChart(labels, rawDes, rawCob) {
     });
 }
 
+function formatPfDate(isoDate) {
+    if (!isoDate) return '';
+    const parts = isoDate.split('-');
+    return parts.length === 3 ? parts[2] + '/' + parts[1] + '/' + parts[0] : isoDate;
+}
+
 // Inicializar la gráfica de portafolio al cargar
 document.addEventListener('DOMContentLoaded', function () {
     // Defaults: últimos 90 días
     const today = PF.dates[PF.dates.length - 1];
-    const from  = PF.dates[0];
-    document.getElementById('pf-desde').value = from;
-    document.getElementById('pf-hasta').value = today;
+    const from  = PF.dates[Math.max(0, PF.dates.length - 90)];
+    const desdeEl = document.getElementById('pf-desde');
+    const hastaEl = document.getElementById('pf-hasta');
+    desdeEl.min = hastaEl.min = PF.dates[0];
+    desdeEl.max = hastaEl.max = today;
+    desdeEl.value = from;
+    hastaEl.value = today;
     updatePortfolioChart();
 });
 

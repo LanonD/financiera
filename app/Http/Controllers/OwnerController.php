@@ -605,8 +605,27 @@ class OwnerController extends Controller
         $admins   = User::where('puesto', 'admin')->whereNull('cartera_financiada_de')->orderBy('created_at', 'desc')->get();
         $adminIds = $admins->pluck('id')->all();
 
-        // ── Chart: últimos 90 días de desembolsos y cobros por admin ──
-        $chartFrom = now()->subDays(89)->toDateString();
+        // ── Histórico diario de desembolsos y cobros por admin ──
+        // El servidor entrega el historial completo. Los rangos 7/30/60/90 días
+        // son solamente una ventana visual: la posición acumulada debe conservar
+        // el saldo de apertura anterior al rango y no reiniciarse artificialmente
+        // en cero cada vez que el usuario cambia las fechas.
+        $firstDisbursement = DB::table('prestamos')
+            ->whereIn('admin_id', $adminIds)
+            ->whereNotNull('fecha_entrega')
+            ->min('fecha_entrega');
+
+        $firstCollection = DB::table('pagos')
+            ->join('prestamos', 'pagos.prestamo_id', '=', 'prestamos.id')
+            ->whereIn('prestamos.admin_id', $adminIds)
+            ->whereIn('pagos.estatus', ['Pagado', 'Parcial'])
+            ->whereNotNull('pagos.fecha_pago')
+            ->min('pagos.fecha_pago');
+
+        $chartFrom = collect([$firstDisbursement, $firstCollection])
+            ->filter()
+            ->map(fn ($date) => \Carbon\Carbon::parse($date)->toDateString())
+            ->min() ?? now()->toDateString();
 
         // Desembolsos diarios por admin y estatus (el estatus permite filtrar el flujo
         // diario al togglear el donut de "Distribución por estatus")
@@ -631,7 +650,7 @@ class OwnerController extends Controller
             ->get()
             ->groupBy('admin_id');
 
-        // Rango de 90 días
+        // Rango diario completo desde el primer movimiento hasta hoy.
         $dateRange = [];
         $cur = \Carbon\Carbon::parse($chartFrom);
         while ($cur->lte(now()->startOfDay())) {
