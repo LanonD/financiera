@@ -104,6 +104,11 @@ class OwnerController extends Controller
 
     /**
      * Dashboard detallado de un administrador individual.
+     *
+     * Lectura financiera de arriba hacia abajo: posición neta (todo lo cobrado
+     * menos todo lo desembolsado), KPIs de capital, flujo diario de 180 días,
+     * cobranza contra lo programado, riesgo (PAR / NPL / antigüedad de lo
+     * vencido), composición de la cartera, rendimiento y préstamos en atraso.
      */
     public function show(int $id)
     {
@@ -111,6 +116,10 @@ class OwnerController extends Controller
 
         $deployedStatuses = ['Activo', 'Atrasado', 'Finalizado'];
         $activeStatuses   = ['Activo', 'Atrasado'];
+        $payableStatuses  = ['Pendiente', 'Atrasado', 'Parcial'];
+        $realPayStatuses  = ['Pagado', 'Parcial'];
+        $hoy  = now()->startOfDay();
+        $hoyD = $hoy->toDateString();
 
         $allPrestamos = Prestamo::with(['cliente', 'promotor'])
             ->where('admin_id', $id)
@@ -136,7 +145,7 @@ class OwnerController extends Controller
 
         $totalCobrado = $deployedIds->isNotEmpty()
             ? (float) Pago::whereIn('prestamo_id', $deployedIds)
-                ->whereIn('estatus', ['Pagado', 'Parcial'])->sum('monto_cobrado')
+                ->whereIn('estatus', $realPayStatuses)->sum('monto_cobrado')
             : 0.0;
 
         // Capital recuperado: sumar 'capital' SOLO de filas que cobraron dinero real
@@ -147,7 +156,7 @@ class OwnerController extends Controller
         // cálculo de refinanciamiento, que excluye filas liquidadas/congeladas).
         $capitalRecuperado = $deployedIds->isNotEmpty()
             ? (float) Pago::whereIn('prestamo_id', $deployedIds)
-                ->whereIn('estatus', ['Pagado', 'Parcial'])
+                ->whereIn('estatus', $realPayStatuses)
                 ->where('monto_cobrado', '>', 0)
                 ->sum('capital')
             : 0.0;
@@ -161,23 +170,35 @@ class OwnerController extends Controller
         $roi = $capitalDesplegado > 0
             ? round($gananciaNetaAprox / $capitalDesplegado * 100, 2) : 0;
 
+        // ── Posición neta y lectura del rendimiento ────────────────
+        // Posición = todo lo cobrado − todo lo desembolsado. Negativa: capital
+        // "en la calle" todavía por recuperar; positiva: el capital ya regresó y
+        // el excedente es ganancia realizada. Mismo concepto que la posición
+        // acumulada de la vista de rendimientos.
+        $posicionNeta        = round($totalCobrado - $capitalDesplegado, 2);
+        $rentabilidadPactada = $capitalDesplegado > 0 ? round($interesEsperado / $capitalDesplegado * 100, 1) : 0;
+        $interesPorCobrar    = max(0.0, round($interesEsperado - $interesCobranzaReal, 2));
+        $recuperadoPct       = $capitalDesplegado > 0 ? round($capitalRecuperado / $capitalDesplegado * 100, 1) : 0;
+        $interesCobradoPct   = $interesEsperado > 0 ? round($interesCobranzaReal / $interesEsperado * 100, 1) : 0;
+        $coberturaSaldo      = $posicionNeta < 0 ? round($capitalPendiente / abs($posicionNeta), 1) : null;
+
         // ── PAR (Portfolio at Risk) ───────────────────────────────
-        $date30 = now()->subDays(30)->toDateString();
-        $date60 = now()->subDays(60)->toDateString();
-        $date90 = now()->subDays(90)->toDateString();
+        $date30 = $hoy->copy()->subDays(30)->toDateString();
+        $date60 = $hoy->copy()->subDays(60)->toDateString();
+        $date90 = $hoy->copy()->subDays(90)->toDateString();
 
         $overdueIds30 = $overdueIds60 = $overdueIds90 = collect();
         if ($activeIds->isNotEmpty()) {
             $overdueIds30 = Pago::whereIn('prestamo_id', $activeIds)
-                ->whereIn('estatus', ['Pendiente', 'Atrasado', 'Parcial'])
+                ->whereIn('estatus', $payableStatuses)
                 ->where('fecha_programada', '<=', $date30)
                 ->distinct()->pluck('prestamo_id');
             $overdueIds60 = Pago::whereIn('prestamo_id', $activeIds)
-                ->whereIn('estatus', ['Pendiente', 'Atrasado', 'Parcial'])
+                ->whereIn('estatus', $payableStatuses)
                 ->where('fecha_programada', '<=', $date60)
                 ->distinct()->pluck('prestamo_id');
             $overdueIds90 = Pago::whereIn('prestamo_id', $activeIds)
-                ->whereIn('estatus', ['Pendiente', 'Atrasado', 'Parcial'])
+                ->whereIn('estatus', $payableStatuses)
                 ->where('fecha_programada', '<=', $date90)
                 ->distinct()->pluck('prestamo_id');
         }
@@ -194,32 +215,187 @@ class OwnerController extends Controller
         $nAtrasados = $atrasados->count();
         $npl = $nActivos > 0 ? round($nAtrasados / $nActivos * 100, 1) : 0;
 
-        // ── Gráfica mensual (12 meses) ─────────────────────────────
-        $chartLabels = $chartDesembolsos = $chartCobros = [];
-        $chartMonths = []; // para el selector de mes del drill-down (valor Y-m + etiqueta)
+        // ── Serie diaria (180 días): desembolsos y cobros por día ──
+        // Con esto la vista arma el flujo neto (cobros − desembolsos), la posición
+        // acumulada y el conteo de días positivos / negativos para los rangos
+        // 30 / 90 / 180 sin volver al servidor. El saldo de apertura de cada rango
+        // se deriva de $posicionNeta restando el neto de la ventana visible.
+        $serieDias   = 180;
+        $serieDesde  = $hoy->copy()->subDays($serieDias - 1);
+        $serieDesdeD = $serieDesde->toDateString();
 
-        $cobrosRaw = DB::table('pagos')
+        $desDiario = DB::table('prestamos')
+            ->where('admin_id', $id)
+            ->whereIn('estatus', $deployedStatuses)
+            ->whereNotNull('fecha_entrega')
+            ->where('fecha_entrega', '>=', $serieDesdeD)
+            ->selectRaw('DATE(fecha_entrega) dia, SUM(monto_entregado) total')
+            ->groupBy('dia')->pluck('total', 'dia');
+
+        $cobDiario = DB::table('pagos')
             ->join('prestamos', 'pagos.prestamo_id', '=', 'prestamos.id')
-            ->selectRaw('DATE_FORMAT(pagos.fecha_pago, "%Y-%m") as mes, SUM(pagos.monto_cobrado) as total')
             ->where('prestamos.admin_id', $id)
-            ->whereIn('pagos.estatus', ['Pagado', 'Parcial'])
+            ->whereIn('prestamos.estatus', $deployedStatuses)
+            ->whereIn('pagos.estatus', $realPayStatuses)
             ->whereNotNull('pagos.fecha_pago')
-            ->where('pagos.fecha_pago', '>=', now()->subMonths(11)->startOfMonth()->toDateString())
-            ->groupBy('mes')->pluck('total', 'mes');
+            ->where('pagos.fecha_pago', '>=', $serieDesdeD)
+            ->selectRaw('DATE(pagos.fecha_pago) dia, SUM(pagos.monto_cobrado) total')
+            ->groupBy('dia')->pluck('total', 'dia');
 
-        for ($i = 11; $i >= 0; $i--) {
-            $fecha  = now()->subMonths($i);
-            $mesKey = $fecha->format('Y-m');
-            $des = $allPrestamos
-                ->filter(fn($p) => $p->fecha_entrega && $p->fecha_entrega->format('Y-m') === $mesKey)
-                ->sum('monto_entregado');
-            $chartLabels[]      = $fecha->locale('es')->isoFormat('MMM YY');
-            $chartDesembolsos[] = (float) $des;
-            $chartCobros[]      = (float) ($cobrosRaw[$mesKey] ?? 0);
-            $chartMonths[]      = ['value' => $mesKey, 'label' => ucfirst($fecha->locale('es')->isoFormat('MMMM YYYY'))];
+        $serieFlujo = [];
+        for ($d = $serieDesde->copy(); $d->lte($hoy); $d->addDay()) {
+            $k = $d->toDateString();
+            $serieFlujo[] = [
+                'f'   => $k,
+                'cob' => round((float) ($cobDiario[$k] ?? 0), 2),
+                'des' => round((float) ($desDiario[$k] ?? 0), 2),
+            ];
         }
 
-        // ── Distribución por estatus ──────────────────────────────
+        // Suma de un mapa dia => total dentro de un rango de fechas (inclusive)
+        $sumRango = function ($mapa, \Carbon\Carbon $desde, \Carbon\Carbon $hasta) {
+            $t = 0.0;
+            for ($d = $desde->copy(); $d->lte($hasta); $d->addDay()) {
+                $t += (float) ($mapa[$d->toDateString()] ?? 0);
+            }
+            return round($t, 2);
+        };
+
+        $hace30            = $hoy->copy()->subDays(29);
+        $cobradoUlt30      = $sumRango($cobDiario, $hace30, $hoy);
+        $desembolsadoUlt30 = $sumRango($desDiario, $hace30, $hoy);
+
+        // ── Interés realizado por periodo ──────────────────────────
+        // Por fila: lo cobrado por encima del capital programado de esa cuota.
+        // LEAST evita que una cuota Parcial (cobró menos que su capital) reste.
+        $pagosReales = fn() => DB::table('pagos')
+            ->join('prestamos', 'pagos.prestamo_id', '=', 'prestamos.id')
+            ->where('prestamos.admin_id', $id)
+            ->whereIn('prestamos.estatus', $deployedStatuses)
+            ->whereIn('pagos.estatus', $realPayStatuses)
+            ->where('pagos.monto_cobrado', '>', 0)
+            ->whereNotNull('pagos.fecha_pago');
+        $interesExpr = 'SUM(pagos.monto_cobrado - LEAST(pagos.capital, pagos.monto_cobrado))';
+
+        $interesUlt30 = round((float) ($pagosReales()
+            ->where('pagos.fecha_pago', '>=', $hace30->toDateString())
+            ->selectRaw("$interesExpr i")->first()->i ?? 0), 2);
+
+        $mesesDesde    = $hoy->copy()->subMonths(5)->startOfMonth();
+        $interesMesRaw = $pagosReales()
+            ->where('pagos.fecha_pago', '>=', $mesesDesde->toDateString())
+            ->selectRaw("DATE_FORMAT(pagos.fecha_pago, '%Y-%m') mes, $interesExpr i")
+            ->groupBy('mes')->pluck('i', 'mes');
+        $interesMensual = [];
+        for ($i = 5; $i >= 0; $i--) {
+            $m = $hoy->copy()->subMonths($i);
+            $interesMensual[] = [
+                'label'   => $m->locale('es')->isoFormat('MMM'),
+                'valor'   => round((float) ($interesMesRaw[$m->format('Y-m')] ?? 0), 2),
+                'parcial' => $i === 0,
+            ];
+        }
+
+        // ── Cobranza: cobrado contra lo programado en cuotas ──────
+        // Semana y mes se miden "al día de hoy" para no castigar el inicio del
+        // periodo con cuotas que todavía no vencen.
+        $semIni      = $hoy->copy()->startOfWeek(\Carbon\Carbon::MONDAY);
+        $mesIni      = $hoy->copy()->startOfMonth();
+        $semanas8Ini = $semIni->copy()->subWeeks(7);
+
+        $progDiario = DB::table('pagos')
+            ->join('prestamos', 'pagos.prestamo_id', '=', 'prestamos.id')
+            ->where('prestamos.admin_id', $id)
+            ->whereRaw("COALESCE(pagos.tipo_pago,'plan') NOT IN('congelado','liquidado')")
+            ->whereBetween('pagos.fecha_programada', [$semanas8Ini->toDateString(), $hoyD])
+            ->selectRaw('DATE(pagos.fecha_programada) dia, SUM(pagos.monto_cuota) total')
+            ->groupBy('dia')->pluck('total', 'dia');
+
+        $semProg = $sumRango($progDiario, $semIni, $hoy);
+        $semCob  = $sumRango($cobDiario, $semIni, $hoy);
+        $mesProg = $sumRango($progDiario, $mesIni, $hoy);
+        $mesCob  = $sumRango($cobDiario, $mesIni, $hoy);
+        $cobranza = [
+            'semana' => ['programado' => $semProg, 'cobrado' => $semCob,
+                         'eficiencia' => $semProg > 0 ? round($semCob / $semProg * 100, 1) : null],
+            'mes'    => ['programado' => $mesProg, 'cobrado' => $mesCob,
+                         'eficiencia' => $mesProg > 0 ? round($mesCob / $mesProg * 100, 1) : null],
+        ];
+
+        $semanasCobranza = [];
+        for ($i = 7; $i >= 0; $i--) {
+            $wIni = $semIni->copy()->subWeeks($i);
+            $wFin = $i === 0 ? $hoy : $wIni->copy()->addDays(6);
+            $p = $sumRango($progDiario, $wIni, $wFin);
+            $c = $sumRango($cobDiario, $wIni, $wFin);
+            $semanasCobranza[] = [
+                'label'      => $i === 0 ? 'Actual' : $wIni->locale('es')->isoFormat('D MMM'),
+                'programado' => $p,
+                'cobrado'    => $c,
+                'eficiencia' => $p > 0 ? round($c / $p * 100, 1) : null,
+            ];
+        }
+        $eficienciaPrev = $semanasCobranza[6]['eficiencia'];
+
+        // ── Vencido a hoy y antigüedad de lo vencido ──────────────
+        $venc = DB::table('pagos')
+            ->join('prestamos', 'pagos.prestamo_id', '=', 'prestamos.id')
+            ->where('prestamos.admin_id', $id)
+            ->whereIn('prestamos.estatus', $activeStatuses)
+            ->where('pagos.fecha_programada', '<', $hoyD)
+            ->whereIn('pagos.estatus', $payableStatuses)
+            ->whereRaw("COALESCE(pagos.tipo_pago,'plan') NOT IN('congelado','liquidado')")
+            ->selectRaw(
+                "COUNT(*) n,
+                 SUM(GREATEST(0, pagos.monto_cuota - COALESCE(pagos.monto_cobrado,0))) monto,
+                 SUM(CASE WHEN DATEDIFF(?, pagos.fecha_programada) <= 30 THEN GREATEST(0, pagos.monto_cuota - COALESCE(pagos.monto_cobrado,0)) ELSE 0 END) b1_30,
+                 SUM(CASE WHEN DATEDIFF(?, pagos.fecha_programada) BETWEEN 31 AND 60 THEN GREATEST(0, pagos.monto_cuota - COALESCE(pagos.monto_cobrado,0)) ELSE 0 END) b31_60,
+                 SUM(CASE WHEN DATEDIFF(?, pagos.fecha_programada) BETWEEN 61 AND 90 THEN GREATEST(0, pagos.monto_cuota - COALESCE(pagos.monto_cobrado,0)) ELSE 0 END) b61_90,
+                 SUM(CASE WHEN DATEDIFF(?, pagos.fecha_programada) > 90 THEN GREATEST(0, pagos.monto_cuota - COALESCE(pagos.monto_cobrado,0)) ELSE 0 END) b90p",
+                [$hoyD, $hoyD, $hoyD, $hoyD]
+            )->first();
+        $vencido = ['n' => (int) ($venc->n ?? 0), 'monto' => round((float) ($venc->monto ?? 0), 2)];
+        $aging = [
+            ['label' => '1–30 d',  'monto' => round((float) ($venc->b1_30  ?? 0), 2), 'color' => '#f98080'],
+            ['label' => '31–60 d', 'monto' => round((float) ($venc->b31_60 ?? 0), 2), 'color' => '#e34948'],
+            ['label' => '61–90 d', 'monto' => round((float) ($venc->b61_90 ?? 0), 2), 'color' => '#b91c1c'],
+            ['label' => '+90 d',   'monto' => round((float) ($venc->b90p   ?? 0), 2), 'color' => '#7f1d1d'],
+        ];
+
+        // ── Próximos 7 días: cuotas programadas por día ───────────
+        $prox7Fin = $hoy->copy()->addDays(6);
+        $proxRaw = DB::table('pagos')
+            ->join('prestamos', 'pagos.prestamo_id', '=', 'prestamos.id')
+            ->where('prestamos.admin_id', $id)
+            ->whereIn('prestamos.estatus', $activeStatuses)
+            ->whereIn('pagos.estatus', $payableStatuses)
+            ->whereRaw("COALESCE(pagos.tipo_pago,'plan') NOT IN('congelado','liquidado')")
+            ->whereBetween('pagos.fecha_programada', [$hoyD, $prox7Fin->toDateString()])
+            ->selectRaw('DATE(pagos.fecha_programada) dia, COUNT(*) n, SUM(GREATEST(0, pagos.monto_cuota - COALESCE(pagos.monto_cobrado,0))) monto')
+            ->groupBy('dia')->get()->keyBy('dia');
+        $proximos7 = [];
+        for ($d = $hoy->copy(); $d->lte($prox7Fin); $d->addDay()) {
+            $r = $proxRaw->get($d->toDateString());
+            $proximos7[] = [
+                'dow'   => $d->locale('es')->isoFormat('ddd'),
+                'dia'   => $d->day,
+                'hoy'   => $d->isSameDay($hoy),
+                'n'     => $r ? (int) $r->n : 0,
+                'monto' => $r ? round((float) $r->monto, 2) : 0.0,
+            ];
+        }
+        $proximos7Total  = round(array_sum(array_column($proximos7, 'monto')), 2);
+        $proximos7Cuotas = array_sum(array_column($proximos7, 'n'));
+
+        // ── Composición de la cartera ─────────────────────────────
+        $cobradoPorEstatus = DB::table('pagos')
+            ->join('prestamos', 'pagos.prestamo_id', '=', 'prestamos.id')
+            ->where('prestamos.admin_id', $id)
+            ->whereIn('pagos.estatus', $realPayStatuses)
+            ->selectRaw('prestamos.estatus est, SUM(pagos.monto_cobrado) total')
+            ->groupBy('est')->pluck('total', 'est');
+
+        $totalPrestamos = $allPrestamos->count();
         $porEstatus = [
             'Activo'     => $allPrestamos->where('estatus', 'Activo')->count(),
             'Atrasado'   => $nAtrasados,
@@ -227,166 +403,171 @@ class OwnerController extends Controller
             'Finalizado' => $finalizados->count(),
             'Retirado'   => $retirados->count(),
         ];
+        $composicion = [
+            ['estatus' => 'Activo',     'n' => $porEstatus['Activo'],     'color' => '#2a78d6',
+             'monto' => (float) $allPrestamos->where('estatus', 'Activo')->sum('saldo_actual'), 'nota' => 'saldo al corriente'],
+            ['estatus' => 'Atrasado',   'n' => $porEstatus['Atrasado'],   'color' => '#dc2626',
+             'monto' => $capitalRiesgo, 'nota' => 'saldo en riesgo · mora $' . number_format($moraPendiente, 0)],
+            ['estatus' => 'Finalizado', 'n' => $porEstatus['Finalizado'], 'color' => '#059669',
+             'monto' => (float) ($cobradoPorEstatus['Finalizado'] ?? 0), 'nota' => 'cobrado en total'],
+            ['estatus' => 'Pendiente',  'n' => $porEstatus['Pendiente'],  'color' => '#d97706',
+             'monto' => (float) $pendientes->sum(fn($p) => (float) ($p->monto_entregado ?: $p->monto)), 'nota' => 'por entregar'],
+            ['estatus' => 'Retirado',   'n' => $porEstatus['Retirado'],   'color' => '#9aa3b2',
+             'monto' => null, 'nota' => 'nunca desembolsado'],
+        ];
+        foreach ($composicion as &$c) {
+            $c['pct'] = $totalPrestamos > 0 ? round($c['n'] / $totalPrestamos * 100, 1) : 0;
+        }
+        unset($c);
+        $frecuencias = $deployed->groupBy(fn($p) => strtolower($p->frecuencia ?: 'sin dato'))
+            ->map->count()->sortDesc();
 
         // ── Métricas de cartera ───────────────────────────────────
-        $totalPrestamos  = $allPrestamos->count();
         $ticketPromedio  = $deployed->count() > 0 ? round($deployed->avg('monto_entregado'), 0) : 0;
         $montoMax        = $deployed->isNotEmpty() ? (float) $deployed->max('monto_entregado') : 0;
         $montoMin        = $deployed->isNotEmpty() ? (float) $deployed->min('monto_entregado') : 0;
         $duracionPromedio = $deployed->count() > 0 ? round($deployed->avg('num_pagos'), 0) : 0;
 
-        // ── Próximos cobros (30 días) ─────────────────────────────
+        // ── Préstamos en atraso (días, cuotas vencidas, saldo, mora) ──
+        $morosos = collect();
+        if ($atrasados->isNotEmpty()) {
+            $vencPorPrestamo = DB::table('pagos')
+                ->whereIn('prestamo_id', $atrasados->pluck('id')->all())
+                ->where('fecha_programada', '<', $hoyD)
+                ->whereIn('estatus', $payableStatuses)
+                ->whereRaw("COALESCE(tipo_pago,'plan') NOT IN('congelado','liquidado')")
+                ->selectRaw('prestamo_id, MIN(fecha_programada) oldest, COUNT(*) n')
+                ->groupBy('prestamo_id')->get()->keyBy('prestamo_id');
+            $morosos = $atrasados->map(function ($p) use ($vencPorPrestamo, $hoy) {
+                $v = $vencPorPrestamo->get($p->id);
+                return [
+                    'prestamo_id' => $p->id,
+                    'cliente'     => $p->cliente?->nombre ?? 'Sin cliente',
+                    'dias'        => $v ? (int) \Carbon\Carbon::parse($v->oldest)->diffInDays($hoy) : 0,
+                    'cuotas'      => $v ? (int) $v->n : 0,
+                    'saldo'       => (float) $p->saldo_actual,
+                    'mora'        => (float) $p->interes_acumulado,
+                    'promotor'    => $p->promotor?->nombre,
+                ];
+            })->sortByDesc('dias')->values();
+        }
+        $morososMas60 = $morosos->where('dias', '>', 60)->values();
+
+        // ── Ranking entre administradores (por rendimiento real) ──
+        // Rendimiento real = interés cobrado / capital desplegado, mismo criterio
+        // que $roi. Admins sin capital desplegado van al final.
+        $adminIdsRank = User::where('puesto', 'admin')->whereNull('cartera_financiada_de')->pluck('id');
+        $capPorAdmin = DB::table('prestamos')
+            ->whereIn('admin_id', $adminIdsRank)
+            ->whereIn('estatus', $deployedStatuses)
+            ->groupBy('admin_id')
+            ->selectRaw('admin_id, SUM(monto_entregado) cap')
+            ->pluck('cap', 'admin_id');
+        $cobPorAdmin = DB::table('pagos')
+            ->join('prestamos', 'pagos.prestamo_id', '=', 'prestamos.id')
+            ->whereIn('prestamos.admin_id', $adminIdsRank)
+            ->whereIn('prestamos.estatus', $deployedStatuses)
+            ->whereIn('pagos.estatus', $realPayStatuses)
+            ->where('pagos.monto_cobrado', '>', 0)
+            ->groupBy('prestamos.admin_id')
+            ->selectRaw('prestamos.admin_id aid, SUM(pagos.monto_cobrado) cob, SUM(pagos.capital) cap')
+            ->get()->keyBy('aid');
+        $roiPorAdmin = $adminIdsRank->mapWithKeys(function ($aid) use ($capPorAdmin, $cobPorAdmin) {
+            $cap    = (float) ($capPorAdmin[$aid] ?? 0);
+            $r      = $cobPorAdmin->get($aid);
+            $cob    = $r ? (float) $r->cob : 0.0;
+            $capRec = min($r ? (float) $r->cap : 0.0, $cap);
+            return [$aid => $cap > 0 ? max(0.0, $cob - $capRec) / $cap * 100 : -1];
+        })->sortDesc();
+        $posRank = $roiPorAdmin->keys()->search($id);
+        $ranking = [
+            'posicion' => $posRank === false ? $adminIdsRank->count() : $posRank + 1,
+            'total'    => $adminIdsRank->count(),
+        ];
+
+        // ── Próximos cobros (30 días), tabla de clientes, notas, equipo ──
         $proximosPagos = collect();
         if ($activeIds->isNotEmpty()) {
             $proximosPagos = Pago::with(['prestamo.cliente'])
                 ->whereIn('prestamo_id', $activeIds)
                 ->whereIn('estatus', ['Pendiente', 'Parcial'])
-                ->whereBetween('fecha_programada', [now()->toDateString(), now()->addDays(30)->toDateString()])
+                ->whereBetween('fecha_programada', [$hoyD, $hoy->copy()->addDays(30)->toDateString()])
                 ->orderBy('fecha_programada')
                 ->limit(60)
                 ->get();
         }
 
-        // ── Tabla de clientes ─────────────────────────────────────
         $clientesConPrestamo = $activos->keyBy('cliente_id');
         $clientesActivos     = Cliente::where('admin_id', $id)->where('activo', true)->orderBy('nombre')->get();
 
         $proximoPorPrestamo = collect();
         if ($activeIds->isNotEmpty()) {
             $proximoPorPrestamo = Pago::whereIn('prestamo_id', $activeIds)
-                ->whereIn('estatus', ['Pendiente', 'Atrasado', 'Parcial'])
+                ->whereIn('estatus', $payableStatuses)
                 ->orderBy('fecha_programada')
                 ->get()
                 ->groupBy('prestamo_id')
                 ->map->first();
         }
 
-        // ── Notas / auditoría ─────────────────────────────────────
-        $notas = AdminNota::where('admin_id', $id)->orderBy('created_at', 'desc')->limit(30)->get();
-
-        // ── Empleados ─────────────────────────────────────────────
+        $notas     = AdminNota::where('admin_id', $id)->orderBy('created_at', 'desc')->limit(30)->get();
         $empleados = Empleado::where('admin_id', $id)->where('activo', true)->orderBy('nombre')->get();
 
-        // ── Alertas inteligentes ──────────────────────────────────
+        // ── Alertas y estado de la cartera ────────────────────────
+        // tipo: danger (crítico) · warning (atención) · success (sano)
         $alertas = [];
         if ($par30 > 20)
-            $alertas[] = ['tipo' => 'danger', 'icon' => '🚨', 'titulo' => 'PAR30 crítico',
-                'msg' => "El {$par30}% de la cartera tiene pagos con más de 30 días de atraso."];
+            $alertas[] = ['tipo' => 'danger', 'titulo' => 'PAR30 crítico',
+                'msg' => "El {$par30}% del saldo activo tiene cuotas con más de 30 días de atraso."];
+        elseif ($par30 >= 5)
+            $alertas[] = ['tipo' => 'warning', 'titulo' => 'PAR30 en zona de atención',
+                'msg' => "El {$par30}% del saldo activo tiene cuotas con más de 30 días de atraso."];
         if ($npl > 30)
-            $alertas[] = ['tipo' => 'danger', 'icon' => '⚠️', 'titulo' => 'NPL elevado',
+            $alertas[] = ['tipo' => 'danger', 'titulo' => 'NPL elevado',
                 'msg' => "El {$npl}% de los préstamos activos están en estatus Atrasado."];
+        elseif ($npl >= 15)
+            $alertas[] = ['tipo' => 'warning', 'titulo' => 'NPL en zona de atención',
+                'msg' => "{$nAtrasados} de {$nActivos} préstamos activos están atrasados ({$npl}%)."];
         if ($capitalDesplegado > 0 && $saldoActivo > 0 && ($capitalRiesgo / $saldoActivo * 100) > 40)
-            $alertas[] = ['tipo' => 'warning', 'icon' => '🔶', 'titulo' => 'Alta concentración de riesgo',
+            $alertas[] = ['tipo' => 'warning', 'titulo' => 'Alta concentración de riesgo',
                 'msg' => 'Más del 40% del saldo activo corresponde a préstamos atrasados.'];
-        if ($nActivos > 0 && $nAtrasados / $nActivos > 0.5)
-            $alertas[] = ['tipo' => 'warning', 'icon' => '📉', 'titulo' => 'Alta mora en cartera',
-                'msg' => 'Más de la mitad de los préstamos activos presentan atraso de pago.'];
+        if ($cobranza['semana']['eficiencia'] !== null && $cobranza['semana']['eficiencia'] < 90) {
+            $delta = $eficienciaPrev !== null ? round($cobranza['semana']['eficiencia'] - $eficienciaPrev, 1) : null;
+            $alertas[] = ['tipo' => 'warning', 'titulo' => 'Cobranza semanal en ' . $cobranza['semana']['eficiencia'] . '%',
+                'msg' => 'Se cobró $' . number_format($semCob, 0) . ' de $' . number_format($semProg, 0) . ' programados'
+                    . ($delta !== null ? ' · ' . ($delta >= 0 ? '+' : '') . $delta . ' pts vs la semana anterior.' : '.')];
+        }
+        if ($morososMas60->isNotEmpty())
+            $alertas[] = ['tipo' => 'danger',
+                'titulo' => $morososMas60->count() . ($morososMas60->count() === 1 ? ' préstamo' : ' préstamos') . ' con más de 60 días de atraso',
+                'msg' => $morososMas60->take(3)->map(fn($m) => $m['cliente'] . ' (' . $m['dias'] . ' d)')->implode(', ')
+                    . ($morososMas60->count() > 3 ? ' y ' . ($morososMas60->count() - 3) . ' más.' : '.')];
         if (empty($alertas) && $nActivos > 0)
-            $alertas[] = ['tipo' => 'success', 'icon' => '✅', 'titulo' => 'Cartera saludable',
-                'msg' => 'No se detectaron alertas críticas en la cartera activa.'];
+            $alertas[] = ['tipo' => 'success', 'titulo' => 'Cartera saludable',
+                'msg' => 'No se detectaron alertas en la cartera activa.'];
 
-        $montoCobradoUlt30 = $deployedIds->isNotEmpty()
-            ? (float) Pago::whereIn('prestamo_id', $deployedIds)
-                ->whereIn('estatus', ['Pagado', 'Parcial'])
-                ->where('fecha_pago', '>=', now()->subDays(30)->toDateString())
-                ->sum('monto_cobrado')
-            : 0.0;
+        $tipos = array_column($alertas, 'tipo');
+        $estadoCartera = $nActivos === 0 ? 'Sin cartera activa'
+            : (in_array('danger', $tipos) ? 'Crítico' : (in_array('warning', $tipos) ? 'Atención' : 'Saludable'));
 
         return view('owner.admin_detalle', compact(
-            'admin', 'allPrestamos', 'activos', 'atrasados', 'finalizados', 'pendientes', 'retirados',
+            'admin', 'allPrestamos', 'activos', 'finalizados',
             'capitalDesplegado', 'totalAcordado', 'interesEsperado',
             'capitalPendiente', 'moraPendiente', 'capitalRiesgo',
-            'capitalRecuperado', 'interesCobranzaReal',
-            'totalCobrado', 'gananciaNetaAprox', 'roi',
+            'capitalRecuperado', 'interesCobranzaReal', 'interesPorCobrar', 'interesCobradoPct',
+            'totalCobrado', 'roi', 'rentabilidadPactada', 'recuperadoPct',
+            'posicionNeta', 'coberturaSaldo', 'ranking', 'estadoCartera',
             'par30', 'par60', 'par90', 'npl',
             'par30Saldo', 'par60Saldo', 'par90Saldo', 'saldoActivo',
             'nActivos', 'nAtrasados',
-            'chartLabels', 'chartDesembolsos', 'chartCobros', 'chartMonths',
-            'porEstatus', 'totalPrestamos', 'ticketPromedio', 'montoMax', 'montoMin', 'duracionPromedio',
-            'proximosPagos', 'clientesActivos', 'clientesConPrestamo', 'proximoPorPrestamo',
-            'notas', 'empleados', 'alertas', 'montoCobradoUlt30'
+            'serieFlujo', 'cobradoUlt30', 'desembolsadoUlt30', 'interesUlt30', 'interesMensual',
+            'cobranza', 'semanasCobranza', 'vencido', 'aging',
+            'proximos7', 'proximos7Total', 'proximos7Cuotas',
+            'porEstatus', 'composicion', 'frecuencias', 'totalPrestamos',
+            'ticketPromedio', 'montoMax', 'montoMin', 'duracionPromedio',
+            'morosos', 'proximosPagos', 'clientesActivos', 'clientesConPrestamo', 'proximoPorPrestamo',
+            'notas', 'empleados', 'alertas'
         ));
-    }
-
-    /**
-     * Drill-down de la gráfica "Flujo de Capital": desglose de UN mes por día o
-     * por semana. Devuelve JSON para que la vista redibuje la misma gráfica sin
-     * recargar. Mismos criterios que la vista mensual de show():
-     *   - Desembolsado = SUM(monto_entregado) de préstamos por fecha_entrega.
-     *   - Cobrado      = SUM(monto_cobrado) de pagos Pagado/Parcial por fecha_pago.
-     */
-    public function flujoMensual(int $id, Request $request)
-    {
-        $admin = User::where('id', $id)->where('puesto', 'admin')
-            ->whereNull('cartera_financiada_de')->firstOrFail();
-
-        try {
-            $ref = $request->query('mes')
-                ? \Carbon\Carbon::createFromFormat('Y-m', $request->query('mes'))->startOfMonth()
-                : now()->startOfMonth();
-        } catch (\Exception $e) {
-            $ref = now()->startOfMonth();
-        }
-        $granularidad = $request->query('granularidad') === 'semanal' ? 'semanal' : 'diario';
-
-        $inicio = $ref->copy()->startOfMonth();
-        $fin    = $ref->copy()->endOfMonth();
-
-        $desRaw = DB::table('prestamos')
-            ->selectRaw('DATE(fecha_entrega) as dia, SUM(monto_entregado) as total')
-            ->where('admin_id', $id)
-            ->whereNotNull('fecha_entrega')
-            ->whereBetween('fecha_entrega', [$inicio->toDateString(), $fin->toDateString()])
-            ->groupBy('dia')->pluck('total', 'dia');
-
-        $cobRaw = DB::table('pagos')
-            ->join('prestamos', 'pagos.prestamo_id', '=', 'prestamos.id')
-            ->selectRaw('DATE(pagos.fecha_pago) as dia, SUM(pagos.monto_cobrado) as total')
-            ->where('prestamos.admin_id', $id)
-            ->whereIn('pagos.estatus', ['Pagado', 'Parcial'])
-            ->whereNotNull('pagos.fecha_pago')
-            ->whereBetween('pagos.fecha_pago', [$inicio->toDateString(), $fin->toDateString()])
-            ->groupBy('dia')->pluck('total', 'dia');
-
-        $labels = $desembolsos = $cobros = [];
-
-        if ($granularidad === 'diario') {
-            for ($d = $inicio->copy(); $d->lte($fin); $d->addDay()) {
-                $key = $d->toDateString();
-                $labels[]      = $d->format('d');
-                $desembolsos[] = (float) ($desRaw[$key] ?? 0);
-                $cobros[]      = (float) ($cobRaw[$key] ?? 0);
-            }
-        } else {
-            // Semanal: buckets por semana del mes (1–7, 8–14, 15–21, 22–28, 29–fin)
-            $buckets  = [];
-            $mesCorto = $ref->locale('es')->isoFormat('MMM');
-            for ($d = $inicio->copy(); $d->lte($fin); $d->addDay()) {
-                $key = $d->toDateString();
-                $wi  = intdiv($d->day - 1, 7);
-                if (!isset($buckets[$wi])) {
-                    $buckets[$wi] = ['ini' => $d->day, 'fin' => $d->day, 'des' => 0.0, 'cob' => 0.0];
-                }
-                $buckets[$wi]['fin']  = $d->day;
-                $buckets[$wi]['des'] += (float) ($desRaw[$key] ?? 0);
-                $buckets[$wi]['cob'] += (float) ($cobRaw[$key] ?? 0);
-            }
-            ksort($buckets);
-            foreach ($buckets as $b) {
-                $labels[]      = $b['ini'] . '–' . $b['fin'] . ' ' . $mesCorto;
-                $desembolsos[] = round($b['des'], 2);
-                $cobros[]      = round($b['cob'], 2);
-            }
-        }
-
-        return response()->json([
-            'mes'          => $ref->format('Y-m'),
-            'mes_label'    => ucfirst($ref->locale('es')->isoFormat('MMMM [de] YYYY')),
-            'granularidad' => $granularidad,
-            'labels'       => $labels,
-            'desembolsos'  => $desembolsos,
-            'cobros'       => $cobros,
-        ]);
     }
 
     /**
